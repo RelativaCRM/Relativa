@@ -1,3 +1,2 @@
 Repetovskyi Vladyslav - QA Specialist
 Nazar Zon - Backend developer
-Shostak Natalia - Frontend developer
