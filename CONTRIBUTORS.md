@@ -1,1 +1,1 @@
-
+Repetovskyi Vladyslav - QA Specialist
