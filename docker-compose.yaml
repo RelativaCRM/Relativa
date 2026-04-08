@@ -1,0 +1,153 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: relativa-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - relativa_net
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: relativa-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "${PGADMIN_PORT}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - relativa_net
+
+  auth:
+    build:
+      context: ./Authentication
+      dockerfile: Dockerfile
+    container_name: relativa-auth
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8081
+    ports:
+      - "8081:8081"
+    networks:
+      - relativa_net
+
+  core:
+    build:
+      context: ./Core
+      dockerfile: Dockerfile
+    container_name: relativa-core
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8082
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASS}
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - relativa_net
+
+  graph:
+    build:
+      context: ./Graph
+      dockerfile: Dockerfile
+    container_name: relativa-graph
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8083
+    ports:
+      - "8083:8083"
+    networks:
+      - relativa_net
+
+  ml:
+    build:
+      context: ./ML
+      dockerfile: Dockerfile
+    container_name: relativa-ml
+    environment:
+      DJANGO_SETTINGS_MODULE: relativa_ml.settings
+    ports:
+      - "8084:8084"
+    networks:
+      - relativa_net
+
+  audit:
+    build:
+      context: ./Audit
+      dockerfile: Dockerfile
+    container_name: relativa-audit
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8086
+    ports:
+      - "8086:8086"
+    networks:
+      - relativa_net
+
+  gateway:
+    build:
+      context: ./Gateway
+      dockerfile: Dockerfile
+    container_name: relativa-gateway
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ReverseProxy__Clusters__auth__Destinations__d1__Address: http://auth:8081/
+      ReverseProxy__Clusters__core__Destinations__d1__Address: http://core:8082/
+      ReverseProxy__Clusters__graph__Destinations__d1__Address: http://graph:8083/
+      ReverseProxy__Clusters__ml__Destinations__d1__Address: http://ml:8084/
+      ReverseProxy__Clusters__audit__Destinations__d1__Address: http://audit:8086/
+    ports:
+      - "8080:8080"
+    depends_on:
+      auth:
+        condition: service_started
+      core:
+        condition: service_started
+      graph:
+        condition: service_started
+      ml:
+        condition: service_started
+      audit:
+        condition: service_started
+    networks:
+      - relativa_net
+
+  client:
+    build:
+      context: ./Client
+      dockerfile: Dockerfile
+    container_name: relativa-client
+    environment:
+      VITE_GATEWAY_URL: ${VITE_GATEWAY_URL}
+    ports:
+      - "${CLIENT_PORT}:3000"
+    depends_on:
+      gateway:
+        condition: service_started
+    networks:
+      - relativa_net
+
+networks:
+  relativa_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
