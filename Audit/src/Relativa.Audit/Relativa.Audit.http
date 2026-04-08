@@ -1,0 +1,6 @@
+@Relativa.Audit_HostAddress = http://localhost:5095
+
+GET {{Relativa.Audit_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
