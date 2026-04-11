@@ -9,8 +9,7 @@ var builder = Host.CreateDefaultBuilder(args);
 
 builder.ConfigureServices((hostContext, services) =>
 {
-    var connectionString = hostContext.Configuration.GetConnectionString("Default")
-        ?? "Host=postgres;Database=relativa;Username=relativa;Password=relativa";
+    var connectionString = hostContext.Configuration.GetConnectionString("Default");
 
     services.AddDbContext<MigrationDbContext>(options =>
         options.UseNpgsql(connectionString, b => b.MigrationsAssembly("Relativa.Migration")));
