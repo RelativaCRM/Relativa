@@ -1,27 +1,57 @@
 using Microsoft.EntityFrameworkCore;
-using Relativa.Core.Data;
+using Relativa.Core.Infrastructure.Data;
+using Relativa.Core.Middleware;
+using Scalar.AspNetCore;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .WriteTo.Console()
+    .WriteTo.File("logs/core-.log", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
 
-builder.Services.AddOpenApi();
-builder.Services.AddDbContext<RelativaDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-
-builder.Services.AddCors(options =>
+try
 {
-    options.AddDefaultPolicy(policy =>
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
-});
+    var builder = WebApplication.CreateBuilder(args);
+    builder.Host.UseSerilog();
 
-var app = builder.Build();
+    builder.Services.AddOpenApi();
 
-if (app.Environment.IsDevelopment())
-{
+    builder.Services.AddDbContext<RelativaDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+    builder.Services.AddHealthChecks()
+        .AddDbContextCheck<RelativaDbContext>();
+
+    builder.Services.AddCors(options =>
+    {
+        options.AddDefaultPolicy(policy =>
+            policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+    });
+
+    builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+    builder.Services.AddProblemDetails();
+
+    var app = builder.Build();
+
+    app.UseExceptionHandler();
+    app.UseSerilogRequestLogging();
+    app.UseCors();
+
     app.MapOpenApi();
+    app.MapScalarApiReference();
+
+    app.MapHealthChecks("/health");
+
+    app.Run();
 }
-
-app.UseCors();
-
-app.MapGet("/", () => Results.Ok(new { service = "relativa-core" }));
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Core service terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

@@ -1,22 +1,69 @@
-var builder = WebApplication.CreateBuilder(args);
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Relativa.Authentication.Application.Interfaces;
+using Relativa.Authentication.Application.Services;
+using Relativa.Authentication.Domain.Interfaces;
+using Relativa.Authentication.Endpoints;
+using Relativa.Authentication.Infrastructure.Data;
+using Relativa.Authentication.Infrastructure.Repositories;
+using Relativa.Authentication.Infrastructure.Services;
+using Relativa.Authentication.Middleware;
+using Scalar.AspNetCore;
+using Serilog;
 
-builder.Services.AddOpenApi();
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .WriteTo.Console()
+    .WriteTo.File("logs/auth-.log", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
 
-var app = builder.Build();
-
-if (app.Environment.IsDevelopment())
+try
 {
+    var builder = WebApplication.CreateBuilder(args);
+    builder.Host.UseSerilog();
+
+    builder.Services.AddOpenApi();
+
+    builder.Services.AddDbContext<AuthDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+    builder.Services.AddHealthChecks()
+        .AddDbContextCheck<AuthDbContext>();
+
+    builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
+    builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+
+    builder.Services.AddValidatorsFromAssemblyContaining<IAuthService>();
+
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<IRoleRepository, RoleRepository>();
+    builder.Services.AddScoped<ITokenService, JwtTokenService>();
+    builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+    builder.Services.AddScoped<IAuthService, AuthService>();
+
+    builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+    builder.Services.AddProblemDetails();
+
+    var app = builder.Build();
+
+    app.UseExceptionHandler();
+    app.UseSerilogRequestLogging();
+
     app.MapOpenApi();
+    app.MapScalarApiReference();
+
+    app.MapHealthChecks("/health");
+    app.MapAuthEndpoints();
+
+    app.Run();
 }
-
-app.MapPost("/login", (LoginRequest? _) => Results.StatusCode(StatusCodes.Status501NotImplemented))
-    .WithName("Login");
-
-app.MapPost("/refresh", (RefreshRequest? _) => Results.StatusCode(StatusCodes.Status501NotImplemented))
-    .WithName("Refresh");
-
-app.Run();
-
-public sealed record LoginRequest(string? Username, string? Password);
-
-public sealed record RefreshRequest(string? RefreshToken);
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Authentication service terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

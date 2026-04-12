@@ -78,6 +78,8 @@ docker compose down -v
 - Client: `http://localhost:3000`
 - Gateway: `http://localhost:8080`
 - Gateway health: `http://localhost:8080/health`
+- Core health (via gateway, no JWT): `http://localhost:8080/core/health`
+- Auth health (via gateway, no JWT): `http://localhost:8080/auth/health`
 - PostgreSQL: `localhost:5432`
 - pgAdmin: `http://localhost:5050`
 
@@ -96,15 +98,13 @@ Then register PostgreSQL server with:
 - Password: `DB_PASS` from `.env`
 - Database: `DB_NAME` from `.env`
 
-## 6) Current migration workflow
+## 6) Migrations and database
 
-At this moment, compose starts DB and services, but migration execution is not yet automated as an init job.
+The `migration` service applies EF Core migrations once Postgres is healthy, then exits successfully. The **auth** and **core** services wait for that job to finish before starting, so the schema is ready before they accept traffic.
 
-Recommended current flow:
+Ensure `.env` includes the JWT and default-role variables from `.env.example` (`JWT_SECRET`, `JWT_ISSUER`, `JWT_AUDIENCE`, `DEFAULT_ROLE_ID`). They must stay in sync between the gateway and authentication services.
 
-1. Start stack: `docker compose up --build`
-2. Run migration container/job (when wired in compose) or apply EF migration manually.
-3. Use services after schema is up to date.
+If you change database credentials, update `.env` and recreate containers: `docker compose up --build -d`.
 
 ## 7) Troubleshooting
 
@@ -122,7 +122,10 @@ docker compose logs -f
 docker compose logs -f gateway
 ```
 
+- If **`migration` exits with a non-zero code** (for example 255), read its logs: `docker compose logs migration`. Typical causes are Postgres not reachable, wrong credentials in `.env`, or migrations failing against the database. The migration host uses the app output directory as its content root so `appsettings.json` and `ConnectionStrings__Default` from compose are applied correctly.
+
 ## 8) Implementation notes
 
 - Gateway upstream routes are overridden in `docker-compose.yaml` to use Docker DNS service names (`auth`, `core`, `graph`, `ml`, `audit`).
-- Core reads PostgreSQL connection from `ConnectionStrings__Default` injected by compose.
+- **Core** and **Authentication** read PostgreSQL `ConnectionStrings__Default` from compose (host `postgres`, credentials from `.env`).
+- **Gateway** and **Authentication** share JWT settings via compose environment variables so issued tokens validate at the gateway.

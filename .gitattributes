@@ -1,0 +1,10 @@
+# Auto-detect text files and normalise line endings to LF in the repo
+* text=auto
+
+# Shell scripts must always be LF so they work in Linux containers
+*.sh text eol=lf
+
+# Windows-specific files may keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

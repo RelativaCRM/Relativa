@@ -1,8 +1,17 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /repo
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-COPY . .
-RUN dotnet restore src/Relativa.Migration/Relativa.Migration.csproj && dotnet build src/Relativa.Migration/Relativa.Migration.csproj -c Release --no-restore
+
+COPY src/Relativa.Migration/Relativa.Migration.csproj src/Relativa.Migration/
+RUN dotnet restore src/Relativa.Migration/Relativa.Migration.csproj
+
+COPY src/ src/
+RUN dotnet publish src/Relativa.Migration/Relativa.Migration.csproj -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS runtime
+WORKDIR /app
+
+COPY --from=build /app/publish .
+
 ENV DOTNET_NOLOGO=1
-ENTRYPOINT ["/entrypoint.sh"]
+
+ENTRYPOINT ["dotnet", "Relativa.Migration.dll"]
