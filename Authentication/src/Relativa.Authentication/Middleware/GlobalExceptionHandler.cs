@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 
@@ -17,6 +18,9 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
             UnauthorizedAccessException ue => (StatusCodes.Status401Unauthorized, "Unauthorized", ue.Message),
             InvalidOperationException ioe => (StatusCodes.Status409Conflict, "Conflict", ioe.Message),
             ArgumentException ae => (StatusCodes.Status400BadRequest, "Bad Request", ae.Message),
+            JsonException je => (StatusCodes.Status400BadRequest, "Bad Request",
+                $"Invalid JSON in request body: {je.Message}"),
+            BadHttpRequestException bhr => (StatusCodes.Status400BadRequest, "Bad Request", bhr.Message),
             _ => (StatusCodes.Status500InternalServerError, "Internal Server Error",
                 "An unexpected error occurred.")
         };
