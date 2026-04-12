@@ -35,8 +35,8 @@ services:
 
   auth:
     build:
-      context: ./Authentication
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Authentication/Dockerfile
     container_name: relativa-auth
     environment:
       ASPNETCORE_ENVIRONMENT: Development
@@ -58,8 +58,8 @@ services:
 
   core:
     build:
-      context: ./Core
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Core/Dockerfile
     container_name: relativa-core
     environment:
       ASPNETCORE_ENVIRONMENT: Development
@@ -162,8 +162,8 @@ services:
 
   migration:
     build:
-      context: ./Migration
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Migration/Dockerfile
     container_name: relativa-migration
     environment:
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASS}"
