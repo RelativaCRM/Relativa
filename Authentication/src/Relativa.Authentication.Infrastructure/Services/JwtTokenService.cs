@@ -3,7 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using Relativa.Authentication.Domain.Entities;
+using Relativa.Persistence.Entities;
 using Relativa.Authentication.Domain.Interfaces;
 
 namespace Relativa.Authentication.Infrastructure.Services;

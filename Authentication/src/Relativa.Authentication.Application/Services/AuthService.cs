@@ -1,7 +1,7 @@
 using FluentValidation;
 using Relativa.Authentication.Application.DTOs;
 using Relativa.Authentication.Application.Interfaces;
-using Relativa.Authentication.Domain.Entities;
+using Relativa.Persistence.Entities;
 using Relativa.Authentication.Domain.Interfaces;
 
 namespace Relativa.Authentication.Application.Services;

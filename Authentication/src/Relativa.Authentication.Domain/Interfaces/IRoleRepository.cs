@@ -1,4 +1,4 @@
-using Relativa.Authentication.Domain.Entities;
+using Relativa.Persistence.Entities;
 
 namespace Relativa.Authentication.Domain.Interfaces;
 

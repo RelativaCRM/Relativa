@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Relativa.Authentication.Domain.Entities;
+using Relativa.Persistence;
+using Relativa.Persistence.Entities;
 
 namespace Relativa.Authentication.Infrastructure.Data;
 
@@ -13,6 +14,6 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbC
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(AuthDbContext).Assembly);
+        modelBuilder.ApplyAuthEntityConfigurations();
     }
 }

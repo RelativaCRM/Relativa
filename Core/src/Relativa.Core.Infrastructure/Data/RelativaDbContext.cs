@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Relativa.Core.Domain.Entities;
+using Relativa.Persistence;
+using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Infrastructure.Data;
 
@@ -23,6 +24,6 @@ public sealed class RelativaDbContext(DbContextOptions<RelativaDbContext> option
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(RelativaDbContext).Assembly);
+        modelBuilder.ApplyAllEntityConfigurations();
     }
 }

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Relativa.Migration.Models;
+using Relativa.Persistence;
+using Relativa.Persistence.Entities;
 
 namespace Relativa.Migration.Data;
 
@@ -23,6 +24,6 @@ public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> opti
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(MigrationDbContext).Assembly);
+        modelBuilder.ApplyAllEntityConfigurations();
     }
 }

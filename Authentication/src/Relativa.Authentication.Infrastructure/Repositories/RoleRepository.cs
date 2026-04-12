@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Relativa.Authentication.Domain.Entities;
+using Relativa.Persistence.Entities;
 using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Authentication.Infrastructure.Data;
 
