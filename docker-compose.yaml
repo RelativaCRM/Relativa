@@ -145,9 +145,27 @@ services:
     networks:
       - relativa_net
 
+  migration:
+    build:
+      context: ./Migration
+      dockerfile: Dockerfile
+    container_name: relativa-migration
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASS}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - relativa_net
+    develop:
+      watch:
+        - action: rebuild
+          path: ./Migration
+
 networks:
   relativa_net:
     driver: bridge
 
 volumes:
   postgres_data:
+
