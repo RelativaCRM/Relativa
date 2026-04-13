@@ -1,2 +1,50 @@
 # Local environment overrides
 .env
+
+# Visual Studio / Rider IDE folders
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build output
+bin/
+obj/
+
+# NuGet
+*.nupkg
+*.snupkg
+project.assets.json
+*.nuget.props
+*.nuget.targets
+
+# ASP.NET runtime
+*.pfx
+*.p12
+appsettings.Development.json
+
+# Logs written by Serilog
+logs/
+
+# Docker
+.dockerignore
+
+# Python / ML
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# Node / Client
+node_modules/
+dist/
+.cache/
+
+# OS artefacts
+Thumbs.db
+.DS_Store

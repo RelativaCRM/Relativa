@@ -27,10 +27,7 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(
         "AuditReaders",
-        policy =>
-            policy.RequireAssertion(ctx =>
-                ctx.User.HasClaim("role", "Admin")
-                || ctx.User.HasClaim("role", "Analyst")));
+        policy => policy.RequireAuthenticatedUser());
 });
 
 var app = builder.Build();

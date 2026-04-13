@@ -1,48 +1,79 @@
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using Relativa.Gateway.Middleware;
+using Scalar.AspNetCore;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .WriteTo.Console()
+    .WriteTo.File("logs/gateway-.log", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
 
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
+try
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-});
+    var builder = WebApplication.CreateBuilder(args);
+    builder.Host.UseSerilog();
 
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    var config = builder.Configuration;
+
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
-        options.MapInboundClaims = false;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateIssuerSigningKey = false,
-            ValidateLifetime = false,
-            RequireExpirationTime = false,
-            SignatureValidator = (token, _) => new JsonWebToken(token),
-        };
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     });
 
-builder.Services.AddAuthorization();
-builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = config["Jwt:Issuer"],
+                ValidateAudience = true,
+                ValidAudience = config["Jwt:Audience"],
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(config["Jwt:SecretKey"]!)),
+                ValidateLifetime = true
+            };
+        });
 
-var app = builder.Build();
+    builder.Services.AddAuthorization();
+    builder.Services.AddReverseProxy().LoadFromConfig(config.GetSection("ReverseProxy"));
 
-app.UseForwardedHeaders();
+    builder.Services.AddOpenApi();
+    builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+    builder.Services.AddProblemDetails();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+    var app = builder.Build();
 
-app.UseAuthentication();
-app.UseAuthorization();
+    app.UseForwardedHeaders();
+    app.UseExceptionHandler();
+    app.UseSerilogRequestLogging();
 
-app.Use(async (context, next) =>
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+
+    app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "relativa-gateway" }))
+        .AllowAnonymous();
+
+    app.UseAuthentication();
+    app.UseAuthorization();
+
+    app.MapReverseProxy().RequireAuthorization();
+
+    app.Run();
+}
+catch (Exception ex)
 {
-    await next().ConfigureAwait(false);
-});
-
-app.MapReverseProxy().RequireAuthorization();
-
-app.Run();
+    Log.Fatal(ex, "Gateway terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

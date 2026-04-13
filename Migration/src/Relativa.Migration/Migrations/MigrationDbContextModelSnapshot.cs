@@ -22,7 +22,7 @@ namespace Relativa.Migration.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Relativa.Migration.Models.DealPropertyValue", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.DealPropertyValue", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -64,7 +64,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("deal_property_values", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Entity", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Entity", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -90,7 +90,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("entities", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.EntityProperty", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityProperty", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -129,7 +129,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("entity_properties", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.EntityType", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityType", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -157,7 +157,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("entity_types", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.EntityWorkspace", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityWorkspace", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -183,7 +183,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("entity_workspaces", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.LocationPropertyValue", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.LocationPropertyValue", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -229,7 +229,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("location_property_values", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Organization", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Organization", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -254,7 +254,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("organizations", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.OrganizationWorkspace", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.OrganizationWorkspace", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -280,7 +280,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("organization_workspaces", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Permission", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Permission", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -308,7 +308,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("permissions", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.PersonalDataPropertyValue", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.PersonalDataPropertyValue", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -348,7 +348,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("personal_data_property_values", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Role", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Role", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -368,15 +368,22 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<int?>("WorkspaceId")
+                        .HasColumnType("integer")
+                        .HasColumnName("workspace_id");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Name")
-                        .IsUnique();
+                    b.HasIndex("WorkspaceId");
+
+                    b.HasIndex("Name", "WorkspaceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_roles_name_workspace");
 
                     b.ToTable("roles", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.RolePermission", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.RolePermission", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -402,7 +409,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("role_permissions", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.User", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -441,7 +448,7 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("text")
                         .HasColumnName("password");
 
-                    b.Property<int>("RoleId")
+                    b.Property<int?>("RoleId")
                         .HasColumnType("integer")
                         .HasColumnName("role_id");
 
@@ -455,7 +462,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("users", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Workspace", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Workspace", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -463,6 +470,10 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("created_by_user_id");
 
                     b.Property<bool>("IsArchived")
                         .ValueGeneratedOnAdd()
@@ -477,19 +488,124 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedByUserId");
+
                     b.ToTable("workspaces", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.DealPropertyValue", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceInvitation", b =>
                 {
-                    b.HasOne("Relativa.Migration.Models.Entity", "Client")
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("email");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int>("InvitedByUserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("invited_by_user_id");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("role_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("token");
+
+                    b.Property<int>("WorkspaceId")
+                        .HasColumnType("integer")
+                        .HasColumnName("workspace_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvitedByUserId");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("Token")
+                        .IsUnique()
+                        .HasDatabaseName("ix_workspace_invitations_token");
+
+                    b.HasIndex("WorkspaceId");
+
+                    b.ToTable("workspace_invitations", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceMember", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsArchived")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_archived");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("joined_at");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("role_id");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("WorkspaceId")
+                        .HasColumnType("integer")
+                        .HasColumnName("workspace_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("WorkspaceId");
+
+                    b.HasIndex("UserId", "WorkspaceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_workspace_members_user_workspace");
+
+                    b.ToTable("workspace_members", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.DealPropertyValue", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.Entity", "Client")
                         .WithMany("DealPropertyValues")
                         .HasForeignKey("ClientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_deal_client");
 
-                    b.HasOne("Relativa.Migration.Models.User", "Owner")
+                    b.HasOne("Relativa.Persistence.Entities.User", "Owner")
                         .WithMany()
                         .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.SetNull)
@@ -500,9 +616,9 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Owner");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Entity", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Entity", b =>
                 {
-                    b.HasOne("Relativa.Migration.Models.EntityType", "EntityType")
+                    b.HasOne("Relativa.Persistence.Entities.EntityType", "EntityType")
                         .WithMany("Entities")
                         .HasForeignKey("Type")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -512,28 +628,28 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("EntityType");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.EntityProperty", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityProperty", b =>
                 {
-                    b.HasOne("Relativa.Migration.Models.DealPropertyValue", "DealProperty")
+                    b.HasOne("Relativa.Persistence.Entities.DealPropertyValue", "DealProperty")
                         .WithMany()
                         .HasForeignKey("DealPropertyId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_ep_deal");
 
-                    b.HasOne("Relativa.Migration.Models.Entity", "Entity")
+                    b.HasOne("Relativa.Persistence.Entities.Entity", "Entity")
                         .WithOne("EntityProperty")
-                        .HasForeignKey("Relativa.Migration.Models.EntityProperty", "EntityId")
+                        .HasForeignKey("Relativa.Persistence.Entities.EntityProperty", "EntityId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_ep_entity");
 
-                    b.HasOne("Relativa.Migration.Models.LocationPropertyValue", "LocationProperty")
+                    b.HasOne("Relativa.Persistence.Entities.LocationPropertyValue", "LocationProperty")
                         .WithMany()
                         .HasForeignKey("LocationPropertyId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_ep_location");
 
-                    b.HasOne("Relativa.Migration.Models.PersonalDataPropertyValue", "PersonalDataProperty")
+                    b.HasOne("Relativa.Persistence.Entities.PersonalDataPropertyValue", "PersonalDataProperty")
                         .WithMany()
                         .HasForeignKey("PersonalDataPropertyId")
                         .OnDelete(DeleteBehavior.SetNull)
@@ -548,16 +664,16 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("PersonalDataProperty");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.EntityWorkspace", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityWorkspace", b =>
                 {
-                    b.HasOne("Relativa.Migration.Models.Entity", "Entity")
+                    b.HasOne("Relativa.Persistence.Entities.Entity", "Entity")
                         .WithMany("EntityWorkspaces")
                         .HasForeignKey("EntityId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_ew_entity");
 
-                    b.HasOne("Relativa.Migration.Models.Workspace", "Workspace")
+                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
                         .WithMany("EntityWorkspaces")
                         .HasForeignKey("WorkspaceId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -569,16 +685,16 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Workspace");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.OrganizationWorkspace", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.OrganizationWorkspace", b =>
                 {
-                    b.HasOne("Relativa.Migration.Models.Organization", "Organization")
+                    b.HasOne("Relativa.Persistence.Entities.Organization", "Organization")
                         .WithMany("OrganizationWorkspaces")
                         .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_ow_org");
 
-                    b.HasOne("Relativa.Migration.Models.Workspace", "Workspace")
+                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
                         .WithMany("OrganizationWorkspaces")
                         .HasForeignKey("WorkspaceId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -590,16 +706,27 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Workspace");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.RolePermission", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Role", b =>
                 {
-                    b.HasOne("Relativa.Migration.Models.Permission", "Permission")
+                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
+                        .WithMany("Roles")
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_roles_workspace");
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.RolePermission", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.Permission", "Permission")
                         .WithMany("RolePermissions")
                         .HasForeignKey("PermissionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_rp_permission");
 
-                    b.HasOne("Relativa.Migration.Models.Role", "Role")
+                    b.HasOne("Relativa.Persistence.Entities.Role", "Role")
                         .WithMany("RolePermissions")
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -611,19 +738,90 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Role");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.User", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>
                 {
-                    b.HasOne("Relativa.Migration.Models.Role", "Role")
+                    b.HasOne("Relativa.Persistence.Entities.Role", "Role")
                         .WithMany("Users")
                         .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
+                        .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_users_role");
 
                     b.Navigation("Role");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Entity", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Workspace", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_workspaces_created_by");
+
+                    b.Navigation("CreatedBy");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceInvitation", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "InvitedBy")
+                        .WithMany()
+                        .HasForeignKey("InvitedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_wi_invited_by");
+
+                    b.HasOne("Relativa.Persistence.Entities.Role", "Role")
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_wi_role");
+
+                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
+                        .WithMany("Invitations")
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_wi_workspace");
+
+                    b.Navigation("InvitedBy");
+
+                    b.Navigation("Role");
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceMember", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.Role", "Role")
+                        .WithMany("WorkspaceMembers")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_wm_role");
+
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithMany("WorkspaceMembers")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_wm_user");
+
+                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
+                        .WithMany("Members")
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_wm_workspace");
+
+                    b.Navigation("Role");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.Entity", b =>
                 {
                     b.Navigation("DealPropertyValues");
 
@@ -632,33 +830,46 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("EntityWorkspaces");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.EntityType", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityType", b =>
                 {
                     b.Navigation("Entities");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Organization", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Organization", b =>
                 {
                     b.Navigation("OrganizationWorkspaces");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Permission", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Permission", b =>
                 {
                     b.Navigation("RolePermissions");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Role", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Role", b =>
                 {
                     b.Navigation("RolePermissions");
 
                     b.Navigation("Users");
+
+                    b.Navigation("WorkspaceMembers");
                 });
 
-            modelBuilder.Entity("Relativa.Migration.Models.Workspace", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>
+                {
+                    b.Navigation("WorkspaceMembers");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.Workspace", b =>
                 {
                     b.Navigation("EntityWorkspaces");
 
+                    b.Navigation("Invitations");
+
+                    b.Navigation("Members");
+
                     b.Navigation("OrganizationWorkspaces");
+
+                    b.Navigation("Roles");
                 });
 #pragma warning restore 612, 618
         }
