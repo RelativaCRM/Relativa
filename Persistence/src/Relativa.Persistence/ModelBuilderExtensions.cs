@@ -27,6 +27,8 @@ public static class PersistenceModelBuilderExtensions
         modelBuilder.ApplyConfiguration(new LocationPropertyValueConfiguration());
         modelBuilder.ApplyConfiguration(new DealPropertyValueConfiguration());
         modelBuilder.ApplyConfiguration(new EntityPropertyConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkspaceMemberConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkspaceInvitationConfiguration());
         return modelBuilder;
     }
 }

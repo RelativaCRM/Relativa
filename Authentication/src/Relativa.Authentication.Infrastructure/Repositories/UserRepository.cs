@@ -10,9 +10,6 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
     public async Task<User?> GetByEmailAsync(string email, CancellationToken ct = default)
     {
         return await db.Users
-            .Include(u => u.Role)
-                .ThenInclude(r => r.RolePermissions)
-                    .ThenInclude(rp => rp.Permission)
             .FirstOrDefaultAsync(u => u.Email == email && !u.IsArchived, ct);
     }
 

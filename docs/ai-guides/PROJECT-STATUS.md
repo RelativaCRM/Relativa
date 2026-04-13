@@ -11,14 +11,14 @@
 | Service | Status | One-line summary |
 |---|---|---|
 | Gateway | **Functional** | YARP routing, JWT validation, health, Scalar -- all working |
-| Authentication | **Functional** | Login, register, JWT with role/permission claims, FluentValidation -- all working |
-| Core | **Stub** | Infrastructure only; Domain and Application layers are empty |
+| Authentication | **Functional** | Login, register, JWT (sub + email only), FluentValidation -- all working |
+| Core | **Partial** | Workspace CRUD, member management, invitations, role/permission management implemented; entity/deal CRUD not yet |
 | Graph | **Stub** | SignalR hub exists but has no logic |
 | Audit | **Stub** | Returns empty array; JWT validation disabled |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work |
 | ML | **Stub** | Single endpoint returns hardcoded stub |
 | Client | **Scaffold** | Vue 3 project with routing and graph placeholder |
-| Persistence | **Functional** | Full entity model (14 entities), fluent configs, ModelBuilderExtensions |
+| Persistence | **Functional** | Full entity model (16 entities), fluent configs, ModelBuilderExtensions |
 
 ---
 
@@ -26,12 +26,22 @@
 
 ### Authentication service
 
-- `POST /api/v1/auth/register` -- creates user, hashes password with bcrypt, assigns role (default from config if none specified), returns user DTO with 201 + Location header.
-- `POST /api/v1/auth/login` -- validates credentials, issues JWT with claims: `sub`, `email`, `role`, `permissions`.
-- Full clean-architecture layers: Domain interfaces, Application service + DTOs + FluentValidation validators, Infrastructure (AuthDbContext, UserRepository, RoleRepository, JwtTokenService, BcryptPasswordHasher).
+- `POST /api/v1/auth/register` -- creates user, hashes password with bcrypt, `RoleId` set to `null` (user has no role until they join a workspace), returns user DTO with 201 + Location header.
+- `POST /api/v1/auth/login` -- validates credentials, issues JWT with claims: `sub`, `email`, `jti`. Role and permissions are **not** included in the JWT -- they are resolved per-request by Core using workspace membership.
+- Full clean-architecture layers: Domain interfaces, Application service + DTOs + FluentValidation validators, Infrastructure (AuthDbContext, UserRepository, JwtTokenService, BcryptPasswordHasher).
 - GlobalExceptionHandler maps ValidationException -> 400, UnauthorizedAccessException -> 401, duplicate email -> 409.
 - EF Core health check at `/health`.
 - OpenAPI + Scalar docs.
+
+### Core service -- Workspace RBAC
+
+- **Workspace CRUD:** `POST /api/v1/workspaces` (create, auto-adds creator as admin member), `GET` (list user's workspaces), `GET /{id}`, `PUT /{id}`, `DELETE /{id}` (archive).
+- **Member management:** `GET .../members`, `PUT .../members/{userId}/role`, `DELETE .../members/{userId}`.
+- **Invitation system:** `POST .../invitations` (invite by email), `GET .../invitations` (list pending), `DELETE .../invitations/{id}` (cancel), `POST /api/v1/invitations/accept` (accept by token).
+- **Role management:** `GET .../roles` (list system + custom), `POST .../roles` (create custom), `PUT .../roles/{id}` (update), `DELETE .../roles/{id}` (archive). System roles cannot be modified.
+- **Permission listing:** `GET /api/v1/permissions`.
+- Full clean-architecture layers: Domain (repository interfaces), Application (4 services, DTOs, validators), Infrastructure (5 repositories, WorkspaceContext).
+- Authorization checked per-request via `WorkspaceMember` DB lookup using JWT `sub` claim + `X-Workspace-ID` header.
 
 ### Gateway
 
@@ -50,14 +60,15 @@
 - `MigrationDbContext` mirrors full Persistence model.
 - `Program.cs` runs `Database.MigrateAsync()` as a generic host console app.
 - `20260412140027_InitialCreate.cs` -- full schema creation.
-- `20260412140114_InitSeedData.cs` -- seeds roles (`admin`, `sales_manager`, `analyst`), permissions (`can_edit_deals`, `can_view_analytics`, etc.), organizations, workspaces, demo entity types (`client`, `deal`), sample entities with property values.
+- `20260412140114_InitSeedData.cs` -- seeds roles, permissions, organizations, workspaces, demo entities.
+- `20260413113908_AddWorkspaceMembership.cs` -- adds `workspace_members`, `workspace_invitations` tables; makes `users.role_id` nullable; adds `workspace_id` to `roles`; adds `created_by_user_id` to `workspaces`; backfills seed data.
 - Docker Compose runs this before auth and core start.
 
 ### Persistence library
 
-- 14 entity classes with EF Fluent API configurations.
-- `ModelBuilderExtensions.ApplyAuthEntityConfigurations()` for auth-only subset.
-- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model.
+- 16 entity classes with EF Fluent API configurations (includes `WorkspaceMember` and `WorkspaceInvitation`).
+- `ModelBuilderExtensions.ApplyAuthEntityConfigurations()` for auth-only subset (User, Role, Permission, RolePermission).
+- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 16 entities).
 - Referenced by Core, Authentication, and Migration via ProjectReference.
 
 ### Docker Compose
@@ -74,24 +85,17 @@
 - Routing configured.
 - `GraphView.vue` with vis-network placeholder.
 - Reads `VITE_GATEWAY_URL` from environment.
+- Sends `X-Workspace-ID` header on API calls (via `gatewayFetch` in `http.ts`).
 
 ---
 
 ## Stubs / Partially Implemented
 
-### Core service (THE MAIN GAP)
-
-**What exists:**
-- `RelativaDbContext` with full entity model registered.
-- Serilog, GlobalExceptionHandler, CORS, OpenAPI + Scalar, health check.
-- Clean-architecture project structure: `Relativa.Core.Domain` and `Relativa.Core.Application` .csproj files exist.
+### Core service -- remaining gaps
 
 **What is missing:**
-- `Relativa.Core.Domain/` has **zero .cs files** -- no interfaces, no domain logic.
-- `Relativa.Core.Application/` has **zero .cs files** -- no use cases, no DTOs, no validators, no services.
-- **No business endpoints** -- only `/health` exists.
-- No CRUD for entities, deals, users, or workspaces.
-- No workspace isolation logic.
+- No CRUD for entities, deals, or clients.
+- No workspace isolation for entity queries (multi-tenant data scoping).
 - No business rules (BP-01 through BP-06).
 - No domain events.
 
@@ -102,7 +106,7 @@
 
 ### Audit service
 
-**What exists:** `/audit-log` endpoint with `AuditReaders` authorization policy (requires Admin or Analyst role).
+**What exists:** `/audit-log` endpoint with `AuditReaders` authorization policy (requires any authenticated user -- stub).
 **What is missing:** Endpoint returns empty array `[]`. JWT signature validation is deliberately disabled (all checks set to `false`). No actual audit event storage or ingestion. No domain event consumer.
 
 ### ML service
@@ -130,6 +134,7 @@
 | **No test projects** | High | Zero test projects across the entire solution. No xUnit, NUnit, or MSTest references anywhere. |
 | **No CI/CD pipeline** | Medium | No `.github/workflows`, no `azure-pipelines.yml`, no CI configuration of any kind. |
 | **Audit JWT not validated** | Medium | Audit service has JWT Bearer registered but all validation parameters set to `false`. `SignatureValidator` parses tokens without cryptographic verification. Acceptable as a stub but must be fixed before real audit data flows through. |
+| **Unused Auth dependencies** | Low | `IRoleRepository`, `RoleRepository`, and `AuthOptions` remain in the Auth codebase but are no longer registered in DI or used. Can be removed in a cleanup pass. |
 
 ---
 
@@ -137,8 +142,8 @@
 
 ### Core service -- business API
 
-- CRUD endpoints for entities, users, deals, workspaces.
-- Workspace isolation (multi-tenant data scoping).
+- CRUD endpoints for entities, clients, deals.
+- Workspace isolation for entity queries (multi-tenant data scoping via `EntityWorkspace`).
 - Business rules BP-01 through BP-06 (referenced in `Core/README.md`, not defined in code).
 - Domain events published to Audit after entity mutations.
 
@@ -150,8 +155,7 @@
 
 ### Gateway
 
-- Full RBAC middleware (beyond basic JWT validation).
-- Per-route permission checks based on JWT `permissions` claim.
+- Per-route permission checks (currently authorization is delegated to Core).
 
 ### Graph service
 
@@ -178,6 +182,7 @@
 ### Client
 
 - Login and register forms wired to Gateway auth endpoints.
+- Workspace selection / management UI.
 - Deal/client management pages.
 - Dashboard with analytics.
 - D3-based graph visualization (replacing vis-network placeholder).

@@ -22,9 +22,5 @@ public sealed class RegisterRequestValidator : AbstractValidator<RegisterRequest
         RuleFor(x => x.Password)
             .NotEmpty().WithMessage("Password is required.")
             .MinimumLength(8).WithMessage("Password must be at least 8 characters.");
-
-        RuleFor(x => x.RoleId)
-            .GreaterThan(0).WithMessage("Role ID must be a positive integer.")
-            .When(x => x.RoleId.HasValue);
     }
 }

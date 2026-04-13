@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-04-13
+> **Last verified:** 2026-04-13 (workspace RBAC update)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -80,7 +80,7 @@ YARP routing, JWT Bearer validation (issuer, audience, signing key, lifetime), f
 
 ### Status: Functional
 
-Login and register work end-to-end. JWT includes `sub`, `email`, `role`, and `permissions` claims. FluentValidation on both endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, duplicate email to 409.
+Login and register work end-to-end. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using workspace membership). FluentValidation on both endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, duplicate email to 409. Registration no longer assigns a role -- `User.RoleId` is set to `null` on registration.
 
 **Not yet implemented:** token refresh, token blacklisting.
 
@@ -91,7 +91,7 @@ Login and register work end-to-end. JWT includes `sub`, `email`, `role`, and `pe
 - `Authentication/src/Relativa.Authentication.Application/Services/AuthService.cs` -- business logic
 - `Authentication/src/Relativa.Authentication.Application/DTOs/` -- request/response DTOs
 - `Authentication/src/Relativa.Authentication.Application/Validators/` -- FluentValidation rules
-- `Authentication/src/Relativa.Authentication.Domain/Interfaces/` -- `IUserRepository`, `IRoleRepository`, `ITokenService`, `IPasswordHasher`
+- `Authentication/src/Relativa.Authentication.Domain/Interfaces/` -- `IUserRepository`, `ITokenService`, `IPasswordHasher`
 - `Authentication/src/Relativa.Authentication.Infrastructure/Data/AuthDbContext.cs`
 - `Authentication/src/Relativa.Authentication.Infrastructure/Repositories/UserRepository.cs`
 - `Authentication/src/Relativa.Authentication.Infrastructure/Services/JwtTokenService.cs`
@@ -101,7 +101,7 @@ Login and register work end-to-end. JWT includes `sub`, `email`, `role`, and `pe
 
 ## 3. Core (`relativa-core`)
 
-**Purpose:** The main business API for CRUD on entities, deals, workspaces, and business rules. Currently a scaffold with infrastructure only.
+**Purpose:** The main business API for workspace management, member/invitation management, role/permission management, and (future) CRUD on entities, deals, and business rules.
 
 **Solution:** `Core/Relativa.Core.sln`
 **Project:** `Core/src/Relativa.Core/`
@@ -114,19 +114,38 @@ Login and register work end-to-end. JWT includes `sub`, `email`, `role`, and `pe
 | GET | `/health` | None | EF Core DB health check |
 | GET | `/scalar/v1` | None | Scalar interactive API docs (dev only) |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
+| POST | `/api/v1/workspaces` | JWT | Create workspace; creator becomes admin member |
+| GET | `/api/v1/workspaces` | JWT | List workspaces for authenticated user |
+| GET | `/api/v1/workspaces/{id}` | JWT + membership | Get workspace details |
+| PUT | `/api/v1/workspaces/{id}` | JWT + `can_manage_settings` | Update workspace name |
+| DELETE | `/api/v1/workspaces/{id}` | JWT + admin role | Archive workspace |
+| GET | `/api/v1/workspaces/{id}/members` | JWT + membership | List workspace members |
+| PUT | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `can_assign_roles` | Change a member's role |
+| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `can_assign_roles` (or self) | Remove a member |
+| POST | `/api/v1/workspaces/{id}/invitations` | JWT + `can_assign_roles` | Invite user by email |
+| GET | `/api/v1/workspaces/{id}/invitations` | JWT + `can_assign_roles` | List pending invitations |
+| DELETE | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `can_assign_roles` | Cancel invitation |
+| POST | `/api/v1/invitations/accept` | JWT + matching email | Accept invitation by token |
+| GET | `/api/v1/workspaces/{id}/roles` | JWT + membership | List roles (system + custom) |
+| POST | `/api/v1/workspaces/{id}/roles` | JWT + `can_manage_settings` | Create custom role |
+| PUT | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `can_manage_settings` | Update custom role |
+| DELETE | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `can_manage_settings` | Archive custom role |
+| GET | `/api/v1/permissions` | JWT | List all available permissions |
 
-**No business endpoints exist yet.**
+### Status: Functional (workspace RBAC implemented)
 
-### Status: Stub (infrastructure only)
-
-`RelativaDbContext` is wired with the full Persistence entity model. Serilog, global exception handler, CORS, OpenAPI + Scalar, and health check are configured. **The `Relativa.Core.Domain` and `Relativa.Core.Application` projects exist as .csproj files but contain zero .cs source files.** This is the primary development gap in the project.
+Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, WorkspaceContext), Host (endpoint mapping, DI). Workspace creation, member management, invitation system, and custom role management are all functional. Entity/deal CRUD and business rules are not yet implemented.
 
 ### Key Files
 
-- `Core/src/Relativa.Core/Program.cs` -- service wiring
+- `Core/src/Relativa.Core/Program.cs` -- DI wiring, endpoint mapping
+- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`
+- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`
+- `Core/src/Relativa.Core.Application/DTOs/` -- request/response DTOs organized by feature
+- `Core/src/Relativa.Core.Application/Validators/` -- FluentValidation rules
+- `Core/src/Relativa.Core.Domain/Interfaces/` -- repository interfaces
 - `Core/src/Relativa.Core.Infrastructure/Data/RelativaDbContext.cs` -- full DbSet registration
-- `Core/src/Relativa.Core.Domain/` -- **empty** (placeholder for domain interfaces)
-- `Core/src/Relativa.Core.Application/` -- **empty** (placeholder for use cases, DTOs, validators)
+- `Core/src/Relativa.Core.Infrastructure/Repositories/` -- EF repository implementations
 
 ---
 

@@ -20,6 +20,8 @@ public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> opti
     public DbSet<EntityWorkspace> EntityWorkspaces => Set<EntityWorkspace>();
     public DbSet<DealPropertyValue> DealPropertyValues => Set<DealPropertyValue>();
     public DbSet<EntityProperty> EntityProperties => Set<EntityProperty>();
+    public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
+    public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

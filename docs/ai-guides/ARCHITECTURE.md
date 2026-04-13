@@ -49,7 +49,7 @@ The project uses a **ports-and-adapters (Clean Architecture)** pattern. Each ser
 | Service | Host | Application | Domain | Infrastructure |
 |---|---|---|---|---|
 | **Authentication** | Implemented | Implemented (AuthService, DTOs, validators) | Implemented (interfaces only) | Implemented (AuthDbContext, repos, JWT, bcrypt) |
-| **Core** | Implemented (health only) | **Empty .csproj** | **Empty .csproj** | Implemented (RelativaDbContext) |
+| **Core** | Implemented (workspace, member, invitation, role, permission endpoints) | Implemented (WorkspaceService, MemberService, InvitationService, RoleService, DTOs, validators) | Implemented (repository interfaces, IWorkspaceContext) | Implemented (RelativaDbContext, repos, WorkspaceContext) |
 | **Gateway** | Implemented | N/A (single project) | N/A | N/A |
 | **Graph** | Implemented (stub hub) | N/A (single project) | N/A | N/A |
 | **Audit** | Implemented (stub) | N/A (single project) | N/A | N/A |
@@ -73,6 +73,20 @@ Host → Application → Domain ← Infrastructure
 
 ---
 
+## Data Modeling Conventions
+
+### Third Normal Form (3NF)
+
+All tables must satisfy **Third Normal Form**:
+
+- **1NF**: no repeating groups, every column is atomic.
+- **2NF**: all non-key attributes fully depend on the entire primary key.
+- **3NF**: no transitive dependencies -- every non-key attribute depends on the key, the whole key, and nothing but the key.
+
+**No denormalized columns.** Names, labels, and derived data are always resolved via JOINs, never duplicated across tables. This convention applies to all future schema changes.
+
+---
+
 ## Shared Persistence Library
 
 **Path:** `Persistence/src/Relativa.Persistence/`
@@ -83,9 +97,9 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 
 | Directory / File | What it contains |
 |---|---|
-| `Entities/` | 14 entity classes: `User`, `Role`, `Permission`, `RolePermission`, `Organization`, `Workspace`, `OrganizationWorkspace`, `EntityType`, `Entity`, `EntityWorkspace`, `EntityProperty`, `PersonalDataPropertyValue`, `LocationPropertyValue`, `DealPropertyValue` |
+| `Entities/` | 16 entity classes: `User`, `Role`, `Permission`, `RolePermission`, `Organization`, `Workspace`, `OrganizationWorkspace`, `EntityType`, `Entity`, `EntityWorkspace`, `EntityProperty`, `PersonalDataPropertyValue`, `LocationPropertyValue`, `DealPropertyValue`, `WorkspaceMember`, `WorkspaceInvitation` |
 | `Configurations/` | EF Fluent API `IEntityTypeConfiguration<T>` classes for each entity |
-| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (User, Role, Permission, RolePermission only) and `ApplyAllEntityConfigurations` (full model) |
+| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (User, Role, Permission, RolePermission only) and `ApplyAllEntityConfigurations` (full model including WorkspaceMember, WorkspaceInvitation) |
 
 ### Multiple DbContexts over one model
 
@@ -94,10 +108,32 @@ Different services compose **different slices** of the entity model:
 | DbContext | Location | What it maps | Extension used |
 |---|---|---|---|
 | `AuthDbContext` | `Authentication/.../Infrastructure/Data/AuthDbContext.cs` | User, Role, Permission, RolePermission | `ApplyAuthEntityConfigurations` |
-| `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | All 14 entities | `ApplyAllEntityConfigurations` |
-| `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | All 14 entities | `ApplyAllEntityConfigurations` |
+| `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | All 16 entities | `ApplyAllEntityConfigurations` |
+| `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | All 16 entities | `ApplyAllEntityConfigurations` |
 
 Migrations are owned by the **Migration** service. The migration assembly name is `Relativa.Migration`. Schema changes always go through `Migration/src/Relativa.Migration/Migrations/`.
+
+### DbContext Ownership Matrix
+
+This matrix defines which service is the **authoritative writer** for each table, to support future schema splitting:
+
+| Table | Auth (read/write) | Core (read/write) |
+|---|---|---|
+| `users` | **Read/Write** (credentials) | Read-only (identity resolution) |
+| `roles` | Read-only | **Read/Write** |
+| `permissions` | Read-only | **Read/Write** |
+| `role_permissions` | Read-only | **Read/Write** |
+| `workspaces` | -- | **Read/Write** |
+| `workspace_members` | -- | **Read/Write** |
+| `workspace_invitations` | -- | **Read/Write** |
+| `organizations` | -- | **Read/Write** |
+| `organization_workspaces` | -- | **Read/Write** |
+| All entity/property tables | -- | **Read/Write** |
+
+**Rules:**
+1. Auth service must **never write** to `roles`, `permissions`, `role_permissions`, `workspaces`, `workspace_members`, or `workspace_invitations`.
+2. Core service must **never write** to password hashes or JWT-related User fields.
+3. New workspace-related configurations go into `ApplyAllEntityConfigurations()` only -- they are **not** added to `ApplyAuthEntityConfigurations()`.
 
 ---
 
@@ -108,6 +144,9 @@ erDiagram
     Organization ||--o{ OrganizationWorkspace : has
     Workspace ||--o{ OrganizationWorkspace : has
     Workspace ||--o{ EntityWorkspace : contains
+    Workspace ||--o{ WorkspaceMember : "has members"
+    Workspace ||--o{ WorkspaceInvitation : "has invites"
+    Workspace ||--o{ Role : "scoped roles"
     Entity ||--o{ EntityWorkspace : "belongs to"
     EntityType ||--o{ Entity : types
     Entity ||--o{ EntityProperty : has
@@ -115,7 +154,9 @@ erDiagram
     EntityProperty ||--o| LocationPropertyValue : "value (client)"
     EntityProperty ||--o| DealPropertyValue : "value (deal)"
     DealPropertyValue }o--|| User : "owned by"
-    User }o--|| Role : "has"
+    User ||--o{ WorkspaceMember : "member of"
+    User }o--o| Role : "has (nullable)"
+    Role ||--o{ WorkspaceMember : "assigned via"
     Role ||--o{ RolePermission : grants
     Permission ||--o{ RolePermission : granted_via
 ```
@@ -125,7 +166,10 @@ erDiagram
 - `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client` or `deal`).
 - `EntityProperty` is a polymorphic property bag: each row points to at most one of `PersonalDataPropertyValue`, `LocationPropertyValue`, or `DealPropertyValue`.
 - `DealPropertyValue` has an `owner` (User) and a linked `client` (Entity), plus `value`, `expected_close`, `closure_score`, and timestamps.
-- RBAC: `User` -> `Role` -> `RolePermission` -> `Permission`.
+- **Workspace-scoped RBAC:** `User` -> `WorkspaceMember` -> `Role` -> `RolePermission` -> `Permission`. A user's role is determined per workspace, not globally.
+- `User.RoleId` is **nullable** -- `null` for freshly registered users who haven't joined a workspace yet.
+- `Role.WorkspaceId` is **nullable** -- `null` for system/global roles (e.g. `admin`, `sales_manager`), set for custom workspace-specific roles.
+- `WorkspaceInvitation` tracks pending/accepted/expired/cancelled invitations to workspaces.
 
 ---
 
@@ -135,18 +179,23 @@ Validation uses **FluentValidation** in the Application layer with explicit invo
 
 ### Flow
 
-1. **Validator discovery:** `AddValidatorsFromAssemblyContaining<IAuthService>()` in `Program.cs` registers all validators from the Application assembly via DI.
-2. **Explicit validation:** Service methods (e.g. `AuthService.RegisterAsync`) call `validator.ValidateAndThrowAsync(request)` before any business logic.
+1. **Validator discovery:** `AddValidatorsFromAssemblyContaining<>()` in `Program.cs` registers all validators from the Application assembly via DI.
+2. **Explicit validation:** Service methods call `validator.ValidateAndThrowAsync(request)` before any business logic.
 3. **Exception mapping:** `GlobalExceptionHandler` middleware catches `ValidationException` and returns HTTP 400 with structured error details.
 
 There is **no** global automatic validation filter or minimal-API endpoint filter. Validation is always explicitly called inside the application service.
 
 ### Validators implemented
 
+**Authentication:**
 - `LoginRequestValidator` -- in `Authentication/src/Relativa.Authentication.Application/Validators/`
 - `RegisterRequestValidator` -- in `Authentication/src/Relativa.Authentication.Application/Validators/`
 
-Core has no validators yet (its Application layer is empty).
+**Core:**
+- `CreateWorkspaceRequestValidator`, `UpdateWorkspaceRequestValidator` -- workspace operations
+- `InviteMemberRequestValidator`, `AcceptInvitationRequestValidator` -- invitations
+- `CreateRoleRequestValidator` -- role management
+- `UpdateMemberRoleRequestValidator` -- member management
 
 ### Convention for new services
 
@@ -165,20 +214,24 @@ sequenceDiagram
     participant Client as Browser / SPA
     participant GW as Gateway
     participant Auth as Authentication
+    participant Core as Core
     participant DB as PostgreSQL
 
     Client->>GW: POST /auth/api/v1/auth/login
     GW->>Auth: POST /api/v1/auth/login (anonymous route)
     Auth->>DB: Lookup user by email
-    DB-->>Auth: User + Role + Permissions
+    DB-->>Auth: User
     Auth->>Auth: Verify bcrypt password
-    Auth->>Auth: Generate JWT (sub, email, role, permissions)
+    Auth->>Auth: Generate JWT (sub, email, jti)
     Auth-->>GW: 200 { accessToken, expiresAt }
     GW-->>Client: 200 { accessToken, expiresAt }
 
-    Client->>GW: GET /core/some-endpoint (Authorization: Bearer <token>)
+    Client->>GW: GET /core/api/v1/workspaces (Authorization + X-Workspace-ID)
     GW->>GW: Validate JWT (issuer, audience, key, lifetime)
     GW->>Core: Forward request (token validated)
+    Core->>DB: Lookup WorkspaceMember by userId + workspaceId
+    DB-->>Core: Member + Role + Permissions
+    Core->>Core: Authorize based on workspace role
     Core-->>GW: Response
     GW-->>Client: Response
 ```
@@ -187,15 +240,23 @@ sequenceDiagram
 
 - **Issuing service:** Authentication (`JwtTokenService`)
 - **Algorithm:** HMAC-SHA256 (symmetric key from `JWT_SECRET`)
-- **Claims:** `sub` (user ID), `email`, `role` (role name), `permissions` (comma-separated)
+- **Claims:** `sub` (user ID), `email`, `jti` (token ID). Role and permissions are **not** embedded in the JWT -- they are resolved per-request by Core using the `X-Workspace-ID` header and a `WorkspaceMember` DB lookup.
 - **Validation point:** Gateway validates issuer, audience, signing key, and lifetime
 - **Audit exception:** Audit service has JWT registered but all validation checks disabled (stub)
+
+### Workspace-scoped authorization
+
+Authorization in Core follows this pattern:
+1. The client sends `X-Workspace-ID` header with every workspace-scoped request (already implemented in `Client/src/api/http.ts`).
+2. Core extracts the user ID from the JWT `sub` claim.
+3. Core looks up the `WorkspaceMember` record for the user + workspace pair, which includes the role and permissions.
+4. Each endpoint handler checks the required permission before executing business logic.
 
 ### Authorization policies
 
 - **Gateway:** `MapReverseProxy().RequireAuthorization()` -- all proxied routes require a valid JWT unless explicitly marked anonymous in YARP route config.
-- **Audit:** `AuditReaders` policy requires JWT `role` claim to be `Admin` or `Analyst`.
-- **Other services:** No additional authorization policies yet.
+- **Audit:** `AuditReaders` policy requires any authenticated user (stub -- will be refined when Audit is implemented).
+- **Core:** Per-endpoint authorization via `WorkspaceMember` lookup (no ASP.NET authorization policies; checked in application service layer).
 
 ---
 
@@ -226,9 +287,9 @@ sequenceDiagram
 | Convention | Details |
 |---|---|
 | **API style** | Minimal APIs exclusively -- no MVC `[ApiController]` classes anywhere |
-| **Endpoint organization** | Static extension methods (e.g. `AuthEndpoints.MapAuthEndpoints()`) |
+| **Endpoint organization** | Static extension methods (e.g. `AuthEndpoints.MapAuthEndpoints()`, `WorkspaceEndpoints.MapWorkspaceEndpoints()`) |
 | **DI lifetimes** | Scoped for repositories and application services; singleton for `IPasswordHasher` |
-| **Configuration** | Options pattern (`Configure<JwtOptions>`, `Configure<AuthOptions>`) |
+| **Configuration** | Options pattern (`Configure<JwtOptions>`) |
 | **No `Startup.cs`** | All configuration in `Program.cs` (minimal hosting model) |
 | **Target framework** | `net10.0` across all .NET projects |
 | **Package versioning** | Referenced in `Asp.Versioning.Http` (Authentication) but **not yet used** in code |

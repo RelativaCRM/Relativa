@@ -8,7 +8,6 @@ namespace Relativa.Authentication.Application.Services;
 
 public sealed class AuthService(
     IUserRepository userRepository,
-    IRoleRepository roleRepository,
     ITokenService tokenService,
     IPasswordHasher passwordHasher,
     IValidator<LoginRequestDto> loginValidator,
@@ -24,11 +23,7 @@ public sealed class AuthService(
         if (!passwordHasher.Verify(request.Password, user.Password))
             throw new UnauthorizedAccessException("Invalid email or password.");
 
-        var permissions = user.Role.RolePermissions
-            .Select(rp => rp.Permission.Name)
-            .ToList();
-
-        var (token, expiresAt) = tokenService.GenerateAccessToken(user, permissions);
+        var (token, expiresAt) = tokenService.GenerateAccessToken(user);
 
         return new LoginResponseDto(token, expiresAt);
     }
@@ -40,25 +35,13 @@ public sealed class AuthService(
         if (await userRepository.ExistsAsync(request.Email, ct))
             throw new InvalidOperationException("A user with this email already exists.");
 
-        Role role;
-        if (request.RoleId.HasValue)
-        {
-            role = await roleRepository.GetByIdAsync(request.RoleId.Value, ct)
-                ?? throw new ArgumentException("The specified role does not exist.");
-        }
-        else
-        {
-            role = await roleRepository.GetDefaultRoleAsync(ct)
-                ?? throw new InvalidOperationException("Default role is not configured.");
-        }
-
         var user = new User
         {
             FirstName = request.FirstName,
             LastName = request.LastName,
             Email = request.Email,
             Password = passwordHasher.Hash(request.Password),
-            RoleId = role.Id,
+            RoleId = null,
             CreatedAt = DateTime.UtcNow,
             IsArchived = false
         };
@@ -69,7 +52,6 @@ public sealed class AuthService(
             user.Id,
             user.Email,
             user.FirstName,
-            user.LastName,
-            role.Name);
+            user.LastName);
     }
 }

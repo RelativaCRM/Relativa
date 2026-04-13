@@ -10,7 +10,7 @@ namespace Relativa.Authentication.Infrastructure.Services;
 
 public sealed class JwtTokenService(IOptions<JwtOptions> jwtOptions) : ITokenService
 {
-    public (string Token, DateTime ExpiresAt) GenerateAccessToken(User user, IEnumerable<string> permissions)
+    public (string Token, DateTime ExpiresAt) GenerateAccessToken(User user)
     {
         var opts = jwtOptions.Value;
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(opts.SecretKey));
@@ -22,14 +22,8 @@ public sealed class JwtTokenService(IOptions<JwtOptions> jwtOptions) : ITokenSer
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
-            new("role", user.Role.Name),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
-
-        foreach (var permission in permissions)
-        {
-            claims.Add(new Claim("permissions", permission));
-        }
 
         var token = new JwtSecurityToken(
             issuer: opts.Issuer,

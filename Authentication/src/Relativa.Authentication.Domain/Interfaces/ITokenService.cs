@@ -4,5 +4,5 @@ namespace Relativa.Authentication.Domain.Interfaces;
 
 public interface ITokenService
 {
-    (string Token, DateTime ExpiresAt) GenerateAccessToken(User user, IEnumerable<string> permissions);
+    (string Token, DateTime ExpiresAt) GenerateAccessToken(User user);
 }

@@ -154,12 +154,11 @@ Template for Docker Compose variable substitution. Users copy to `.env` (gitigno
 | `JWT_SECRET` | auth, gateway | Shared symmetric signing key |
 | `JWT_ISSUER` | auth, gateway | Token issuer claim |
 | `JWT_AUDIENCE` | auth, gateway | Token audience claim |
-| `DEFAULT_ROLE_ID` | auth | Role assigned to new users when no `roleId` is provided |
 
 ### How env vars reach services
 
 - **Docker Compose** injects environment variables into containers. Values come from `.env` via `${VAR}` substitution in `docker-compose.yaml`.
-- **.NET services** read these as **configuration overrides** using the ASP.NET Core env-var convention: `ConnectionStrings__Default`, `Jwt__Secret`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__AccessTokenMinutes`, `Auth__DefaultRoleId`.
+- **.NET services** read these as **configuration overrides** using the ASP.NET Core env-var convention: `ConnectionStrings__Default`, `Jwt__Secret`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__AccessTokenMinutes`.
 - **Default values** live in each service's `appsettings.json` (localhost-friendly). Docker overrides them for the container environment.
 - **Gateway YARP destinations** are overridden in compose: `ReverseProxy__Clusters__auth-cluster__Destinations__default__Address=http://auth:8081/` etc.
 - **Client** reads `VITE_GATEWAY_URL` at build/dev time (Vite env prefix).

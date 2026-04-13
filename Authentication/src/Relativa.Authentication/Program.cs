@@ -33,12 +33,10 @@ try
         .AddDbContextCheck<AuthDbContext>();
 
     builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
-    builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 
     builder.Services.AddValidatorsFromAssemblyContaining<IAuthService>();
 
     builder.Services.AddScoped<IUserRepository, UserRepository>();
-    builder.Services.AddScoped<IRoleRepository, RoleRepository>();
     builder.Services.AddScoped<ITokenService, JwtTokenService>();
     builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
     builder.Services.AddScoped<IAuthService, AuthService>();

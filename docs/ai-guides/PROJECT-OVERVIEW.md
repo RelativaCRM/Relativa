@@ -17,10 +17,12 @@ Relativa is a **multi-tenant CRM / sales-workspace platform**. It lets organizat
 | Concept | Description |
 |---|---|
 | **Organization** | Top-level tenant. Owns one or more workspaces. |
-| **Workspace** | Isolated working area within an organization. Entities belong to workspaces via `EntityWorkspace`. |
-| **User** | A person with credentials, belonging to one Role. |
-| **Role** | Named role (e.g. `admin`, `sales_manager`, `analyst`). Linked to Permissions via `RolePermission`. |
-| **Permission** | Granular capability (e.g. `can_edit_deals`, `can_view_analytics`). |
+| **Workspace** | Isolated working area within an organization. Has a creator (User) and members. Entities belong to workspaces via `EntityWorkspace`. |
+| **WorkspaceMember** | Join between User and Workspace. Each membership has a Role. A user can be in multiple workspaces with different roles. |
+| **WorkspaceInvitation** | Tracks pending/accepted/expired/cancelled invitations to join a workspace. Carries an email, a target role, and an expiry date. |
+| **User** | A person with credentials. `RoleId` is nullable -- `null` until the user joins a workspace. |
+| **Role** | Named role (e.g. `admin`, `sales_manager`, `analyst`). Linked to Permissions via `RolePermission`. `WorkspaceId` is nullable: `null` for system/global roles, set for custom workspace-scoped roles. |
+| **Permission** | Granular capability (e.g. `can_edit_deals`, `can_view_analytics`, `can_manage_settings`, `can_assign_roles`). |
 | **EntityType** | Discriminator string (`client`, `deal`). |
 | **Entity** | A business record typed by EntityType. Lives in workspaces. |
 | **EntityProperty** | A property row for an Entity, pointing to one of the polymorphic value tables below. |
@@ -73,9 +75,9 @@ Relativa/
 │       └── Relativa.Authentication.Infrastructure/  # DbContext, repos, JWT, bcrypt
 ├── Core/                       # Business API (.NET 10, clean architecture scaffold)
 │   └── src/
-│       ├── Relativa.Core/                    # Host (Program.cs, health only)
-│       ├── Relativa.Core.Application/        # Empty -- .csproj only, no .cs files
-│       ├── Relativa.Core.Domain/             # Empty -- .csproj only, no .cs files
+│       ├── Relativa.Core/                    # Host (Program.cs, Endpoints)
+│       ├── Relativa.Core.Application/        # Services, DTOs, validators
+│       ├── Relativa.Core.Domain/             # Repository interfaces
 │       └── Relativa.Core.Infrastructure/     # RelativaDbContext
 ├── Graph/                      # SignalR graph service (.NET 10)
 │   └── src/Relativa.Graph/
@@ -85,7 +87,7 @@ Relativa/
 │   └── src/Relativa.Migration/
 ├── Persistence/                # Shared EF Core entity library (no .sln)
 │   └── src/Relativa.Persistence/
-│       ├── Entities/           # 14 entity classes
+│       ├── Entities/           # 16 entity classes
 │       ├── Configurations/     # Fluent API configs
 │       └── ModelBuilderExtensions.cs
 ├── Client/                     # Vue 3 + Vite SPA
