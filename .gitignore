@@ -48,3 +48,6 @@ dist/
 # OS artefacts
 Thumbs.db
 .DS_Store
+
+# Local QA artifacts
+.test-env/
