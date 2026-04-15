@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'release/**'
+      - 'feature/**'
+  pull_request:
+    branches:
+      - 'release/**'
+      - main
+
+jobs:
+  test-authentication:
+    name: Authentication Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore
+        run: dotnet restore Authentication/Relativa.Authentication.sln
+
+      - name: Build
+        run: dotnet build Authentication/Relativa.Authentication.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --configuration Release --verbosity normal
+
+  test-core:
+    name: Core Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore
+        run: dotnet restore Core/Relativa.Core.sln
+
+      - name: Build
+        run: dotnet build Core/Relativa.Core.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --configuration Release --verbosity normal
