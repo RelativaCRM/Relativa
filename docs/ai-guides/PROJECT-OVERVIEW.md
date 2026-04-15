@@ -1,6 +1,6 @@
 # Project Overview -- What is Relativa?
 
-> **Last verified:** 2026-04-13
+> **Last verified:** 2026-04-15
 
 > **Maintenance obligation:** If you change the general purpose, domain model, tech stack, or repo layout, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -42,7 +42,7 @@ The domain model lives entirely in the shared Persistence library (`Persistence/
 | API gateway | YARP (Yet Another Reverse Proxy) on ASP.NET Core 10 |
 | Real-time | SignalR (Graph service) |
 | ML service | Django 5.1, Django REST Framework, scikit-learn, Celery + Redis (planned) |
-| Frontend | Vue 3 + Vite, vis-network (graph placeholder) |
+| Frontend | Vue 3 + Vite + TypeScript, Pinia, Vue Router, PrimeVue 4 (Aura), Tailwind CSS 3, vis-network (graph placeholder) |
 | Database | PostgreSQL 16 |
 | ORM | Entity Framework Core 10 + Npgsql |
 | Auth | JWT (symmetric key), BCrypt password hashing, FluentValidation |
