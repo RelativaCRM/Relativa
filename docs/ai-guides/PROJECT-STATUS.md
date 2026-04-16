@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-04-15
+> **Last verified:** 2026-04-17
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -10,15 +10,15 @@
 
 | Service | Status | One-line summary |
 |---|---|---|
-| Gateway | **Functional** | YARP routing, JWT validation, health, Scalar -- all working |
-| Authentication | **Functional** | Login, register, JWT (sub + email only), FluentValidation -- all working |
-| Core | **Partial** | Workspace CRUD, member management, invitations, role/permission management implemented; entity/deal CRUD not yet |
+| Gateway | **Functional** | YARP routing, JWT validation, split anonymous/auth routes, health, Scalar -- all working |
+| Authentication | **Functional** | Login, register, `/me` profile endpoint, JWT (sub + email only), FluentValidation -- all working |
+| Core | **Functional** (org + ws RBAC) | Organization management, workspace management, split RBAC (org roles + ws roles), members, invitations, join requests, role/permission management all implemented; entity/deal CRUD not yet |
 | Graph | **Stub** | SignalR hub exists but has no logic |
 | Audit | **Stub** | Returns empty array; JWT validation disabled |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work |
 | ML | **Stub** | Single endpoint returns hardcoded stub |
 | Client | **Partial** | Vue 3 + PrimeVue + Tailwind. Auth flow (login/register) wired to Gateway; base layouts (AuthLayout, MainLayout) in place; typed API client |
-| Persistence | **Functional** | Full entity model (16 entities), fluent configs, ModelBuilderExtensions |
+| Persistence | **Functional** | Full entity model (20 entities), fluent configs, ModelBuilderExtensions |
 
 ---
 
@@ -26,29 +26,40 @@
 
 ### Authentication service
 
-- `POST /api/v1/auth/register` -- creates user, hashes password with bcrypt, `RoleId` set to `null` (user has no role until they join a workspace), returns user DTO with 201 + Location header.
-- `POST /api/v1/auth/login` -- validates credentials, issues JWT with claims: `sub`, `email`, `jti`. Role and permissions are **not** included in the JWT -- they are resolved per-request by Core using workspace membership.
+- `POST /api/v1/auth/register` -- creates user, hashes password with bcrypt, returns user DTO with 201 + Location header. Newly registered users have no organization or workspace membership.
+- `POST /api/v1/auth/login` -- validates credentials, issues JWT with claims: `sub`, `email`, `jti`. Role and permissions are **not** included in the JWT -- they are resolved per-request by Core using organization/workspace membership.
+- `GET /api/v1/auth/me` -- returns authenticated user's profile (`id`, `email`, `firstName`, `lastName`) from JWT `sub` claim. Requires valid JWT.
 - Full clean-architecture layers: Domain interfaces, Application service + DTOs + FluentValidation validators, Infrastructure (AuthDbContext, UserRepository, JwtTokenService, BcryptPasswordHasher).
 - GlobalExceptionHandler maps ValidationException -> 400, UnauthorizedAccessException -> 401, duplicate email -> 409.
 - EF Core health check at `/health`.
 - OpenAPI + Scalar docs.
 
+### Core service -- Organization management
+
+- **Organization CRUD:** `POST /api/v1/organizations` (create, creator becomes `org_owner`), `GET` (list user's orgs), `GET /search?q=...` (search by name), `GET /{id}` (details, requires org membership), `PUT /{id}` (update, requires `manage_org_settings`).
+- **Organization members:** `GET .../members` (list, requires org membership), `DELETE .../members/{userId}` (remove, requires `remove_org_members`), `PUT .../members/{userId}/role` (change role, requires `assign_org_roles`).
+- **Join requests:** `POST .../join-requests` (request to join), `GET .../join-requests` (list pending, requires `manage_join_requests`), `PUT .../join-requests/{reqId}` (approve/reject, requires `manage_join_requests`), `GET /api/v1/join-requests/mine` (own requests).
+- **Organization invitations:** `POST .../invitations` (invite by email, requires `invite_to_org`), `GET .../invitations` (list pending), `DELETE .../invitations/{invId}` (cancel), `POST /api/v1/invitations/accept-org` (accept, requires matching email).
+- **Organization roles:** `GET .../roles` (list system + custom, requires org membership), `POST .../roles` (create custom, requires `manage_org_roles`), `PUT .../roles/{roleId}` (update), `DELETE .../roles/{roleId}` (delete). System roles cannot be modified.
+
 ### Core service -- Workspace RBAC
 
-- **Workspace CRUD:** `POST /api/v1/workspaces` (create, auto-adds creator as admin member), `GET` (list user's workspaces), `GET /{id}`, `PUT /{id}`, `DELETE /{id}` (archive).
-- **Member management:** `GET .../members`, `PUT .../members/{userId}/role`, `DELETE .../members/{userId}`.
-- **Invitation system:** `POST .../invitations` (invite by email), `GET .../invitations` (list pending), `DELETE .../invitations/{id}` (cancel), `POST /api/v1/invitations/accept` (accept by token).
-- **Role management:** `GET .../roles` (list system + custom), `POST .../roles` (create custom), `PUT .../roles/{id}` (update), `DELETE .../roles/{id}` (archive). System roles cannot be modified.
-- **Permission listing:** `GET /api/v1/permissions`.
-- Full clean-architecture layers: Domain (repository interfaces), Application (4 services, DTOs, validators), Infrastructure (5 repositories, WorkspaceContext).
-- Authorization checked per-request via `WorkspaceMember` DB lookup using JWT `sub` claim + `X-Workspace-ID` header.
+- **Workspace CRUD:** `POST /api/v1/workspaces` (create within an org, requires `create_workspaces` org perm + `organizationId`; creator becomes `ws_admin`), `GET` (list user's workspaces), `GET /{id}`, `PUT /{id}` (requires `manage_ws_settings`), `DELETE /{id}` (archive, requires `ws_admin` role).
+- **Member management:** `GET .../members`, `POST .../members` (add org member directly, requires `add_ws_members`), `PUT .../members/{userId}/role` (requires `assign_ws_roles`), `DELETE .../members/{userId}` (requires `remove_ws_members` or self).
+- **Invitation system:** `POST .../invitations` (invite by email, requires `invite_to_workspace`, returns token in response), `GET .../invitations` (list pending), `DELETE .../invitations/{id}` (cancel), `POST /api/v1/invitations/accept` (accept by token).
+- **Role management:** `GET .../roles` (list system + custom), `POST .../roles` (create custom, requires `manage_ws_roles`), `PUT .../roles/{id}` (update), `DELETE .../roles/{id}` (archive). System roles cannot be modified.
+- **Combined invitations:** `GET /api/v1/invitations/mine` -- lists all pending invitations (both workspace + org) for the authenticated user.
+- **Permission listing:** `GET /api/v1/permissions` -- lists all 16 permissions (both org-scoped and ws-scoped).
+- Full clean-architecture layers: Domain (repository interfaces), Application (9 services, DTOs, validators), Infrastructure (repositories, WorkspaceContext).
+- Authorization checked per-request via `UserRoleOrganization` or `UserRoleWorkspace` DB lookup using JWT `sub` claim.
 
 ### Gateway
 
 - YARP reverse proxy with 5 route groups: `/auth/*`, `/core/*`, `/graph/*`, `/ml/*`, `/audit/*`.
 - Path prefix stripping via `PathRemovePrefix` transforms.
 - JWT Bearer authentication with full validation (issuer, audience, signing key, lifetime).
-- Anonymous exceptions for login, register, and health endpoints.
+- **Split anonymous/auth routes:** `/login` and `/register` are anonymous; `/me` requires JWT.
+- Anonymous exceptions for health endpoints.
 - Forwarded headers (`X-Forwarded-For`, `X-Forwarded-Proto`).
 - Serilog request logging.
 - GlobalExceptionHandler.
@@ -57,18 +68,17 @@
 
 ### Migration
 
-- `MigrationDbContext` mirrors full Persistence model.
+- `MigrationDbContext` mirrors full Persistence model (20 entities).
 - `Program.cs` runs `Database.MigrateAsync()` as a generic host console app.
-- `20260412140027_InitialCreate.cs` -- full schema creation.
-- `20260412140114_InitSeedData.cs` -- seeds roles, permissions, organizations, workspaces, demo entities.
-- `20260413113908_AddWorkspaceMembership.cs` -- adds `workspace_members`, `workspace_invitations` tables; makes `users.role_id` nullable; adds `workspace_id` to `roles`; adds `created_by_user_id` to `workspaces`; backfills seed data.
+- Migrations in `Migration/src/Relativa.Migration/Migrations/` cover the full schema including the split RBAC tables, org management tables, and seed data for 7 default roles, 16 permissions, and demo data.
 - Docker Compose runs this before auth and core start.
 
 ### Persistence library
 
-- 16 entity classes with EF Fluent API configurations (includes `WorkspaceMember` and `WorkspaceInvitation`).
-- `ModelBuilderExtensions.ApplyAuthEntityConfigurations()` for auth-only subset (User, Role, Permission, RolePermission).
-- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 16 entities).
+- 20 entity classes with EF Fluent API configurations.
+- Split RBAC model: separate `OrganizationRole`/`OrganizationRolePermission` and `WorkspaceRole`/`WorkspaceRolePermission` hierarchies sharing a common `Permission` table.
+- `ModelBuilderExtensions.ApplyAuthEntityConfigurations()` for auth-only subset (User).
+- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 20 entities).
 - Referenced by Core, Authentication, and Migration via ProjectReference.
 
 ### Docker Compose
@@ -103,6 +113,7 @@
 - No workspace isolation for entity queries (multi-tenant data scoping).
 - No business rules (BP-01 through BP-06).
 - No domain events.
+- No email notifications for invitations or join request outcomes.
 
 ### Graph service
 
@@ -122,7 +133,7 @@
 ### Client
 
 **What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) wired to Gateway. `AuthLayout` + `MainLayout` base layouts. Typed API client with JWT handling. Router guards.
-**What is missing:** No workspace selection / management UI. No member/invitation/role management UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
+**What is missing:** No organization selection / management UI. No workspace selection / management UI. No member/invitation/role management UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
 
 ---
 
@@ -131,7 +142,7 @@
 | Issue | Severity | Details |
 |---|---|---|
 | **Seed passwords are placeholders** | High | `InitSeedData` migration uses `$2y$10$hashed_pwd_placeholder` -- seeded demo users cannot log in. Must be replaced with real bcrypt hashes. |
-| **Authentication README outdated** | Low | `Authentication/README.md` claims endpoints return 501 stubs. In reality, login and register are fully implemented. |
+| **Authentication README outdated** | Low | `Authentication/README.md` claims endpoints return 501 stubs. In reality, login, register, and `/me` are fully implemented. |
 | **Migration README outdated** | Low | `Migration/README.md` describes an `entrypoint.sh` flow. Actual code uses `MigrateAsync` in `Program.cs`. |
 | **Gateway README partially outdated** | Low | `Gateway/README.md` says JWT validation is a stub. Gateway now fully validates JWT. |
 | **Unused package reference** | Trivial | `Asp.Versioning.Http` is referenced in `Authentication/src/Relativa.Authentication/Relativa.Authentication.csproj` but never used in code. |
@@ -151,6 +162,7 @@
 - Workspace isolation for entity queries (multi-tenant data scoping via `EntityWorkspace`).
 - Business rules BP-01 through BP-06 (referenced in `Core/README.md`, not defined in code).
 - Domain events published to Audit after entity mutations.
+- Email notifications for invitation sends, join request approvals/rejections.
 
 ### Authentication
 
@@ -187,6 +199,7 @@
 ### Client
 
 - ~~Login and register forms wired to Gateway auth endpoints.~~ *(done in CR-96)*
+- Organization selection / management UI.
 - Workspace selection / management UI.
 - Member and invitation management UI.
 - Role and permission management UI.

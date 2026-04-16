@@ -13,7 +13,7 @@ public class WorkspaceInvitationConfiguration : IEntityTypeConfiguration<Workspa
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.WorkspaceId).HasColumnName("workspace_id").IsRequired();
         builder.Property(e => e.Email).HasColumnName("email").IsRequired();
-        builder.Property(e => e.RoleId).HasColumnName("role_id").IsRequired();
+        builder.Property(e => e.WsRoleId).HasColumnName("ws_role_id").IsRequired();
         builder.Property(e => e.InvitedByUserId).HasColumnName("invited_by_user_id").IsRequired();
         builder.Property(e => e.Token).HasColumnName("token").IsRequired();
         builder.HasIndex(e => e.Token)
@@ -29,7 +29,7 @@ public class WorkspaceInvitationConfiguration : IEntityTypeConfiguration<Workspa
             .HasConstraintName("fk_wi_workspace");
         builder.HasOne(e => e.Role)
             .WithMany()
-            .HasForeignKey(e => e.RoleId)
+            .HasForeignKey(e => e.WsRoleId)
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_wi_role");
         builder.HasOne(e => e.InvitedBy)

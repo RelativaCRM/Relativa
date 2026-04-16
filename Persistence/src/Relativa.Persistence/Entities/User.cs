@@ -7,9 +7,8 @@ public class User
     public string LastName { get; set; } = null!;
     public string Email { get; set; } = null!;
     public string Password { get; set; } = null!;
-    public int? RoleId { get; set; }
     public DateTime CreatedAt { get; set; }
     public bool IsArchived { get; set; }
-    public Role? Role { get; set; }
-    public ICollection<WorkspaceMember> WorkspaceMembers { get; set; } = new List<WorkspaceMember>();
+    public ICollection<UserRoleWorkspace> WorkspaceMemberships { get; set; } = new List<UserRoleWorkspace>();
+    public ICollection<UserRoleOrganization> OrganizationMemberships { get; set; } = new List<UserRoleOrganization>();
 }

@@ -40,15 +40,24 @@ try
     builder.Services.AddValidatorsFromAssemblyContaining<IWorkspaceService>();
 
     builder.Services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
-    builder.Services.AddScoped<IWorkspaceMemberRepository, WorkspaceMemberRepository>();
+    builder.Services.AddScoped<IUserRoleWorkspaceRepository, UserRoleWorkspaceRepository>();
     builder.Services.AddScoped<IWorkspaceInvitationRepository, WorkspaceInvitationRepository>();
-    builder.Services.AddScoped<IRoleRepository, RoleRepository>();
+    builder.Services.AddScoped<IWorkspaceRoleRepository, WorkspaceRoleRepository>();
     builder.Services.AddScoped<IPermissionRepository, PermissionRepository>();
+    builder.Services.AddScoped<IUserRoleOrganizationRepository, UserRoleOrganizationRepository>();
+    builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+    builder.Services.AddScoped<IOrganizationRoleRepository, OrganizationRoleRepository>();
+    builder.Services.AddScoped<IJoinRequestRepository, JoinRequestRepository>();
+    builder.Services.AddScoped<IOrgInvitationRepository, OrgInvitationRepository>();
 
     builder.Services.AddScoped<IWorkspaceService, WorkspaceService>();
     builder.Services.AddScoped<IWorkspaceMemberService, WorkspaceMemberService>();
     builder.Services.AddScoped<IInvitationService, InvitationService>();
     builder.Services.AddScoped<IRoleService, RoleService>();
+    builder.Services.AddScoped<IOrganizationService, OrganizationService>();
+    builder.Services.AddScoped<IOrgRoleService, OrgRoleService>();
+    builder.Services.AddScoped<IOrgInvitationService, OrgInvitationService>();
+    builder.Services.AddScoped<IJoinRequestService, JoinRequestService>();
 
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();
@@ -67,6 +76,11 @@ try
     app.MapMemberEndpoints();
     app.MapInvitationEndpoints();
     app.MapRoleEndpoints();
+    app.MapOrganizationEndpoints();
+    app.MapOrgMemberEndpoints();
+    app.MapJoinRequestEndpoints();
+    app.MapOrgInvitationEndpoints();
+    app.MapOrgRoleEndpoints();
 
     app.Run();
 }

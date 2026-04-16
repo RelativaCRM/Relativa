@@ -21,6 +21,16 @@ public static class MemberEndpoints
         .WithSummary("List workspace members")
         .Produces<List<WorkspaceMemberDto>>();
 
+        group.MapPost("/", async (int workspaceId, AddWorkspaceMemberRequest request, IWorkspaceMemberService service, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var callerUserId = WorkspaceEndpoints.GetUserId(user);
+            var result = await service.AddMemberAsync(workspaceId, callerUserId, request, ct);
+            return Results.Created($"/api/v1/workspaces/{workspaceId}/members/{result.UserId}", result);
+        })
+        .WithName("AddMember")
+        .WithSummary("Add a member to the workspace directly")
+        .Produces<WorkspaceMemberDto>(StatusCodes.Status201Created);
+
         group.MapPut("/{targetUserId:int}/role", async (int workspaceId, int targetUserId, UpdateMemberRoleRequest request, IWorkspaceMemberService service, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var callerUserId = WorkspaceEndpoints.GetUserId(user);

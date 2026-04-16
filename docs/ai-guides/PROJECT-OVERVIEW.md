@@ -1,6 +1,6 @@
 # Project Overview -- What is Relativa?
 
-> **Last verified:** 2026-04-15
+> **Last verified:** 2026-04-17
 
 > **Maintenance obligation:** If you change the general purpose, domain model, tech stack, or repo layout, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -16,13 +16,17 @@ Relativa is a **multi-tenant CRM / sales-workspace platform**. It lets organizat
 
 | Concept | Description |
 |---|---|
-| **Organization** | Top-level tenant. Owns one or more workspaces. |
+| **Organization** | **Primary multi-tenant boundary.** Users must join an organization before accessing workspaces. Owns workspaces directly (`workspaces.organization_id` FK). Has its own roles, members, join requests, and invitations. |
 | **Workspace** | Isolated working area within an organization. Has a creator (User) and members. Entities belong to workspaces via `EntityWorkspace`. |
-| **WorkspaceMember** | Join between User and Workspace. Each membership has a Role. A user can be in multiple workspaces with different roles. |
-| **WorkspaceInvitation** | Tracks pending/accepted/expired/cancelled invitations to join a workspace. Carries an email, a target role, and an expiry date. |
-| **User** | A person with credentials. `RoleId` is nullable -- `null` until the user joins a workspace. |
-| **Role** | Named role (e.g. `admin`, `sales_manager`, `analyst`). Linked to Permissions via `RolePermission`. `WorkspaceId` is nullable: `null` for system/global roles, set for custom workspace-scoped roles. |
-| **Permission** | Granular capability (e.g. `can_edit_deals`, `can_view_analytics`, `can_manage_settings`, `can_assign_roles`). |
+| **UserRoleOrganization** | Join between User, Organization, and OrganizationRole. A user can be in multiple organizations with different roles. |
+| **UserRoleWorkspace** | Join between User, Workspace, and WorkspaceRole. A user can be in multiple workspaces with different roles. Must be an org member first. |
+| **OrganizationJoinRequest** | Tracks pending/approved/rejected requests from users wanting to join an organization. |
+| **OrganizationInvitation** | Email-based invitation to join an organization. Carries an email, a target org role, and an expiry date. |
+| **WorkspaceInvitation** | Email-based invitation to join a workspace. Carries an email, a target ws role, and an expiry date. |
+| **User** | A person with credentials. Has no global role -- roles are scoped to each organization and workspace membership. |
+| **OrganizationRole** | Named role scoped to an organization (e.g. `org_owner`, `org_admin`, `org_member`). Linked to permissions via `OrganizationRolePermission`. `OrganizationId` is nullable: `null` for system roles, set for custom org-specific roles. |
+| **WorkspaceRole** | Named role scoped to a workspace (e.g. `ws_admin`, `ws_manager`, `ws_analyst`, `ws_member`). Linked to permissions via `WorkspaceRolePermission`. `WorkspaceId` is nullable: `null` for system roles, set for custom workspace-specific roles. |
+| **Permission** | Granular capability shared by both org and ws role hierarchies. 16 total: 7 org-scoped (e.g. `manage_org_settings`, `create_workspaces`) and 9 ws-scoped (e.g. `manage_ws_settings`, `edit_deals`, `view_analytics`). |
 | **EntityType** | Discriminator string (`client`, `deal`). |
 | **Entity** | A business record typed by EntityType. Lives in workspaces. |
 | **EntityProperty** | A property row for an Entity, pointing to one of the polymorphic value tables below. |
@@ -31,6 +35,13 @@ Relativa is a **multi-tenant CRM / sales-workspace platform**. It lets organizat
 | **DealPropertyValue** | Deal value, expected close date, closure_score, owner (User), linked client. |
 
 The domain model lives entirely in the shared Persistence library (`Persistence/src/Relativa.Persistence/Entities/`).
+
+### User flow
+
+1. **Register** → user has no memberships.
+2. **Create or join an organization** → user becomes an org member with an org role (creator gets `org_owner`).
+3. **Create or join a workspace** within the organization → user becomes a ws member with a ws role (creator gets `ws_admin`). Workspace creation requires the `create_workspaces` org permission.
+4. **Work within the workspace** → RBAC governs what the user can do (manage settings, invite members, edit deals, view analytics, etc.).
 
 ---
 
@@ -73,7 +84,7 @@ Relativa/
 │       ├── Relativa.Authentication.Application/  # DTOs, validators, AuthService
 │       ├── Relativa.Authentication.Domain/       # Interfaces
 │       └── Relativa.Authentication.Infrastructure/  # DbContext, repos, JWT, bcrypt
-├── Core/                       # Business API (.NET 10, clean architecture scaffold)
+├── Core/                       # Business API (.NET 10, clean architecture)
 │   └── src/
 │       ├── Relativa.Core/                    # Host (Program.cs, Endpoints)
 │       ├── Relativa.Core.Application/        # Services, DTOs, validators
@@ -87,7 +98,7 @@ Relativa/
 │   └── src/Relativa.Migration/
 ├── Persistence/                # Shared EF Core entity library (no .sln)
 │   └── src/Relativa.Persistence/
-│       ├── Entities/           # 16 entity classes
+│       ├── Entities/           # 20 entity classes
 │       ├── Configurations/     # Fluent API configs
 │       └── ModelBuilderExtensions.cs
 ├── Client/                     # Vue 3 + Vite SPA
@@ -107,7 +118,7 @@ Relativa/
 | `DOCKER-BUILD.md` | Operational Docker guide | Current and accurate. |
 | `SCALAR-GUIDE.md` | Scalar API docs walkthrough | Current and accurate. |
 | `CONTRIBUTORS.md` | Contributor list | -- |
-| `Authentication/README.md` | Auth service | **Outdated** -- claims 501 stubs but login/register are implemented. |
+| `Authentication/README.md` | Auth service | **Outdated** -- claims 501 stubs but login/register/me are implemented. |
 | `Core/README.md` | Core service | Partially outdated -- mentions migrations in Core; they now live in Migration. |
 | `Gateway/README.md` | Gateway | Partially outdated -- says JWT validation is a stub; it is now fully configured. |
 | `Graph/README.md` | Graph service | Accurate (describes stub state). |

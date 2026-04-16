@@ -1,0 +1,44 @@
+using Microsoft.EntityFrameworkCore;
+using Relativa.Core.Domain.Interfaces;
+using Relativa.Core.Infrastructure.Data;
+using Relativa.Persistence.Entities;
+
+namespace Relativa.Core.Infrastructure.Repositories;
+
+public sealed class OrganizationRepository(RelativaDbContext db) : IOrganizationRepository
+{
+    public async Task<Organization?> GetByIdAsync(int id, CancellationToken ct = default)
+    {
+        return await db.Organizations
+            .FirstOrDefaultAsync(o => o.Id == id && !o.IsArchived, ct);
+    }
+
+    public async Task<List<Organization>> GetByUserIdAsync(int userId, CancellationToken ct = default)
+    {
+        return await db.UserRoleOrganizations
+            .Where(uro => uro.UserId == userId && !uro.IsArchived)
+            .Select(uro => uro.Organization)
+            .Where(o => !o.IsArchived)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<Organization>> SearchAsync(string query, CancellationToken ct = default)
+    {
+        return await db.Organizations
+            .Where(o => EF.Functions.ILike(o.Name, $"%{query}%") && !o.IsArchived)
+            .Take(20)
+            .ToListAsync(ct);
+    }
+
+    public async Task AddAsync(Organization organization, CancellationToken ct = default)
+    {
+        db.Organizations.Add(organization);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task UpdateAsync(Organization organization, CancellationToken ct = default)
+    {
+        db.Organizations.Update(organization);
+        await db.SaveChangesAsync(ct);
+    }
+}

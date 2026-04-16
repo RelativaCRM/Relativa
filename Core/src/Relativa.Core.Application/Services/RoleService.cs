@@ -7,9 +7,9 @@ using Relativa.Persistence.Entities;
 namespace Relativa.Core.Application.Services;
 
 public sealed class RoleService(
-    IRoleRepository roleRepository,
+    IWorkspaceRoleRepository roleRepository,
     IPermissionRepository permissionRepository,
-    IWorkspaceMemberRepository memberRepository,
+    IUserRoleWorkspaceRepository memberRepository,
     IValidator<CreateRoleRequest> createValidator) : IRoleService
 {
     public async Task<List<RoleDto>> GetByWorkspaceAsync(int workspaceId, int userId, CancellationToken ct = default)
@@ -30,13 +30,13 @@ public sealed class RoleService(
     public async Task<RoleDto> CreateAsync(int workspaceId, int userId, CreateRoleRequest request, CancellationToken ct = default)
     {
         await createValidator.ValidateAndThrowAsync(request, ct);
-        await RequirePermission(userId, workspaceId, "can_manage_settings", ct);
+        await RequirePermission(userId, workspaceId, "manage_ws_roles", ct);
 
         var permissions = await permissionRepository.GetByIdsAsync(request.PermissionIds, ct);
         if (permissions.Count != request.PermissionIds.Count)
             throw new ArgumentException("One or more permission IDs are invalid.");
 
-        var role = new Role
+        var role = new WorkspaceRole
         {
             Name = request.Name,
             WorkspaceId = workspaceId,
@@ -47,9 +47,9 @@ public sealed class RoleService(
 
         foreach (var perm in permissions)
         {
-            role.RolePermissions.Add(new RolePermission
+            role.RolePermissions.Add(new WorkspaceRolePermission
             {
-                RoleId = role.Id,
+                WsRoleId = role.Id,
                 PermissionId = perm.Id
             });
         }
@@ -65,7 +65,7 @@ public sealed class RoleService(
 
     public async Task UpdateAsync(int workspaceId, int roleId, int userId, UpdateRoleRequest request, CancellationToken ct = default)
     {
-        await RequirePermission(userId, workspaceId, "can_manage_settings", ct);
+        await RequirePermission(userId, workspaceId, "manage_ws_roles", ct);
 
         var role = await roleRepository.GetByIdAsync(roleId, ct)
             ?? throw new KeyNotFoundException("Role not found.");
@@ -88,9 +88,9 @@ public sealed class RoleService(
             role.RolePermissions.Clear();
             foreach (var perm in permissions)
             {
-                role.RolePermissions.Add(new RolePermission
+                role.RolePermissions.Add(new WorkspaceRolePermission
                 {
-                    RoleId = role.Id,
+                    WsRoleId = role.Id,
                     PermissionId = perm.Id
                 });
             }
@@ -101,7 +101,7 @@ public sealed class RoleService(
 
     public async Task ArchiveAsync(int workspaceId, int roleId, int userId, CancellationToken ct = default)
     {
-        await RequirePermission(userId, workspaceId, "can_manage_settings", ct);
+        await RequirePermission(userId, workspaceId, "manage_ws_roles", ct);
 
         var role = await roleRepository.GetByIdAsync(roleId, ct)
             ?? throw new KeyNotFoundException("Role not found.");
