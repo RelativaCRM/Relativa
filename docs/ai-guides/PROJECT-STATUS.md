@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-04-17
+> **Last verified:** 2026-04-17 (gateway-only JWT validation with X-User-Id header forwarding)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -51,15 +51,18 @@
 - **Combined invitations:** `GET /api/v1/invitations/mine` -- lists all pending invitations (both workspace + org) for the authenticated user.
 - **Permission listing:** `GET /api/v1/permissions` -- lists all 16 permissions (both org-scoped and ws-scoped).
 - Full clean-architecture layers: Domain (repository interfaces), Application (9 services, DTOs, validators), Infrastructure (repositories, WorkspaceContext).
-- Authorization checked per-request via `UserRoleOrganization` or `UserRoleWorkspace` DB lookup using JWT `sub` claim.
+- Authorization checked per-request via `UserRoleOrganization` or `UserRoleWorkspace` DB lookup. **Core does not parse JWTs**; it reads the caller identity from the `X-User-Id` header that the Gateway injects after JWT validation (see Gateway entry below). `X-User-Email` is read on invitation-accept flows. Missing headers are treated as a 401.
 
 ### Gateway
 
 - YARP reverse proxy with 5 route groups: `/auth/*`, `/core/*`, `/graph/*`, `/ml/*`, `/audit/*`.
 - Path prefix stripping via `PathRemovePrefix` transforms.
-- JWT Bearer authentication with full validation (issuer, audience, signing key, lifetime).
+- JWT Bearer authentication with full validation (issuer, audience, signing key, lifetime). **The Gateway is the only component that validates JWTs for downstream services** (Authentication still validates its own tokens because `/me` needs the claims).
+- **Global authorization via `MapReverseProxy().RequireAuthorization()`.** Every proxied route requires a valid JWT unless it is explicitly marked `AuthorizationPolicy: Anonymous` in `appsettings.json`.
+- **Identity forwarding via YARP request transform:** on every proxied request the Gateway unconditionally strips any incoming `X-User-Id` / `X-User-Email` headers, then re-adds them from the validated `ClaimsPrincipal` (`sub` and `email` claims). Downstream services (Core, future Graph/ML/Audit) trust these headers instead of re-validating tokens. Client-supplied values are always overwritten, so identity cannot be spoofed through the Gateway. The trust boundary assumes downstream services are not reachable from outside the Gateway's network (enforced by docker-compose today; network policy / service mesh in production).
 - **Split anonymous/auth routes:** `/login` and `/register` are anonymous; `/me` requires JWT.
 - Anonymous exceptions for health endpoints.
+- **CORS:** named-origin allowlist with credentials, reading `Cors:Origins` from config (defaults to `http://localhost:5173` and `http://localhost:3000`).
 - Forwarded headers (`X-Forwarded-For`, `X-Forwarded-Proto`).
 - Serilog request logging.
 - GlobalExceptionHandler.
@@ -70,7 +73,7 @@
 
 - `MigrationDbContext` mirrors full Persistence model (20 entities).
 - `Program.cs` runs `Database.MigrateAsync()` as a generic host console app.
-- Migrations in `Migration/src/Relativa.Migration/Migrations/` cover the full schema including the split RBAC tables, org management tables, and seed data for 7 default roles, 16 permissions, and demo data.
+- Migrations in `Migration/src/Relativa.Migration/Migrations/` (`20260416224419_InitialCreate.cs` + `20260416224514_SeedData.cs`) cover the full schema including the split RBAC tables, org management tables, and seed data for 7 default roles, 16 permissions, and demo data.
 - Docker Compose runs this before auth and core start.
 
 ### Persistence library
@@ -148,7 +151,7 @@
 | **Migration README outdated** | Low | `Migration/README.md` describes an `entrypoint.sh` flow. Actual code uses `MigrateAsync` in `Program.cs`. |
 | **Gateway README partially outdated** | Low | `Gateway/README.md` says JWT validation is a stub. Gateway now fully validates JWT. |
 | **Unused package reference** | Trivial | `Asp.Versioning.Http` is referenced in `Authentication/src/Relativa.Authentication/Relativa.Authentication.csproj` but never used in code. |
-| **CORS only on Core** | Medium | CORS (`AllowAnyOrigin/Header/Method`) is only registered on Core. Other services behind the gateway may need it if accessed directly during development. |
+| **Core CORS is `AllowAnyOrigin`** | Low | Gateway now has a proper named-origin CORS allowlist (reads `Cors:Origins` from config). Core retains `AllowAnyOrigin/Header/Method` as a dev convenience since Core is only reached via the gateway in deployed environments; tighten for production. |
 | **No test projects** | High | Zero test projects across the entire solution. No xUnit, NUnit, or MSTest references anywhere. |
 | **No CI/CD pipeline** | Medium | No `.github/workflows`, no `azure-pipelines.yml`, no CI configuration of any kind. |
 | **Audit JWT not validated** | Medium | Audit service has JWT Bearer registered but all validation parameters set to `false`. `SignatureValidator` parses tokens without cryptographic verification. Acceptable as a stub but must be fixed before real audit data flows through. |

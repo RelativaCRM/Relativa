@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Relativa.Core.Application.DTOs.OrgInvitation;
 using Relativa.Core.Application.Interfaces;
 
@@ -11,9 +10,9 @@ public static class OrgInvitationEndpoints
         var orgGroup = routes.MapGroup("/api/v1/organizations/{organizationId:int}/invitations")
             .WithTags("Organization Invitations");
 
-        orgGroup.MapPost("/", async (int organizationId, InviteToOrgRequest request, IOrgInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        orgGroup.MapPost("/", async (int organizationId, InviteToOrgRequest request, IOrgInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.InviteAsync(organizationId, userId, request, ct);
             return Results.Created($"/api/v1/organizations/{organizationId}/invitations/{result.Id}", result);
         })
@@ -22,9 +21,9 @@ public static class OrgInvitationEndpoints
         .Produces<OrgInvitationDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
-        orgGroup.MapGet("/", async (int organizationId, IOrgInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        orgGroup.MapGet("/", async (int organizationId, IOrgInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.GetByOrganizationAsync(organizationId, userId, ct);
             return Results.Ok(result);
         })
@@ -32,9 +31,9 @@ public static class OrgInvitationEndpoints
         .WithSummary("List pending invitations for the organization")
         .Produces<List<OrgInvitationDto>>();
 
-        orgGroup.MapDelete("/{invitationId:int}", async (int organizationId, int invitationId, IOrgInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        orgGroup.MapDelete("/{invitationId:int}", async (int organizationId, int invitationId, IOrgInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.CancelAsync(organizationId, invitationId, userId, ct);
             return Results.NoContent();
         })
@@ -45,11 +44,10 @@ public static class OrgInvitationEndpoints
         var acceptGroup = routes.MapGroup("/api/v1/invitations")
             .WithTags("Invitations");
 
-        acceptGroup.MapPost("/accept-org", async (AcceptOrgInvitationRequest request, IOrgInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        acceptGroup.MapPost("/accept-org", async (AcceptOrgInvitationRequest request, IOrgInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
-            var email = user.FindFirstValue("email")
-                ?? throw new UnauthorizedAccessException("Missing email claim.");
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            var email = WorkspaceEndpoints.GetUserEmail(httpContext);
             await service.AcceptAsync(userId, email, request.Token, ct);
             return Results.Ok(new { message = "Organization invitation accepted." });
         })

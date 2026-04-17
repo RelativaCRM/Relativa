@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Interfaces;
 
@@ -11,9 +10,9 @@ public static class OrganizationEndpoints
         var group = routes.MapGroup("/api/v1/organizations")
             .WithTags("Organizations");
 
-        group.MapPost("/", async (CreateOrganizationRequest request, IOrganizationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapPost("/", async (CreateOrganizationRequest request, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.CreateAsync(userId, request, ct);
             return Results.Created($"/api/v1/organizations/{result.Id}", result);
         })
@@ -22,9 +21,9 @@ public static class OrganizationEndpoints
         .Produces<OrganizationDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
-        group.MapGet("/", async (IOrganizationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapGet("/", async (IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.GetByUserAsync(userId, ct);
             return Results.Ok(result);
         })
@@ -41,9 +40,9 @@ public static class OrganizationEndpoints
         .WithSummary("Search organizations by name")
         .Produces<List<OrganizationSearchResultDto>>();
 
-        group.MapGet("/{id:int}", async (int id, IOrganizationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapGet("/{id:int}", async (int id, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.GetByIdAsync(id, userId, ct);
             return Results.Ok(result);
         })
@@ -51,9 +50,9 @@ public static class OrganizationEndpoints
         .WithSummary("Get organization details")
         .Produces<OrganizationDto>();
 
-        group.MapPut("/{id:int}", async (int id, UpdateOrganizationRequest request, IOrganizationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapPut("/{id:int}", async (int id, UpdateOrganizationRequest request, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.UpdateAsync(id, userId, request, ct);
             return Results.NoContent();
         })

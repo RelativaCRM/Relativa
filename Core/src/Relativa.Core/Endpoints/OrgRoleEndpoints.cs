@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Relativa.Core.Application.DTOs.OrgRole;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
@@ -12,9 +11,9 @@ public static class OrgRoleEndpoints
         var group = routes.MapGroup("/api/v1/organizations/{organizationId:int}/roles")
             .WithTags("Organization Roles");
 
-        group.MapGet("/", async (int organizationId, IOrgRoleService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapGet("/", async (int organizationId, IOrgRoleService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.GetByOrganizationAsync(organizationId, userId, ct);
             return Results.Ok(result);
         })
@@ -22,9 +21,9 @@ public static class OrgRoleEndpoints
         .WithSummary("List roles available in the organization")
         .Produces<List<OrgRoleDto>>();
 
-        group.MapPost("/", async (int organizationId, CreateOrgRoleRequest request, IOrgRoleService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapPost("/", async (int organizationId, CreateOrgRoleRequest request, IOrgRoleService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.CreateAsync(organizationId, userId, request, ct);
             return Results.Created($"/api/v1/organizations/{organizationId}/roles/{result.Id}", result);
         })
@@ -33,9 +32,9 @@ public static class OrgRoleEndpoints
         .Produces<OrgRoleDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
-        group.MapPut("/{roleId:int}", async (int organizationId, int roleId, UpdateOrgRoleRequest request, IOrgRoleService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapPut("/{roleId:int}", async (int organizationId, int roleId, UpdateOrgRoleRequest request, IOrgRoleService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.UpdateAsync(organizationId, roleId, userId, request, ct);
             return Results.NoContent();
         })
@@ -43,9 +42,9 @@ public static class OrgRoleEndpoints
         .WithSummary("Update a custom organization role")
         .Produces(StatusCodes.Status204NoContent);
 
-        group.MapDelete("/{roleId:int}", async (int organizationId, int roleId, IOrgRoleService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapDelete("/{roleId:int}", async (int organizationId, int roleId, IOrgRoleService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.ArchiveAsync(organizationId, roleId, userId, ct);
             return Results.NoContent();
         })

@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
 
@@ -11,9 +10,9 @@ public static class RoleEndpoints
         var wsGroup = routes.MapGroup("/api/v1/workspaces/{workspaceId:int}/roles")
             .WithTags("Roles");
 
-        wsGroup.MapGet("/", async (int workspaceId, IRoleService service, ClaimsPrincipal user, CancellationToken ct) =>
+        wsGroup.MapGet("/", async (int workspaceId, IRoleService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.GetByWorkspaceAsync(workspaceId, userId, ct);
             return Results.Ok(result);
         })
@@ -21,9 +20,9 @@ public static class RoleEndpoints
         .WithSummary("List roles available in a workspace")
         .Produces<List<RoleDto>>();
 
-        wsGroup.MapPost("/", async (int workspaceId, CreateRoleRequest request, IRoleService service, ClaimsPrincipal user, CancellationToken ct) =>
+        wsGroup.MapPost("/", async (int workspaceId, CreateRoleRequest request, IRoleService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.CreateAsync(workspaceId, userId, request, ct);
             return Results.Created($"/api/v1/workspaces/{workspaceId}/roles/{result.Id}", result);
         })
@@ -32,9 +31,9 @@ public static class RoleEndpoints
         .Produces<RoleDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
-        wsGroup.MapPut("/{roleId:int}", async (int workspaceId, int roleId, UpdateRoleRequest request, IRoleService service, ClaimsPrincipal user, CancellationToken ct) =>
+        wsGroup.MapPut("/{roleId:int}", async (int workspaceId, int roleId, UpdateRoleRequest request, IRoleService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.UpdateAsync(workspaceId, roleId, userId, request, ct);
             return Results.NoContent();
         })
@@ -42,9 +41,9 @@ public static class RoleEndpoints
         .WithSummary("Update a custom role's name or permissions")
         .Produces(StatusCodes.Status204NoContent);
 
-        wsGroup.MapDelete("/{roleId:int}", async (int workspaceId, int roleId, IRoleService service, ClaimsPrincipal user, CancellationToken ct) =>
+        wsGroup.MapDelete("/{roleId:int}", async (int workspaceId, int roleId, IRoleService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.ArchiveAsync(workspaceId, roleId, userId, ct);
             return Results.NoContent();
         })

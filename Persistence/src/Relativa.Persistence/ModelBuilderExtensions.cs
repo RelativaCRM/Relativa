@@ -9,28 +9,11 @@ public static class PersistenceModelBuilderExtensions
     public static ModelBuilder ApplyAuthEntityConfigurations(this ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new UserConfiguration());
-        modelBuilder.ApplyConfiguration(new PermissionConfiguration());
 
-        // Ignore entities discovered via User navigation properties
-        // that are not needed in the Auth bounded context.
-        modelBuilder.Ignore<UserRoleOrganization>();
+        // EF Core convention follows User's navigation properties into the full RBAC
+        // graph. Cut both chains at the root so the Auth context stays User-only.
         modelBuilder.Ignore<UserRoleWorkspace>();
-        modelBuilder.Ignore<Organization>();
-        modelBuilder.Ignore<OrganizationRole>();
-        modelBuilder.Ignore<OrganizationRolePermission>();
-        modelBuilder.Ignore<OrganizationJoinRequest>();
-        modelBuilder.Ignore<OrganizationInvitation>();
-        modelBuilder.Ignore<Workspace>();
-        modelBuilder.Ignore<WorkspaceRole>();
-        modelBuilder.Ignore<WorkspaceRolePermission>();
-        modelBuilder.Ignore<WorkspaceInvitation>();
-        modelBuilder.Ignore<EntityType>();
-        modelBuilder.Ignore<Entity>();
-        modelBuilder.Ignore<EntityWorkspace>();
-        modelBuilder.Ignore<PersonalDataPropertyValue>();
-        modelBuilder.Ignore<LocationPropertyValue>();
-        modelBuilder.Ignore<DealPropertyValue>();
-        modelBuilder.Ignore<EntityProperty>();
+        modelBuilder.Ignore<UserRoleOrganization>();
 
         return modelBuilder;
     }

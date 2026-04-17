@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-04-17 (organization RBAC + split schema update)
+> **Last verified:** 2026-04-17 (gateway-only JWT validation with X-User-Id header forwarding)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -23,7 +23,7 @@
 
 ## 1. Gateway (`relativa-gateway`)
 
-**Purpose:** YARP reverse proxy that routes all client traffic to backend services and enforces JWT authentication.
+**Purpose:** YARP reverse proxy that routes all client traffic to backend services, enforces JWT authentication, and injects trusted identity headers (`X-User-Id`, `X-User-Email`) for downstream services.
 
 **Solution:** `Gateway/Relativa.Gateway.sln`
 **Project:** `Gateway/src/Relativa.Gateway/`
@@ -53,7 +53,9 @@
 
 ### Status: Functional
 
-YARP routing, JWT Bearer validation (issuer, audience, signing key, lifetime), forwarded headers, Serilog, global exception handler, OpenAPI + Scalar all working. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
+YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issuer, audience, signing key, lifetime), CORS (named-origin allowlist with credentials, configurable via `Cors:Origins`), forwarded headers, Serilog, global exception handler, OpenAPI + Scalar all working. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
+
+**Identity forwarding:** a YARP request transform runs on every proxied request. It unconditionally removes any incoming `X-User-Id` / `X-User-Email` (so clients cannot spoof identity), then, if the request is authenticated, re-adds them from the validated `ClaimsPrincipal` (`sub` → `X-User-Id`, `email` → `X-User-Email`). Downstream services (Core today; Graph/ML/Audit in the future) trust these headers and do **not** re-validate JWTs. This keeps JWT handling centralized in the Gateway (single-responsibility) and avoids duplicating JWT config across every service.
 
 ### Key Files
 
@@ -118,7 +120,7 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 |---|---|---|---|
 | POST | `/api/v1/organizations` | JWT | Create organization; creator becomes org_owner |
 | GET | `/api/v1/organizations` | JWT | List organizations the user belongs to |
-| GET | `/api/v1/organizations/search?q=...` | JWT | Search organizations by name |
+| GET | `/api/v1/organizations/search?q=...` | JWT | Search organizations by name; returns `{ id, name, memberCount }` for each match |
 | GET | `/api/v1/organizations/{id}` | JWT + org membership | Get organization details |
 | PUT | `/api/v1/organizations/{id}` | JWT + `manage_org_settings` | Update organization |
 
@@ -218,6 +220,8 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 
 Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), and the split RBAC permission model are all functional. Entity/deal CRUD and business rules are not yet implemented.
 
+**Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`). It reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway; in `docker-compose.yml` only the Gateway publishes a host port.
+
 ### Key Files
 
 - `Core/src/Relativa.Core/Program.cs` -- DI wiring, endpoint mapping
@@ -298,8 +302,8 @@ None -- this is a console application, not a web service.
 ### Status: Functional
 
 `MigrationDbContext` mirrors the full Persistence entity model. `Program.cs` builds a generic host, resolves the context, and calls `Database.MigrateAsync()`. Migrations live in `Migration/src/Relativa.Migration/Migrations/`:
-- `20260412140027_InitialCreate.cs` -- full schema
-- `20260412140114_InitSeedData.cs` -- seed roles, permissions, orgs, workspaces, demo entities (raw SQL)
+- `20260416224419_InitialCreate.cs` -- full schema (split RBAC tables, org management tables, entity/property tables)
+- `20260416224514_SeedData.cs` -- seed roles, permissions, orgs, workspaces, demo entities (raw SQL)
 
 ### Key Files
 
