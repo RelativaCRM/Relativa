@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-04-13 (workspace RBAC update)
+> **Last verified:** 2026-04-17 (organization RBAC + split schema update)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -12,7 +12,7 @@
 |---|---|---|---|
 | Gateway | 8080 | .NET 10, YARP | Functional |
 | Authentication | 8081 | .NET 10, JWT, BCrypt, FluentValidation | Functional |
-| Core | 8082 | .NET 10, EF Core | Stub (infra only) |
+| Core | 8082 | .NET 10, EF Core | Functional (org + workspace RBAC) |
 | Graph | 8083 | .NET 10, SignalR | Stub |
 | Audit | 8086 | .NET 10 | Stub |
 | Migration | -- | .NET 10, EF Core (console) | Functional |
@@ -48,9 +48,12 @@
 - `GET /auth/health`
 - `GET /core/health`
 
+**JWT-required auth routes** (not anonymous):
+- `GET /auth/api/v1/auth/me`
+
 ### Status: Functional
 
-YARP routing, JWT Bearer validation (issuer, audience, signing key, lifetime), forwarded headers, Serilog, global exception handler, OpenAPI + Scalar all working.
+YARP routing, JWT Bearer validation (issuer, audience, signing key, lifetime), forwarded headers, Serilog, global exception handler, OpenAPI + Scalar all working. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
 
 ### Key Files
 
@@ -62,7 +65,7 @@ YARP routing, JWT Bearer validation (issuer, audience, signing key, lifetime), f
 
 ## 2. Authentication (`relativa-auth`)
 
-**Purpose:** Issues JWT tokens after login/register; manages users and roles via EF Core against PostgreSQL.
+**Purpose:** Issues JWT tokens after login/register; provides user profile via `/me`; manages users via EF Core against PostgreSQL.
 
 **Solution:** `Authentication/Relativa.Authentication.sln`
 **Project:** `Authentication/src/Relativa.Authentication/`
@@ -72,15 +75,16 @@ YARP routing, JWT Bearer validation (issuer, audience, signing key, lifetime), f
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password, assigns role, returns user DTO + Location header |
+| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password, returns user DTO + Location header |
 | POST | `/api/v1/auth/login` | None | Validates credentials, returns `{ accessToken, expiresAt }` |
+| GET | `/api/v1/auth/me` | JWT | Returns authenticated user's profile `{ id, email, firstName, lastName }` from JWT `sub` claim |
 | GET | `/health` | None | EF Core DB health check |
 | GET | `/scalar/v1` | None | Scalar interactive API docs |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
 ### Status: Functional
 
-Login and register work end-to-end. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using workspace membership). FluentValidation on both endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, duplicate email to 409. Registration no longer assigns a role -- `User.RoleId` is set to `null` on registration.
+Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, duplicate email to 409.
 
 **Not yet implemented:** token refresh, token blacklisting.
 
@@ -89,7 +93,8 @@ Login and register work end-to-end. JWT includes `sub`, `email`, and `jti` claim
 - `Authentication/src/Relativa.Authentication/Program.cs` -- DI, middleware, endpoint mapping
 - `Authentication/src/Relativa.Authentication/Endpoints/AuthEndpoints.cs` -- route definitions
 - `Authentication/src/Relativa.Authentication.Application/Services/AuthService.cs` -- business logic
-- `Authentication/src/Relativa.Authentication.Application/DTOs/` -- request/response DTOs
+- `Authentication/src/Relativa.Authentication.Application/DTOs/` -- request/response DTOs (includes `UserProfileDto`)
+- `Authentication/src/Relativa.Authentication.Application/Interfaces/IAuthService.cs`
 - `Authentication/src/Relativa.Authentication.Application/Validators/` -- FluentValidation rules
 - `Authentication/src/Relativa.Authentication.Domain/Interfaces/` -- `IUserRepository`, `ITokenService`, `IPasswordHasher`
 - `Authentication/src/Relativa.Authentication.Infrastructure/Data/AuthDbContext.cs`
@@ -101,46 +106,123 @@ Login and register work end-to-end. JWT includes `sub`, `email`, and `jti` claim
 
 ## 3. Core (`relativa-core`)
 
-**Purpose:** The main business API for workspace management, member/invitation management, role/permission management, and (future) CRUD on entities, deals, and business rules.
+**Purpose:** The main business API for organization management, workspace management, member/invitation management, role/permission management (split RBAC for both orgs and workspaces), and (future) CRUD on entities, deals, and business rules.
 
 **Solution:** `Core/Relativa.Core.sln`
 **Project:** `Core/src/Relativa.Core/`
 **Port:** 8082
 
-### Endpoints
+### Endpoints -- Organizations
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/organizations` | JWT | Create organization; creator becomes org_owner |
+| GET | `/api/v1/organizations` | JWT | List organizations the user belongs to |
+| GET | `/api/v1/organizations/search?q=...` | JWT | Search organizations by name |
+| GET | `/api/v1/organizations/{id}` | JWT + org membership | Get organization details |
+| PUT | `/api/v1/organizations/{id}` | JWT + `manage_org_settings` | Update organization |
+
+### Endpoints -- Organization Members
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| GET | `/api/v1/organizations/{id}/members` | JWT + org membership | List organization members |
+| DELETE | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove member from organization |
+| PUT | `/api/v1/organizations/{id}/members/{userId}/role` | JWT + `assign_org_roles` | Change member's organization role |
+
+### Endpoints -- Organization Join Requests
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/organizations/{id}/join-requests` | JWT | Request to join an organization |
+| GET | `/api/v1/organizations/{id}/join-requests` | JWT + `manage_join_requests` | List pending join requests |
+| PUT | `/api/v1/organizations/{id}/join-requests/{reqId}` | JWT + `manage_join_requests` | Approve or reject a join request |
+| GET | `/api/v1/join-requests/mine` | JWT | List own pending join requests |
+
+### Endpoints -- Organization Invitations
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | Invite user to organization by email |
+| GET | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | List pending org invitations |
+| DELETE | `/api/v1/organizations/{id}/invitations/{invId}` | JWT + `invite_to_org` | Cancel org invitation |
+| POST | `/api/v1/invitations/accept-org` | JWT + matching email | Accept organization invitation |
+
+### Endpoints -- Organization Roles
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| GET | `/api/v1/organizations/{id}/roles` | JWT + org membership | List org roles (system + custom) |
+| POST | `/api/v1/organizations/{id}/roles` | JWT + `manage_org_roles` | Create custom org role |
+| PUT | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Update custom org role |
+| DELETE | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Delete custom org role |
+
+### Endpoints -- Combined Invitations
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| GET | `/api/v1/invitations/mine` | JWT | List all pending invitations (both workspace + org) for the user |
+
+### Endpoints -- Workspaces
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/workspaces` | JWT + `create_workspaces` (org perm) | Create workspace within an organization (requires `organizationId`) |
+| GET | `/api/v1/workspaces` | JWT | List workspaces for authenticated user |
+| GET | `/api/v1/workspaces/{id}` | JWT + ws membership | Get workspace details |
+| PUT | `/api/v1/workspaces/{id}` | JWT + `manage_ws_settings` | Update workspace name |
+| DELETE | `/api/v1/workspaces/{id}` | JWT + ws_admin role | Archive workspace |
+
+### Endpoints -- Workspace Members
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| GET | `/api/v1/workspaces/{id}/members` | JWT + ws membership | List workspace members |
+| POST | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` | Add an org member directly to the workspace |
+| PUT | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `assign_ws_roles` | Change a member's workspace role |
+| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` (or self) | Remove a member |
+
+### Endpoints -- Workspace Invitations
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | Invite user by email (returns token in response) |
+| GET | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | List pending invitations |
+| DELETE | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `invite_to_workspace` | Cancel invitation |
+| POST | `/api/v1/invitations/accept` | JWT + matching email | Accept workspace invitation by token |
+
+### Endpoints -- Workspace Roles
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| GET | `/api/v1/workspaces/{id}/roles` | JWT + ws membership | List roles (system + custom) |
+| POST | `/api/v1/workspaces/{id}/roles` | JWT + `manage_ws_roles` | Create custom role |
+| PUT | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `manage_ws_roles` | Update custom role |
+| DELETE | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `manage_ws_roles` | Archive custom role |
+
+### Endpoints -- Permissions
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| GET | `/api/v1/permissions` | JWT | List all available permissions (org + ws) |
+
+### Endpoints -- Infrastructure
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/health` | None | EF Core DB health check |
 | GET | `/scalar/v1` | None | Scalar interactive API docs (dev only) |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
-| POST | `/api/v1/workspaces` | JWT | Create workspace; creator becomes admin member |
-| GET | `/api/v1/workspaces` | JWT | List workspaces for authenticated user |
-| GET | `/api/v1/workspaces/{id}` | JWT + membership | Get workspace details |
-| PUT | `/api/v1/workspaces/{id}` | JWT + `can_manage_settings` | Update workspace name |
-| DELETE | `/api/v1/workspaces/{id}` | JWT + admin role | Archive workspace |
-| GET | `/api/v1/workspaces/{id}/members` | JWT + membership | List workspace members |
-| PUT | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `can_assign_roles` | Change a member's role |
-| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `can_assign_roles` (or self) | Remove a member |
-| POST | `/api/v1/workspaces/{id}/invitations` | JWT + `can_assign_roles` | Invite user by email |
-| GET | `/api/v1/workspaces/{id}/invitations` | JWT + `can_assign_roles` | List pending invitations |
-| DELETE | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `can_assign_roles` | Cancel invitation |
-| POST | `/api/v1/invitations/accept` | JWT + matching email | Accept invitation by token |
-| GET | `/api/v1/workspaces/{id}/roles` | JWT + membership | List roles (system + custom) |
-| POST | `/api/v1/workspaces/{id}/roles` | JWT + `can_manage_settings` | Create custom role |
-| PUT | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `can_manage_settings` | Update custom role |
-| DELETE | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `can_manage_settings` | Archive custom role |
-| GET | `/api/v1/permissions` | JWT | List all available permissions |
 
-### Status: Functional (workspace RBAC implemented)
+### Status: Functional (organization + workspace RBAC implemented)
 
-Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, WorkspaceContext), Host (endpoint mapping, DI). Workspace creation, member management, invitation system, and custom role management are all functional. Entity/deal CRUD and business rules are not yet implemented.
+Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), and the split RBAC permission model are all functional. Entity/deal CRUD and business rules are not yet implemented.
 
 ### Key Files
 
 - `Core/src/Relativa.Core/Program.cs` -- DI wiring, endpoint mapping
-- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`
-- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`
+- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`
+- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`
 - `Core/src/Relativa.Core.Application/DTOs/` -- request/response DTOs organized by feature
 - `Core/src/Relativa.Core.Application/Validators/` -- FluentValidation rules
 - `Core/src/Relativa.Core.Domain/Interfaces/` -- repository interfaces

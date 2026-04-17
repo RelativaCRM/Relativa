@@ -8,4 +8,5 @@ public interface IInvitationService
     Task<List<InvitationDto>> GetPendingAsync(int workspaceId, int callerUserId, CancellationToken ct = default);
     Task CancelAsync(int workspaceId, int invitationId, int callerUserId, CancellationToken ct = default);
     Task AcceptAsync(int userId, string userEmail, AcceptInvitationRequest request, CancellationToken ct = default);
+    Task<MyInvitationsDto> GetMyInvitationsAsync(int userId, string userEmail, CancellationToken ct = default);
 }

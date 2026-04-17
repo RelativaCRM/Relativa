@@ -11,15 +11,22 @@ This guide walks through every step needed to open the Scalar interactive API do
 3. [Open Scalar](#3-open-scalar)
 4. [Register a new user](#4-register-a-new-user)
 5. [Log in and obtain a JWT](#5-log-in-and-obtain-a-jwt)
-6. [Authorise subsequent requests](#6-authorise-subsequent-requests)
-7. [Create a workspace](#7-create-a-workspace)
-8. [Invite a member to the workspace](#8-invite-a-member-to-the-workspace)
-9. [Accept an invitation](#9-accept-an-invitation)
-10. [Manage workspace members](#10-manage-workspace-members)
-11. [Manage roles and permissions](#11-manage-roles-and-permissions)
-12. [Health checks](#12-health-checks)
-13. [Available endpoints reference](#13-available-endpoints-reference)
-14. [Tips and troubleshooting](#14-tips-and-troubleshooting)
+6. [Get your profile (/me)](#6-get-your-profile-me)
+7. [Authorise subsequent requests](#7-authorise-subsequent-requests)
+8. [Create an organization](#8-create-an-organization)
+9. [Organization join requests](#9-organization-join-requests)
+10. [Organization invitations](#10-organization-invitations)
+11. [Manage organization members and roles](#11-manage-organization-members-and-roles)
+12. [Create a workspace](#12-create-a-workspace)
+13. [Add members to a workspace](#13-add-members-to-a-workspace)
+14. [Invite a member to the workspace](#14-invite-a-member-to-the-workspace)
+15. [Accept a workspace invitation](#15-accept-a-workspace-invitation)
+16. [Manage workspace members](#16-manage-workspace-members)
+17. [Manage workspace roles and permissions](#17-manage-workspace-roles-and-permissions)
+18. [Combined invitations](#18-combined-invitations)
+19. [Health checks](#19-health-checks)
+20. [Available endpoints reference](#20-available-endpoints-reference)
+21. [Tips and troubleshooting](#21-tips-and-troubleshooting)
 
 ---
 
@@ -73,7 +80,7 @@ http://localhost:<port>/scalar/v1
 | **Core** | `http://localhost:8082/scalar/v1` |
 | **Gateway** | `http://localhost:8080/scalar/v1` |
 
-> **Recommended starting point:** open the **Authentication** Scalar (`http://localhost:8081/scalar/v1`) to register and log in, then switch to the **Core** Scalar (`http://localhost:8082/scalar/v1`) to test workspace and RBAC endpoints.
+> **Recommended starting point:** open the **Authentication** Scalar (`http://localhost:8081/scalar/v1`) to register, log in, and check your profile. Then switch to the **Core** Scalar (`http://localhost:8082/scalar/v1`) to test organization, workspace, and RBAC endpoints.
 
 The raw OpenAPI JSON (useful for import into Postman, Insomnia, etc.) is at:
 
@@ -131,7 +138,7 @@ The `Location` response header points to the user resource:
 Location: /api/v1/auth/users/4
 ```
 
-> **Note:** Newly registered users have no role (`RoleId` is null). A user gains a role when they create or join a workspace.
+> **Note:** Newly registered users have no organization or workspace membership. A user must create or join an organization first, then create or join a workspace.
 
 ### Error responses
 
@@ -182,7 +189,7 @@ This endpoint is **public** — no token required.
 | `accessToken` | string | Bearer JWT — copy this value |
 | `expiresAt` | string (ISO 8601) | Token expiry timestamp (UTC) |
 
-The JWT contains `sub` (user ID) and `email` claims. Role and permissions are **not** in the token — they are resolved per-request by Core based on workspace membership.
+The JWT contains `sub` (user ID) and `email` claims. Role and permissions are **not** in the token — they are resolved per-request by Core based on organization/workspace membership.
 
 ### Error responses
 
@@ -193,7 +200,48 @@ The JWT contains `sub` (user ID) and `email` claims. Role and permissions are **
 
 ---
 
-## 6. Authorise subsequent requests
+## 6. Get your profile (/me)
+
+**Endpoint:** `GET /api/v1/auth/me`
+
+Requires a valid JWT. Returns the authenticated user's profile.
+
+### Steps in Scalar (Authentication)
+
+1. Open the Authentication Scalar UI: `http://localhost:8081/scalar/v1`.
+2. Click the **Authorize** button and paste your `accessToken`.
+3. Find **Authentication** → **GetProfile** (or **Me**) in the sidebar.
+4. Click **Try it** → **Send**.
+
+### Expected response — `200 OK`
+
+```json
+{
+  "id": 4,
+  "email": "jane.doe@example.com",
+  "firstName": "Jane",
+  "lastName": "Doe"
+}
+```
+
+### Via Gateway
+
+The `/me` endpoint requires JWT even through the gateway (unlike login/register):
+
+```
+GET /auth/api/v1/auth/me
+Authorization: Bearer <token>
+```
+
+### Error responses
+
+| Status | When |
+|--------|------|
+| `401 Unauthorized` | Missing or expired JWT |
+
+---
+
+## 7. Authorise subsequent requests
 
 Most routes that go through the **Gateway** require the JWT from step 5. All Core endpoints require it.
 
@@ -213,35 +261,290 @@ The Gateway proxies endpoints under service prefixes:
 |-----------------------|-------------|
 | `POST /api/v1/auth/login` | `POST /auth/api/v1/auth/login` |
 | `POST /api/v1/auth/register` | `POST /auth/api/v1/auth/register` |
+| `GET /api/v1/auth/me` | `GET /auth/api/v1/auth/me` |
+| `POST /api/v1/organizations` | `POST /core/api/v1/organizations` |
 | `POST /api/v1/workspaces` | `POST /core/api/v1/workspaces` |
 
-The `/auth/api/v1/auth/login` and `/auth/api/v1/auth/register` paths are marked **Anonymous** in the gateway — no JWT needed. All `/core/...` paths require a valid JWT.
+The `/auth/api/v1/auth/login` and `/auth/api/v1/auth/register` paths are marked **Anonymous** in the gateway — no JWT needed. The `/auth/api/v1/auth/me` path and all `/core/...` paths require a valid JWT.
 
 ---
 
-## 7. Create a workspace
+## 8. Create an organization
 
-**Endpoint:** `POST /api/v1/workspaces`
+**Endpoint:** `POST /api/v1/organizations`
 
-Requires a valid JWT. Any authenticated user can create a workspace.
+Requires a valid JWT. Any authenticated user can create an organization.
 
 ### Steps in Scalar (Core)
 
 1. Open the Core Scalar UI: `http://localhost:8082/scalar/v1`.
-2. Make sure you have authorised (step 6).
+2. Make sure you have authorised (step 7).
+3. Find **Organizations** → **CreateOrganization** in the sidebar.
+4. Click **Try it** and enter:
+
+```json
+{
+  "name": "Acme Corp"
+}
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `name` | string | yes | Organization name |
+
+5. Click **Send**.
+
+### Expected response — `201 Created`
+
+```json
+{
+  "id": 1,
+  "name": "Acme Corp"
+}
+```
+
+The creating user is automatically added as a member with the **org_owner** system role (has all 7 org permissions).
+
+### List your organizations
+
+**Endpoint:** `GET /api/v1/organizations`
+
+Returns all organizations where the authenticated user is a member.
+
+### Search organizations
+
+**Endpoint:** `GET /api/v1/organizations/search?q=acme`
+
+Search organizations by name. Any authenticated user can search.
+
+---
+
+## 9. Organization join requests
+
+Users can request to join an organization they found via search.
+
+### Request to join
+
+**Endpoint:** `POST /api/v1/organizations/{organizationId}/join-requests`
+
+Any authenticated user who is not already a member.
+
+1. Find **JoinRequests** → **CreateJoinRequest** in the sidebar.
+2. Set the `organizationId` path parameter.
+3. Click **Send** (no body needed, or provide an optional message).
+
+### Expected response — `201 Created`
+
+```json
+{
+  "id": 1,
+  "organizationId": 1,
+  "userId": 5,
+  "status": "Pending"
+}
+```
+
+### Review join requests (org admin)
+
+**Endpoint:** `GET /api/v1/organizations/{organizationId}/join-requests`
+
+Requires the `manage_join_requests` permission.
+
+### Approve or reject
+
+**Endpoint:** `PUT /api/v1/organizations/{organizationId}/join-requests/{requestId}`
+
+Requires the `manage_join_requests` permission.
+
+```json
+{
+  "status": "Approved",
+  "roleId": 3
+}
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `status` | string | yes | `"Approved"` or `"Rejected"` |
+| `roleId` | integer | conditional | Required when approving — the org role to assign |
+
+### List your own join requests
+
+**Endpoint:** `GET /api/v1/join-requests/mine`
+
+Returns all join requests made by the authenticated user.
+
+---
+
+## 10. Organization invitations
+
+Org admins can invite users by email to join the organization.
+
+### Invite to organization
+
+**Endpoint:** `POST /api/v1/organizations/{organizationId}/invitations`
+
+Requires the `invite_to_org` permission.
+
+```json
+{
+  "email": "bob@example.com",
+  "roleId": 3
+}
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `email` | string | yes | Email of the person to invite |
+| `roleId` | integer | yes | Org role to assign on acceptance. Use `GET .../roles` to see available role IDs |
+
+### Expected response — `201 Created`
+
+```json
+{
+  "id": 1,
+  "email": "bob@example.com",
+  "roleName": "org_member",
+  "status": "Pending",
+  "expiresAt": "2026-04-24T12:00:00Z"
+}
+```
+
+### List pending org invitations
+
+**Endpoint:** `GET /api/v1/organizations/{organizationId}/invitations`
+
+Requires the `invite_to_org` permission.
+
+### Cancel an org invitation
+
+**Endpoint:** `DELETE /api/v1/organizations/{organizationId}/invitations/{invitationId}`
+
+Requires the `invite_to_org` permission. Returns `204 No Content`.
+
+### Accept an org invitation
+
+**Endpoint:** `POST /api/v1/invitations/accept-org`
+
+The invited user must register (if new) and log in first. The JWT email must match the invitation email.
+
+```json
+{
+  "token": "<the invitation token>"
+}
+```
+
+> **Note:** For testing, look up the token in the database: `SELECT token FROM organization_invitations WHERE email = 'bob@example.com';` using pgAdmin at `http://localhost:5050`.
+
+### Expected response — `200 OK`
+
+```json
+{
+  "message": "Invitation accepted."
+}
+```
+
+---
+
+## 11. Manage organization members and roles
+
+### List organization members
+
+**Endpoint:** `GET /api/v1/organizations/{organizationId}/members`
+
+Requires org membership.
+
+### Change a member's org role
+
+**Endpoint:** `PUT /api/v1/organizations/{organizationId}/members/{userId}/role`
+
+Requires `assign_org_roles` permission.
+
+```json
+{
+  "roleId": 2
+}
+```
+
+Returns `204 No Content` on success.
+
+### Remove a member from the organization
+
+**Endpoint:** `DELETE /api/v1/organizations/{organizationId}/members/{userId}`
+
+Requires `remove_org_members` permission. Returns `204 No Content`.
+
+### List org roles
+
+**Endpoint:** `GET /api/v1/organizations/{organizationId}/roles`
+
+Requires org membership. Returns system roles plus custom org roles:
+
+```json
+[
+  {
+    "id": 1,
+    "name": "org_owner",
+    "isSystem": true,
+    "permissions": [
+      { "id": 1, "name": "manage_org_settings" },
+      { "id": 2, "name": "invite_to_org" },
+      { "id": 3, "name": "manage_join_requests" },
+      { "id": 4, "name": "remove_org_members" },
+      { "id": 5, "name": "assign_org_roles" },
+      { "id": 6, "name": "manage_org_roles" },
+      { "id": 7, "name": "create_workspaces" }
+    ]
+  }
+]
+```
+
+### Create a custom org role
+
+**Endpoint:** `POST /api/v1/organizations/{organizationId}/roles`
+
+Requires `manage_org_roles` permission.
+
+```json
+{
+  "name": "org_moderator",
+  "permissionIds": [2, 3]
+}
+```
+
+### Update / delete custom org roles
+
+- `PUT /api/v1/organizations/{organizationId}/roles/{roleId}` — update (requires `manage_org_roles`)
+- `DELETE /api/v1/organizations/{organizationId}/roles/{roleId}` — delete (requires `manage_org_roles`)
+
+System roles cannot be modified or deleted.
+
+---
+
+## 12. Create a workspace
+
+**Endpoint:** `POST /api/v1/workspaces`
+
+Requires a valid JWT and the `create_workspaces` **org-scoped permission** in the target organization.
+
+### Steps in Scalar (Core)
+
+1. Open the Core Scalar UI: `http://localhost:8082/scalar/v1`.
+2. Make sure you have authorised (step 7).
 3. Find **Workspaces** → **CreateWorkspace** in the sidebar.
 4. Click **Try it** and enter:
 
 ```json
 {
-  "name": "My Sales Team"
+  "name": "My Sales Team",
+  "organizationId": 1
 }
 ```
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `name` | string | yes | Max 200 characters |
-| `organizationId` | integer | no | Optional; links to existing organization |
+| `organizationId` | integer | yes | The organization this workspace belongs to. You must have `create_workspaces` permission in this org. |
 
 5. Click **Send**.
 
@@ -252,11 +555,11 @@ Requires a valid JWT. Any authenticated user can create a workspace.
   "id": 3,
   "name": "My Sales Team",
   "memberCount": 1,
-  "userRole": "admin"
+  "userRole": "ws_admin"
 }
 ```
 
-The creating user is automatically added as a member with the **admin** system role.
+The creating user is automatically added as a member with the **ws_admin** system role (has all 9 ws permissions).
 
 ### List your workspaces
 
@@ -270,18 +573,42 @@ Returns all workspaces where the authenticated user is a member:
     "id": 3,
     "name": "My Sales Team",
     "memberCount": 1,
-    "userRole": "admin"
+    "userRole": "ws_admin"
   }
 ]
 ```
 
 ---
 
-## 8. Invite a member to the workspace
+## 13. Add members to a workspace
+
+**Endpoint:** `POST /api/v1/workspaces/{workspaceId}/members`
+
+Requires the `add_ws_members` permission. The target user must already be a member of the workspace's parent organization.
+
+```json
+{
+  "userId": 5,
+  "roleId": 4
+}
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `userId` | integer | yes | ID of the org member to add |
+| `roleId` | integer | yes | Workspace role to assign. Use `GET .../roles` to see available role IDs |
+
+### Expected response — `201 Created`
+
+This directly adds an existing org member to the workspace without requiring an invitation flow.
+
+---
+
+## 14. Invite a member to the workspace
 
 **Endpoint:** `POST /api/v1/workspaces/{workspaceId}/invitations`
 
-Requires the `can_assign_roles` permission in the workspace (admin role has this by default).
+Requires the `invite_to_workspace` permission in the workspace.
 
 ### Steps in Scalar (Core)
 
@@ -299,7 +626,7 @@ Requires the `can_assign_roles` permission in the workspace (admin role has this
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `email` | string | yes | Email of the person to invite |
-| `roleId` | integer | yes | Role to assign on acceptance. Use `GET .../roles` to see available role IDs |
+| `roleId` | integer | yes | Workspace role to assign on acceptance. Use `GET .../roles` to see available role IDs |
 
 4. Click **Send**.
 
@@ -309,11 +636,14 @@ Requires the `can_assign_roles` permission in the workspace (admin role has this
 {
   "id": 1,
   "email": "colleague@example.com",
-  "roleName": "sales_manager",
+  "roleName": "ws_manager",
   "status": "Pending",
-  "expiresAt": "2026-04-20T12:00:00Z"
+  "expiresAt": "2026-04-24T12:00:00Z",
+  "token": "abc123..."
 }
 ```
+
+The invitation token is included in the response for testing convenience.
 
 ### List pending invitations
 
@@ -323,7 +653,7 @@ Returns all pending invitations for the workspace.
 
 ---
 
-## 9. Accept an invitation
+## 15. Accept a workspace invitation
 
 **Endpoint:** `POST /api/v1/invitations/accept`
 
@@ -333,7 +663,7 @@ The invited user must register (if new) and log in first, then accept the invita
 
 1. Register a second user with the invited email (step 4).
 2. Log in as that user (step 5).
-3. Authorise the Core Scalar UI with the new user's token (step 6).
+3. Authorise the Core Scalar UI with the new user's token (step 7).
 4. Find **Invitations** → **AcceptInvitation** in the sidebar.
 5. Enter:
 
@@ -343,7 +673,7 @@ The invited user must register (if new) and log in first, then accept the invita
 }
 ```
 
-> **Note:** In production, the token would be delivered via email link. For testing, you can look up the token in the database: `SELECT token FROM workspace_invitations WHERE email = 'colleague@example.com';` using pgAdmin at `http://localhost:5050`.
+> **Note:** The token is returned in the `POST .../invitations` response body. For manual lookup, query the database: `SELECT token FROM workspace_invitations WHERE email = 'colleague@example.com';` using pgAdmin at `http://localhost:5050`.
 
 ### Expected response — `200 OK`
 
@@ -357,7 +687,7 @@ The user is now a member of the workspace with the role specified in the invitat
 
 ---
 
-## 10. Manage workspace members
+## 16. Manage workspace members
 
 All member endpoints are under `/api/v1/workspaces/{workspaceId}/members`.
 
@@ -374,7 +704,7 @@ Requires workspace membership. Returns:
     "firstName": "Jane",
     "lastName": "Doe",
     "email": "jane.doe@example.com",
-    "roleName": "admin",
+    "roleName": "ws_admin",
     "joinedAt": "2026-04-13T12:00:00Z"
   },
   {
@@ -382,7 +712,7 @@ Requires workspace membership. Returns:
     "firstName": "Bob",
     "lastName": "Smith",
     "email": "colleague@example.com",
-    "roleName": "sales_manager",
+    "roleName": "ws_manager",
     "joinedAt": "2026-04-13T12:05:00Z"
   }
 ]
@@ -392,7 +722,7 @@ Requires workspace membership. Returns:
 
 **Endpoint:** `PUT /api/v1/workspaces/{workspaceId}/members/{userId}/role`
 
-Requires `can_assign_roles` permission.
+Requires `assign_ws_roles` permission.
 
 ```json
 {
@@ -406,26 +736,38 @@ Returns `204 No Content` on success.
 
 **Endpoint:** `DELETE /api/v1/workspaces/{workspaceId}/members/{userId}`
 
-Requires `can_assign_roles` permission, or the user can remove themselves.
+Requires `remove_ws_members` permission, or the user can remove themselves.
 
 Returns `204 No Content` on success.
 
 ---
 
-## 11. Manage roles and permissions
+## 17. Manage workspace roles and permissions
 
 ### List available permissions
 
 **Endpoint:** `GET /api/v1/permissions`
 
-Any authenticated user. Returns the full list of system permissions:
+Any authenticated user. Returns all 16 permissions (both org-scoped and ws-scoped):
 
 ```json
 [
-  { "id": 1, "name": "can_manage_settings" },
-  { "id": 2, "name": "can_assign_roles" },
-  { "id": 3, "name": "can_edit_deals" },
-  { "id": 4, "name": "can_view_analytics" }
+  { "id": 1, "name": "manage_org_settings" },
+  { "id": 2, "name": "invite_to_org" },
+  { "id": 3, "name": "manage_join_requests" },
+  { "id": 4, "name": "remove_org_members" },
+  { "id": 5, "name": "assign_org_roles" },
+  { "id": 6, "name": "manage_org_roles" },
+  { "id": 7, "name": "create_workspaces" },
+  { "id": 8, "name": "manage_ws_settings" },
+  { "id": 9, "name": "invite_to_workspace" },
+  { "id": 10, "name": "add_ws_members" },
+  { "id": 11, "name": "remove_ws_members" },
+  { "id": 12, "name": "assign_ws_roles" },
+  { "id": 13, "name": "manage_ws_roles" },
+  { "id": 14, "name": "edit_deals" },
+  { "id": 15, "name": "view_deals" },
+  { "id": 16, "name": "view_analytics" }
 ]
 ```
 
@@ -439,36 +781,43 @@ Requires workspace membership. Returns system roles (available in all workspaces
 [
   {
     "id": 1,
-    "name": "admin",
+    "name": "ws_admin",
     "isSystem": true,
     "permissions": [
-      { "id": 1, "name": "can_manage_settings" },
-      { "id": 2, "name": "can_assign_roles" },
-      { "id": 3, "name": "can_edit_deals" },
-      { "id": 4, "name": "can_view_analytics" }
+      { "id": 8, "name": "manage_ws_settings" },
+      { "id": 9, "name": "invite_to_workspace" },
+      { "id": 10, "name": "add_ws_members" },
+      { "id": 11, "name": "remove_ws_members" },
+      { "id": 12, "name": "assign_ws_roles" },
+      { "id": 13, "name": "manage_ws_roles" },
+      { "id": 14, "name": "edit_deals" },
+      { "id": 15, "name": "view_deals" },
+      { "id": 16, "name": "view_analytics" }
     ]
   },
   {
     "id": 2,
-    "name": "sales_manager",
+    "name": "ws_manager",
     "isSystem": true,
     "permissions": [
-      { "id": 3, "name": "can_edit_deals" }
+      { "id": 14, "name": "edit_deals" },
+      { "id": 15, "name": "view_deals" },
+      { "id": 16, "name": "view_analytics" }
     ]
   }
 ]
 ```
 
-### Create a custom role
+### Create a custom workspace role
 
 **Endpoint:** `POST /api/v1/workspaces/{workspaceId}/roles`
 
-Requires `can_manage_settings` permission.
+Requires `manage_ws_roles` permission.
 
 ```json
 {
   "name": "team_lead",
-  "permissionIds": [2, 3, 4]
+  "permissionIds": [12, 14, 15, 16]
 }
 ```
 
@@ -476,13 +825,14 @@ Requires `can_manage_settings` permission.
 
 ```json
 {
-  "id": 4,
+  "id": 5,
   "name": "team_lead",
   "isSystem": false,
   "permissions": [
-    { "id": 2, "name": "can_assign_roles" },
-    { "id": 3, "name": "can_edit_deals" },
-    { "id": 4, "name": "can_view_analytics" }
+    { "id": 12, "name": "assign_ws_roles" },
+    { "id": 14, "name": "edit_deals" },
+    { "id": 15, "name": "view_deals" },
+    { "id": 16, "name": "view_analytics" }
   ]
 }
 ```
@@ -491,12 +841,12 @@ Requires `can_manage_settings` permission.
 
 **Endpoint:** `PUT /api/v1/workspaces/{workspaceId}/roles/{roleId}`
 
-Requires `can_manage_settings`. System roles cannot be modified.
+Requires `manage_ws_roles`. System roles cannot be modified.
 
 ```json
 {
   "name": "senior_lead",
-  "permissionIds": [1, 2, 3, 4]
+  "permissionIds": [8, 12, 14, 15, 16]
 }
 ```
 
@@ -506,11 +856,19 @@ Returns `204 No Content` on success.
 
 **Endpoint:** `DELETE /api/v1/workspaces/{workspaceId}/roles/{roleId}`
 
-Requires `can_manage_settings`. System roles cannot be deleted. Returns `204 No Content` on success.
+Requires `manage_ws_roles`. System roles cannot be deleted. Returns `204 No Content` on success.
 
 ---
 
-## 12. Health checks
+## 18. Combined invitations
+
+**Endpoint:** `GET /api/v1/invitations/mine`
+
+Returns all pending invitations for the authenticated user — both workspace invitations and organization invitations in a single list. Useful for building a "pending invitations" UI.
+
+---
+
+## 19. Health checks
 
 All services expose a health check endpoint that does **not** require a token. These are useful for verifying the stack is alive before running other calls.
 
@@ -526,39 +884,114 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 
 ---
 
-## 13. Available endpoints reference
+## 20. Available endpoints reference
 
 ### Authentication service — `http://localhost:8081`
 
 | Method | Path | Auth | Summary |
 |--------|------|------|---------|
-| `POST` | `/api/v1/auth/register` | None | Register a new user (no role assigned) |
+| `POST` | `/api/v1/auth/register` | None | Register a new user |
 | `POST` | `/api/v1/auth/login` | None | Authenticate and receive JWT |
+| `GET` | `/api/v1/auth/me` | JWT | Get authenticated user's profile |
 | `GET` | `/health` | None | Health check (DB connectivity) |
 | `GET` | `/scalar/v1` | None | Scalar interactive docs |
 | `GET` | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
 ### Core service — `http://localhost:8082`
 
+**Organizations:**
+
 | Method | Path | Auth | Summary |
 |--------|------|------|---------|
-| `POST` | `/api/v1/workspaces` | JWT | Create a workspace (creator becomes admin) |
+| `POST` | `/api/v1/organizations` | JWT | Create organization (creator becomes org_owner) |
+| `GET` | `/api/v1/organizations` | JWT | List user's organizations |
+| `GET` | `/api/v1/organizations/search?q=...` | JWT | Search organizations by name |
+| `GET` | `/api/v1/organizations/{id}` | JWT + org membership | Get organization details |
+| `PUT` | `/api/v1/organizations/{id}` | JWT + `manage_org_settings` | Update organization |
+
+**Organization members:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `GET` | `/api/v1/organizations/{id}/members` | JWT + org membership | List org members |
+| `DELETE` | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove member |
+| `PUT` | `/api/v1/organizations/{id}/members/{userId}/role` | JWT + `assign_org_roles` | Change member's org role |
+
+**Join requests:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `POST` | `/api/v1/organizations/{id}/join-requests` | JWT | Request to join organization |
+| `GET` | `/api/v1/organizations/{id}/join-requests` | JWT + `manage_join_requests` | List pending join requests |
+| `PUT` | `/api/v1/organizations/{id}/join-requests/{reqId}` | JWT + `manage_join_requests` | Approve or reject request |
+| `GET` | `/api/v1/join-requests/mine` | JWT | List own join requests |
+
+**Organization invitations:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `POST` | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | Invite user by email |
+| `GET` | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | List pending invitations |
+| `DELETE` | `/api/v1/organizations/{id}/invitations/{invId}` | JWT + `invite_to_org` | Cancel invitation |
+| `POST` | `/api/v1/invitations/accept-org` | JWT + matching email | Accept org invitation |
+
+**Organization roles:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `GET` | `/api/v1/organizations/{id}/roles` | JWT + org membership | List org roles |
+| `POST` | `/api/v1/organizations/{id}/roles` | JWT + `manage_org_roles` | Create custom org role |
+| `PUT` | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Update custom org role |
+| `DELETE` | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Delete custom org role |
+
+**Workspaces:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `POST` | `/api/v1/workspaces` | JWT + `create_workspaces` (org perm) | Create workspace (requires organizationId) |
 | `GET` | `/api/v1/workspaces` | JWT | List user's workspaces |
-| `GET` | `/api/v1/workspaces/{id}` | JWT + membership | Get workspace details |
-| `PUT` | `/api/v1/workspaces/{id}` | JWT + `can_manage_settings` | Update workspace name |
-| `DELETE` | `/api/v1/workspaces/{id}` | JWT + admin | Archive workspace |
-| `GET` | `/api/v1/workspaces/{id}/members` | JWT + membership | List workspace members |
-| `PUT` | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `can_assign_roles` | Change member role |
-| `DELETE` | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `can_assign_roles` / self | Remove member |
-| `POST` | `/api/v1/workspaces/{id}/invitations` | JWT + `can_assign_roles` | Invite user by email |
-| `GET` | `/api/v1/workspaces/{id}/invitations` | JWT + `can_assign_roles` | List pending invitations |
-| `DELETE` | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `can_assign_roles` | Cancel invitation |
-| `POST` | `/api/v1/invitations/accept` | JWT + matching email | Accept invitation |
-| `GET` | `/api/v1/workspaces/{id}/roles` | JWT + membership | List roles (system + custom) |
-| `POST` | `/api/v1/workspaces/{id}/roles` | JWT + `can_manage_settings` | Create custom role |
-| `PUT` | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `can_manage_settings` | Update custom role |
-| `DELETE` | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `can_manage_settings` | Archive custom role |
-| `GET` | `/api/v1/permissions` | JWT | List all available permissions |
+| `GET` | `/api/v1/workspaces/{id}` | JWT + ws membership | Get workspace details |
+| `PUT` | `/api/v1/workspaces/{id}` | JWT + `manage_ws_settings` | Update workspace name |
+| `DELETE` | `/api/v1/workspaces/{id}` | JWT + ws_admin | Archive workspace |
+
+**Workspace members:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `GET` | `/api/v1/workspaces/{id}/members` | JWT + ws membership | List workspace members |
+| `POST` | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` | Add org member to workspace |
+| `PUT` | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `assign_ws_roles` | Change member role |
+| `DELETE` | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` / self | Remove member |
+
+**Workspace invitations:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `POST` | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | Invite user by email (returns token) |
+| `GET` | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | List pending invitations |
+| `DELETE` | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `invite_to_workspace` | Cancel invitation |
+| `POST` | `/api/v1/invitations/accept` | JWT + matching email | Accept workspace invitation |
+
+**Workspace roles:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `GET` | `/api/v1/workspaces/{id}/roles` | JWT + ws membership | List roles (system + custom) |
+| `POST` | `/api/v1/workspaces/{id}/roles` | JWT + `manage_ws_roles` | Create custom role |
+| `PUT` | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `manage_ws_roles` | Update custom role |
+| `DELETE` | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `manage_ws_roles` | Archive custom role |
+
+**Combined invitations & permissions:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `GET` | `/api/v1/invitations/mine` | JWT | List all pending invitations (ws + org) |
+| `GET` | `/api/v1/permissions` | JWT | List all 16 permissions |
+
+**Infrastructure:**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
 | `GET` | `/health` | None | Health check (DB connectivity) |
 | `GET` | `/scalar/v1` | None | Scalar interactive docs |
 | `GET` | `/openapi/v1.json` | None | Raw OpenAPI spec |
@@ -569,6 +1002,7 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 |--------|------|------|------------|
 | `POST` | `/auth/api/v1/auth/login` | None | Auth service |
 | `POST` | `/auth/api/v1/auth/register` | None | Auth service |
+| `GET` | `/auth/api/v1/auth/me` | Bearer JWT | Auth service |
 | `GET` | `/auth/health` | None | Auth service |
 | `GET` | `/core/health` | None | Core service |
 | `GET` | `/health` | None | Gateway itself |
@@ -582,7 +1016,7 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 
 ---
 
-## 14. Tips and troubleshooting
+## 21. Tips and troubleshooting
 
 **Scalar page is blank or shows a network error**
 - Confirm the service is running: `docker compose ps`.
@@ -600,15 +1034,21 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 - Log in again to get a fresh `accessToken` and re-enter it in the Scalar **Authorize** dialog.
 
 **403 / "You do not have the '...' permission" on Core endpoints**
-- Your user does not have the required permission in the target workspace. Check your membership and role with `GET /api/v1/workspaces/{id}/members`.
-- Workspace admin role has all permissions by default.
+- Your user does not have the required permission. For org endpoints, check your org role with `GET /api/v1/organizations/{id}/members`. For workspace endpoints, check with `GET /api/v1/workspaces/{id}/members`.
+- The `org_owner` role has all org permissions; `ws_admin` has all workspace permissions.
+
+**"You are not a member of this organization"**
+- The `sub` claim in your JWT does not match any `user_role_organization` row for that org. Create an org, request to join, or accept an invitation first.
 
 **"You are not a member of this workspace"**
-- The `sub` claim in your JWT does not match any `WorkspaceMember` row for that workspace. Create a workspace first, or accept an invitation.
+- The `sub` claim in your JWT does not match any `user_role_workspace` row for that workspace. Create a workspace, get added by an admin, or accept an invitation.
+
+**"User is not a member of the organization" when adding to workspace**
+- The `POST .../workspaces/{id}/members` endpoint requires the target user to be a member of the workspace's parent organization first.
 
 **How do I find invitation tokens for testing?**
-- Connect to pgAdmin at `http://localhost:5050` and query: `SELECT id, email, token, status FROM workspace_invitations;`.
-- Or check the response body of the `POST .../invitations` call — the token is not returned in the DTO, but the invitation ID is. Query by ID for the token.
+- **Workspace invitations:** The token is returned in the `POST .../invitations` response body. For manual lookup: `SELECT id, email, token, status FROM workspace_invitations;` in pgAdmin.
+- **Org invitations:** Query: `SELECT id, email, token, status FROM organization_invitations;` in pgAdmin at `http://localhost:5050`.
 
 **Scalar shows no endpoints**
 - The OpenAPI JSON may have failed to load. Navigate directly to `http://localhost:8082/openapi/v1.json` and confirm you get valid JSON (not an error page).

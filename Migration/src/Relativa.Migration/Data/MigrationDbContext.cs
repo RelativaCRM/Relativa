@@ -6,22 +6,29 @@ namespace Relativa.Migration.Data;
 
 public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> options) : DbContext(options)
 {
-    public DbSet<Role> Roles => Set<Role>();
-    public DbSet<Permission> Permissions => Set<Permission>();
-    public DbSet<Organization> Organizations => Set<Organization>();
-    public DbSet<Workspace> Workspaces => Set<Workspace>();
-    public DbSet<EntityType> EntityTypes => Set<EntityType>();
-    public DbSet<PersonalDataPropertyValue> PersonalDataPropertyValues => Set<PersonalDataPropertyValue>();
-    public DbSet<LocationPropertyValue> LocationPropertyValues => Set<LocationPropertyValue>();
-    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<User> Users => Set<User>();
-    public DbSet<OrganizationWorkspace> OrganizationWorkspaces => Set<OrganizationWorkspace>();
+    public DbSet<Permission> Permissions => Set<Permission>();
+
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationRole> OrganizationRoles => Set<OrganizationRole>();
+    public DbSet<OrganizationRolePermission> OrganizationRolePermissions => Set<OrganizationRolePermission>();
+    public DbSet<UserRoleOrganization> UserRoleOrganizations => Set<UserRoleOrganization>();
+    public DbSet<OrganizationJoinRequest> OrganizationJoinRequests => Set<OrganizationJoinRequest>();
+    public DbSet<OrganizationInvitation> OrganizationInvitations => Set<OrganizationInvitation>();
+
+    public DbSet<Workspace> Workspaces => Set<Workspace>();
+    public DbSet<WorkspaceRole> WorkspaceRoles => Set<WorkspaceRole>();
+    public DbSet<WorkspaceRolePermission> WorkspaceRolePermissions => Set<WorkspaceRolePermission>();
+    public DbSet<UserRoleWorkspace> UserRoleWorkspaces => Set<UserRoleWorkspace>();
+    public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
+
+    public DbSet<EntityType> EntityTypes => Set<EntityType>();
     public DbSet<Entity> Entities => Set<Entity>();
     public DbSet<EntityWorkspace> EntityWorkspaces => Set<EntityWorkspace>();
+    public DbSet<PersonalDataPropertyValue> PersonalDataPropertyValues => Set<PersonalDataPropertyValue>();
+    public DbSet<LocationPropertyValue> LocationPropertyValues => Set<LocationPropertyValue>();
     public DbSet<DealPropertyValue> DealPropertyValues => Set<DealPropertyValue>();
     public DbSet<EntityProperty> EntityProperties => Set<EntityProperty>();
-    public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
-    public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

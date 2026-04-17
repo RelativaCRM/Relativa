@@ -42,10 +42,10 @@ public static class InvitationEndpoints
         .WithSummary("Cancel a pending invitation")
         .Produces(StatusCodes.Status204NoContent);
 
-        var acceptGroup = routes.MapGroup("/api/v1/invitations")
+        var invGroup = routes.MapGroup("/api/v1/invitations")
             .WithTags("Invitations");
 
-        acceptGroup.MapPost("/accept", async (AcceptInvitationRequest request, IInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        invGroup.MapPost("/accept", async (AcceptInvitationRequest request, IInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var userId = WorkspaceEndpoints.GetUserId(user);
             var email = user.FindFirstValue("email")
@@ -57,6 +57,18 @@ public static class InvitationEndpoints
         .WithSummary("Accept a workspace invitation by token")
         .Produces(StatusCodes.Status200OK)
         .ProducesValidationProblem();
+
+        invGroup.MapGet("/mine", async (IInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(user);
+            var email = user.FindFirstValue("email")
+                ?? throw new UnauthorizedAccessException("Missing email claim.");
+            var result = await service.GetMyInvitationsAsync(userId, email, ct);
+            return Results.Ok(result);
+        })
+        .WithName("GetMyInvitations")
+        .WithSummary("Get all pending invitations for the authenticated user")
+        .Produces<MyInvitationsDto>();
 
         return wsGroup;
     }

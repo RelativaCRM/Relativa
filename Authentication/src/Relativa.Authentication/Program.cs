@@ -1,5 +1,8 @@
+using System.Text;
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Relativa.Authentication.Application.Interfaces;
 using Relativa.Authentication.Application.Services;
 using Relativa.Authentication.Domain.Interfaces;
@@ -34,6 +37,27 @@ try
 
     builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            var config = builder.Configuration;
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = config["Jwt:Issuer"],
+                ValidateAudience = true,
+                ValidAudience = config["Jwt:Audience"],
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(config["Jwt:SecretKey"]!)),
+                ValidateLifetime = true
+            };
+        });
+
+    builder.Services.AddAuthorization();
+
     builder.Services.AddValidatorsFromAssemblyContaining<IAuthService>();
 
     builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -51,6 +75,9 @@ try
 
     app.MapOpenApi();
     app.MapScalarApiReference();
+
+    app.UseAuthentication();
+    app.UseAuthorization();
 
     app.MapHealthChecks("/health");
     app.MapAuthEndpoints();

@@ -41,7 +41,6 @@ public sealed class AuthService(
             LastName = request.LastName,
             Email = request.Email,
             Password = passwordHasher.Hash(request.Password),
-            RoleId = null,
             CreatedAt = DateTime.UtcNow,
             IsArchived = false
         };
@@ -53,5 +52,13 @@ public sealed class AuthService(
             user.Email,
             user.FirstName,
             user.LastName);
+    }
+
+    public async Task<UserProfileDto> GetProfileAsync(int userId, CancellationToken ct = default)
+    {
+        var user = await userRepository.GetByIdAsync(userId, ct)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        return new UserProfileDto(user.Id, user.Email, user.FirstName, user.LastName);
     }
 }

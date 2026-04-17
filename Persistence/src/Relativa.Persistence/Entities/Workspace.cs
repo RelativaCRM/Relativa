@@ -4,12 +4,13 @@ public class Workspace
 {
     public int Id { get; set; }
     public string Name { get; set; } = null!;
+    public int OrganizationId { get; set; }
     public int CreatedByUserId { get; set; }
     public bool IsArchived { get; set; }
+    public Organization Organization { get; set; } = null!;
     public User CreatedBy { get; set; } = null!;
-    public ICollection<OrganizationWorkspace> OrganizationWorkspaces { get; set; } = new List<OrganizationWorkspace>();
     public ICollection<EntityWorkspace> EntityWorkspaces { get; set; } = new List<EntityWorkspace>();
-    public ICollection<WorkspaceMember> Members { get; set; } = new List<WorkspaceMember>();
+    public ICollection<UserRoleWorkspace> Members { get; set; } = new List<UserRoleWorkspace>();
     public ICollection<WorkspaceInvitation> Invitations { get; set; } = new List<WorkspaceInvitation>();
-    public ICollection<Role> Roles { get; set; } = new List<Role>();
+    public ICollection<WorkspaceRole> Roles { get; set; } = new List<WorkspaceRole>();
 }

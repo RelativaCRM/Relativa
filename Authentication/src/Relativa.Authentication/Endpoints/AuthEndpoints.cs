@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Relativa.Authentication.Application.DTOs;
 using Relativa.Authentication.Application.Interfaces;
 
@@ -33,6 +34,20 @@ public static class AuthEndpoints
         .Produces<RegisterResponseDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status409Conflict);
+
+        group.MapGet("/me", async (IAuthService authService, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var sub = user.FindFirstValue("sub")
+                ?? throw new UnauthorizedAccessException("Missing sub claim.");
+            var userId = int.Parse(sub);
+            var result = await authService.GetProfileAsync(userId, ct);
+            return Results.Ok(result);
+        })
+        .WithName("GetProfile")
+        .WithSummary("Get the current user's profile")
+        .RequireAuthorization()
+        .Produces<UserProfileDto>()
+        .Produces(StatusCodes.Status401Unauthorized);
 
         return group;
     }
