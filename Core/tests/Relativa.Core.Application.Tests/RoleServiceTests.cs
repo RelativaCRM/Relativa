@@ -12,9 +12,9 @@ namespace Relativa.Core.Application.Tests;
 
 public sealed class RoleServiceTests
 {
-    private readonly Mock<IRoleRepository> _roleRepo = new();
+    private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
     private readonly Mock<IPermissionRepository> _permissionRepo = new();
-    private readonly Mock<IWorkspaceMemberRepository> _memberRepo = new();
+    private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
     private readonly Mock<IValidator<CreateRoleRequest>> _createValidator = new();
     private readonly RoleService _sut;
 
@@ -35,17 +35,17 @@ public sealed class RoleServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
 
-    private WorkspaceMember MemberWithPermission(int userId, int workspaceId, string permission) =>
+    private UserRoleWorkspace MemberWithPermission(int userId, int workspaceId, string permission) =>
         new()
         {
             UserId = userId,
             WorkspaceId = workspaceId,
-            Role = new Role
+            Role = new WorkspaceRole
             {
                 Name = "sales_manager",
                 RolePermissions =
                 [
-                    new RolePermission { Permission = new Permission { Name = permission } }
+                    new WorkspaceRolePermission { Permission = new Permission { Name = permission } }
                 ]
             }
         };
@@ -55,7 +55,7 @@ public sealed class RoleServiceTests
     {
         _memberRepo
             .Setup(r => r.GetAsync(5, 2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WorkspaceMember?)null);
+            .ReturnsAsync((UserRoleWorkspace?)null);
 
         var act = () => _sut.GetByWorkspaceAsync(2, 5);
 
@@ -67,9 +67,9 @@ public sealed class RoleServiceTests
     public async Task GetByWorkspaceAsync_ValidMember_ReturnsOnlyActiveRoles()
     {
         var member = MemberWithPermission(1, 3, "can_view_analytics");
-        var roles = new List<Role>
+        var roles = new List<WorkspaceRole>
         {
-            new() { Id = 1, Name = "admin", WorkspaceId = null, IsArchived = false, RolePermissions = [] },
+            new() { Id = 1, Name = "ws_admin", WorkspaceId = null, IsArchived = false, RolePermissions = [] },
             new() { Id = 2, Name = "old-role", WorkspaceId = 3, IsArchived = true, RolePermissions = [] },
             new() { Id = 3, Name = "reviewer", WorkspaceId = 3, IsArchived = false, RolePermissions = [] }
         };
@@ -91,7 +91,7 @@ public sealed class RoleServiceTests
     public async Task CreateAsync_ValidRequest_CreatesRoleWithPermissions()
     {
         var request = new CreateRoleRequest("pipeline-lead", [1, 2]);
-        var caller = MemberWithPermission(1, 4, "can_manage_settings");
+        var caller = MemberWithPermission(1, 4, "manage_ws_roles");
         var permissions = new List<Permission>
         {
             new() { Id = 1, Name = "can_edit_deals" },
@@ -111,14 +111,14 @@ public sealed class RoleServiceTests
         result.Name.Should().Be("pipeline-lead");
         result.IsSystem.Should().BeFalse();
         result.Permissions.Should().HaveCount(2);
-        _roleRepo.Verify(r => r.AddAsync(It.IsAny<Role>(), It.IsAny<CancellationToken>()), Times.Once);
+        _roleRepo.Verify(r => r.AddAsync(It.IsAny<WorkspaceRole>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task CreateAsync_InvalidPermissionIds_ThrowsArgumentException()
     {
         var request = new CreateRoleRequest("bad-role", [1, 999]);
-        var caller = MemberWithPermission(1, 4, "can_manage_settings");
+        var caller = MemberWithPermission(1, 4, "manage_ws_roles");
 
         SetupValidCreate();
         _memberRepo
@@ -137,8 +137,8 @@ public sealed class RoleServiceTests
     [Fact]
     public async Task UpdateAsync_SystemRole_ThrowsInvalidOperationException()
     {
-        var caller = MemberWithPermission(1, 5, "can_manage_settings");
-        var systemRole = new Role { Id = 1, Name = "admin", WorkspaceId = null, IsArchived = false, RolePermissions = [] };
+        var caller = MemberWithPermission(1, 5, "manage_ws_roles");
+        var systemRole = new WorkspaceRole { Id = 1, Name = "ws_admin", WorkspaceId = null, IsArchived = false, RolePermissions = [] };
 
         _memberRepo
             .Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
@@ -151,14 +151,14 @@ public sealed class RoleServiceTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("System roles cannot be modified.");
-        _roleRepo.Verify(r => r.UpdateAsync(It.IsAny<Role>(), It.IsAny<CancellationToken>()), Times.Never);
+        _roleRepo.Verify(r => r.UpdateAsync(It.IsAny<WorkspaceRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task UpdateAsync_RoleFromAnotherWorkspace_ThrowsKeyNotFoundException()
     {
-        var caller = MemberWithPermission(1, 5, "can_manage_settings");
-        var foreignRole = new Role { Id = 8, Name = "custom", WorkspaceId = 99, IsArchived = false, RolePermissions = [] };
+        var caller = MemberWithPermission(1, 5, "manage_ws_roles");
+        var foreignRole = new WorkspaceRole { Id = 8, Name = "custom", WorkspaceId = 99, IsArchived = false, RolePermissions = [] };
 
         _memberRepo
             .Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
@@ -176,8 +176,8 @@ public sealed class RoleServiceTests
     [Fact]
     public async Task ArchiveAsync_SystemRole_ThrowsInvalidOperationException()
     {
-        var caller = MemberWithPermission(1, 5, "can_manage_settings");
-        var systemRole = new Role { Id = 2, Name = "sales_manager", WorkspaceId = null, IsArchived = false };
+        var caller = MemberWithPermission(1, 5, "manage_ws_roles");
+        var systemRole = new WorkspaceRole { Id = 2, Name = "sales_manager", WorkspaceId = null, IsArchived = false };
 
         _memberRepo
             .Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
@@ -195,8 +195,8 @@ public sealed class RoleServiceTests
     [Fact]
     public async Task ArchiveAsync_ValidCustomRole_SetsIsArchivedTrue()
     {
-        var caller = MemberWithPermission(1, 5, "can_manage_settings");
-        var customRole = new Role { Id = 9, Name = "pipeline-lead", WorkspaceId = 5, IsArchived = false };
+        var caller = MemberWithPermission(1, 5, "manage_ws_roles");
+        var customRole = new WorkspaceRole { Id = 9, Name = "pipeline-lead", WorkspaceId = 5, IsArchived = false };
 
         _memberRepo
             .Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))

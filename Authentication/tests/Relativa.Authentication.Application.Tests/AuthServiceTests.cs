@@ -131,7 +131,7 @@ public sealed class AuthServiceTests
     }
 
     [Fact]
-    public async Task RegisterAsync_NewEmail_CreatesUserWithNullRoleIdAndHashedPassword()
+    public async Task RegisterAsync_NewEmail_CreatesUserWithHashedPassword()
     {
         var request = new RegisterRequestDto("Taras", "Melnyk", "melnyk@relativa.io", "Secur3P@ss");
 
@@ -153,8 +153,7 @@ public sealed class AuthServiceTests
         result.Email.Should().Be(request.Email);
         result.FirstName.Should().Be(request.FirstName);
         result.LastName.Should().Be(request.LastName);
-        captured!.RoleId.Should().BeNull();
-        captured.Password.Should().Be("bcrypt-result");
+        captured!.Password.Should().Be("bcrypt-result");
         _userRepo.Verify(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 

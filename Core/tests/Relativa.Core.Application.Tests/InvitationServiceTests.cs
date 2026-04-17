@@ -13,8 +13,9 @@ namespace Relativa.Core.Application.Tests;
 public sealed class InvitationServiceTests
 {
     private readonly Mock<IWorkspaceInvitationRepository> _invitationRepo = new();
-    private readonly Mock<IWorkspaceMemberRepository> _memberRepo = new();
-    private readonly Mock<IRoleRepository> _roleRepo = new();
+    private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
+    private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
+    private readonly Mock<IOrgInvitationRepository> _orgInvitationRepo = new();
     private readonly Mock<IValidator<InviteMemberRequest>> _inviteValidator = new();
     private readonly Mock<IValidator<AcceptInvitationRequest>> _acceptValidator = new();
     private readonly InvitationService _sut;
@@ -25,6 +26,7 @@ public sealed class InvitationServiceTests
             _invitationRepo.Object,
             _memberRepo.Object,
             _roleRepo.Object,
+            _orgInvitationRepo.Object,
             _inviteValidator.Object,
             _acceptValidator.Object
         );
@@ -44,17 +46,17 @@ public sealed class InvitationServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
 
-    private WorkspaceMember MemberWithPermission(int userId, int workspaceId, string permission) =>
+    private UserRoleWorkspace MemberWithPermission(int userId, int workspaceId, string permission) =>
         new()
         {
             UserId = userId,
             WorkspaceId = workspaceId,
-            Role = new Role
+            Role = new WorkspaceRole
             {
                 Name = "sales_manager",
                 RolePermissions =
                 [
-                    new RolePermission { Permission = new Permission { Name = permission } }
+                    new WorkspaceRolePermission { Permission = new Permission { Name = permission } }
                 ]
             }
         };
@@ -63,8 +65,8 @@ public sealed class InvitationServiceTests
     public async Task InviteAsync_ValidRequest_CreatesInvitationWithPendingStatus()
     {
         var request = new InviteMemberRequest("hrytsenko@relativa.io", 2);
-        var caller = MemberWithPermission(1, 5, "can_assign_roles");
-        var role = new Role { Id = 2, Name = "analyst", WorkspaceId = null };
+        var caller = MemberWithPermission(1, 5, "invite_to_workspace");
+        var role = new WorkspaceRole { Id = 2, Name = "analyst", WorkspaceId = null };
 
         SetupValidInvite();
         _memberRepo
@@ -92,11 +94,11 @@ public sealed class InvitationServiceTests
     public async Task InviteAsync_UserLacksPermission_ThrowsUnauthorizedAccessException()
     {
         var request = new InviteMemberRequest("hrytsenko@relativa.io", 2);
-        var caller = new WorkspaceMember
+        var caller = new UserRoleWorkspace
         {
             UserId = 3,
             WorkspaceId = 5,
-            Role = new Role { Name = "analyst", RolePermissions = [] }
+            Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
         };
 
         SetupValidInvite();
@@ -116,8 +118,8 @@ public sealed class InvitationServiceTests
     public async Task InviteAsync_RoleFromAnotherWorkspace_ThrowsArgumentException()
     {
         var request = new InviteMemberRequest("bondarenko@relativa.io", 7);
-        var caller = MemberWithPermission(1, 5, "can_assign_roles");
-        var foreignRole = new Role { Id = 7, Name = "custom", WorkspaceId = 99 };
+        var caller = MemberWithPermission(1, 5, "invite_to_workspace");
+        var foreignRole = new WorkspaceRole { Id = 7, Name = "custom", WorkspaceId = 99 };
 
         SetupValidInvite();
         _memberRepo
@@ -142,7 +144,7 @@ public sealed class InvitationServiceTests
             Id = 1,
             WorkspaceId = 3,
             Email = "kravets@relativa.io",
-            RoleId = 2,
+            WsRoleId = 2,
             Token = "valid-token-abc",
             Status = "Pending",
             ExpiresAt = DateTime.UtcNow.AddDays(5)
@@ -154,12 +156,12 @@ public sealed class InvitationServiceTests
             .ReturnsAsync(invitation);
         _memberRepo
             .Setup(r => r.GetAsync(10, 3, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WorkspaceMember?)null);
+            .ReturnsAsync((UserRoleWorkspace?)null);
 
         await _sut.AcceptAsync(10, "kravets@relativa.io", request);
 
         invitation.Status.Should().Be("Accepted");
-        _memberRepo.Verify(r => r.AddAsync(It.IsAny<WorkspaceMember>(), It.IsAny<CancellationToken>()), Times.Once);
+        _memberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()), Times.Once);
         _invitationRepo.Verify(r => r.UpdateAsync(invitation, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -262,7 +264,7 @@ public sealed class InvitationServiceTests
             Status = "Pending",
             ExpiresAt = DateTime.UtcNow.AddDays(2)
         };
-        var existing = new WorkspaceMember { UserId = 8, WorkspaceId = 4 };
+        var existing = new UserRoleWorkspace { UserId = 8, WorkspaceId = 4 };
 
         SetupValidAccept();
         _invitationRepo
@@ -277,14 +279,14 @@ public sealed class InvitationServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("You are already a member of this workspace.");
         _memberRepo.Verify(
-            r => r.AddAsync(It.IsAny<WorkspaceMember>(), It.IsAny<CancellationToken>()),
+            r => r.AddAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
     [Fact]
     public async Task CancelAsync_InvitationFromAnotherWorkspace_ThrowsKeyNotFoundException()
     {
-        var caller = MemberWithPermission(1, 5, "can_assign_roles");
+        var caller = MemberWithPermission(1, 5, "invite_to_workspace");
         var invitation = new WorkspaceInvitation { Id = 10, WorkspaceId = 99, Status = "Pending" };
 
         _memberRepo
