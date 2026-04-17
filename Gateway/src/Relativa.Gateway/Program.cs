@@ -43,6 +43,19 @@ try
             };
         });
 
+    builder.Services.AddCors(options =>
+    {
+        options.AddDefaultPolicy(policy =>
+        {
+            var origins = config.GetSection("Cors:Origins").Get<string[]>()
+                ?? ["http://localhost:5173", "http://localhost:3000"];
+            policy.WithOrigins(origins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        });
+    });
+
     builder.Services.AddAuthorization();
     builder.Services.AddReverseProxy().LoadFromConfig(config.GetSection("ReverseProxy"));
 
@@ -55,6 +68,7 @@ try
     app.UseForwardedHeaders();
     app.UseExceptionHandler();
     app.UseSerilogRequestLogging();
+    app.UseCors();
 
     app.MapOpenApi();
     app.MapScalarApiReference();
@@ -65,7 +79,7 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
-    app.MapReverseProxy().RequireAuthorization();
+    app.MapReverseProxy();
 
     app.Run();
 }
