@@ -24,7 +24,7 @@ jobs:
         run: dotnet build Authentication/Relativa.Authentication.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --configuration Release --verbosity normal
+        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --no-restore --configuration Release --verbosity normal
 
   test-core:
     name: Core Tests
@@ -39,4 +39,4 @@ jobs:
         run: dotnet build Core/Relativa.Core.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --configuration Release --verbosity normal
+        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --no-restore --configuration Release --verbosity normal
