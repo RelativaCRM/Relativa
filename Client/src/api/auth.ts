@@ -24,6 +24,13 @@ export interface LoginResponse {
   expiresAt: string;
 }
 
+export interface UserProfile {
+  id: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+}
+
 const AUTH_PREFIX = '/auth/api/v1/auth';
 
 export const authApi = {
@@ -32,5 +39,8 @@ export const authApi = {
   },
   login(payload: LoginRequest): Promise<LoginResponse> {
     return api.post<LoginResponse>(`${AUTH_PREFIX}/login`, { ...payload });
+  },
+  me(): Promise<UserProfile> {
+    return api.get<UserProfile>(`${AUTH_PREFIX}/me`);
   },
 };

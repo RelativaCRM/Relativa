@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
+import { useRouter, RouterLink, RouterView } from 'vue-router';
 import Button from 'primevue/button';
 import BrandMark from '@/components/layout/BrandMark.vue';
 import { useAuthStore } from '@/stores/auth';
+import { useOrganizationStore } from '@/stores/organization';
 
 const auth = useAuthStore();
+const orgStore = useOrganizationStore();
 const router = useRouter();
 
 function handleLogout() {
   auth.logout();
+  orgStore.clear();
   router.push({ name: 'login' });
 }
 </script>
@@ -18,14 +21,27 @@ function handleLogout() {
     <header
       class="h-16 border-b border-line bg-white flex items-center justify-between px-6"
     >
-      <BrandMark size="sm" />
-      <Button
-        label="Sign out"
-        severity="secondary"
-        text
-        icon="pi pi-sign-out"
-        @click="handleLogout"
-      />
+      <div class="flex items-center gap-4">
+        <BrandMark size="sm" />
+        <span
+          v-if="orgStore.currentOrg"
+          class="hidden sm:inline text-sm text-ink-500 border-l border-line pl-4"
+        >
+          {{ orgStore.currentOrg.name }}
+        </span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span v-if="auth.user" class="text-sm text-ink-600 hidden sm:inline">
+          {{ auth.user.firstName }} {{ auth.user.lastName }}
+        </span>
+        <Button
+          label="Sign out"
+          severity="secondary"
+          text
+          icon="pi pi-sign-out"
+          @click="handleLogout"
+        />
+      </div>
     </header>
 
     <div class="flex-1 flex">
@@ -37,6 +53,13 @@ function handleLogout() {
             active-class="bg-brand-50 text-brand-700 font-medium"
           >
             <i class="pi pi-home mr-2" />Home
+          </RouterLink>
+          <RouterLink
+            to="/members"
+            class="px-3 py-2 rounded-lg hover:bg-surface"
+            active-class="bg-brand-50 text-brand-700 font-medium"
+          >
+            <i class="pi pi-users mr-2" />Members
           </RouterLink>
           <RouterLink
             to="/graph"

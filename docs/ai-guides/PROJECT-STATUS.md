@@ -17,7 +17,7 @@
 | Audit | **Stub** | Returns empty array; JWT validation disabled |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work |
 | ML | **Stub** | Single endpoint returns hardcoded stub |
-| Client | **Partial** | Vue 3 + PrimeVue + Tailwind. Auth flow (login/register) wired to Gateway; base layouts (AuthLayout, MainLayout) in place; typed API client |
+| Client | **Partial** | Vue 3 + PrimeVue + Tailwind. Auth flow + org onboarding + members/invitations wired to Gateway; base layouts in place; typed API client for auth + org endpoints |
 | Persistence | **Functional** | Full entity model (20 entities), fluent configs, ModelBuilderExtensions |
 
 ---
@@ -94,11 +94,13 @@
 - Vue 3 + Vite scaffold with TypeScript, Pinia, Vue Router.
 - **UI stack:** PrimeVue 4 (Aura preset) + Tailwind CSS 3 (`tailwindcss-primeui` bridge) + Inter font.
 - **Typed API client** (`src/api/http.ts`): `gatewayFetch` with JWT + `X-Workspace-ID` headers, `ApiError` class, JSON helpers (`api.get/post/put/del`), auto session clear on `401`.
-- **Auth service** (`src/api/auth.ts`): `authApi.register` → `/auth/api/v1/auth/register`, `authApi.login` → `/auth/api/v1/auth/login` (via Gateway, CR-96).
-- **Auth store** (Pinia) persists `accessToken` + `expiresAt` in `localStorage`; exposes `login`, `register`, `logout`, `clearSession`; `isAuthenticated` respects token expiry.
-- **Layouts:** `AuthLayout.vue` (centered card, brand mark, taglines, footer) and `MainLayout.vue` (top bar with logout, sidebar nav).
-- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype, Register mirrors same style with `firstName`/`lastName`/`email`/`password`), `HomeView.vue` (session info card).
-- **Router guards:** `meta.public` and `meta.guestOnly` flags; unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users cannot visit `/login` or `/register`.
+- **Auth service** (`src/api/auth.ts`): `authApi.register`, `authApi.login`, `authApi.me` (via Gateway, CR-96).
+- **Organization service** (`src/api/organizations.ts`): org CRUD, members, invitations, join requests, roles, combined invitations (`/invitations/mine`).
+- **Auth store** (Pinia) persists `accessToken` + `expiresAt` in `localStorage`; stores `user` profile from `/me`; exposes `login`, `register`, `logout`, `fetchProfile`; `isAuthenticated` respects token expiry.
+- **Organization store** (Pinia) manages current org selection (persisted in `localStorage`), members, roles, invitations; exposes `createOrganization`, `inviteMember`, `changeMemberRole`, `removeMember`, `fetchOrganizations`.
+- **Layouts:** `AuthLayout.vue` (centered card, brand mark) and `MainLayout.vue` (top bar with user name + org name + logout, sidebar nav with Home/Members/Graph).
+- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype), `OnboardingView.vue` (create org or search & join), `MembersView.vue` (member table with role change + invite dialog + pending invitations), `HomeView.vue` (session + org info cards).
+- **Router guards:** `meta.public` and `meta.guestOnly` flags; unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users without an organization are redirected to `/onboarding`; profile and org list loaded lazily on navigation.
 - `GraphView.vue` with vis-network placeholder (unchanged).
 - Reads `VITE_GATEWAY_URL` from environment; all traffic goes through the gateway.
 
@@ -132,8 +134,8 @@
 
 ### Client
 
-**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) wired to Gateway. `AuthLayout` + `MainLayout` base layouts. Typed API client with JWT handling. Router guards.
-**What is missing:** No organization selection / management UI. No workspace selection / management UI. No member/invitation/role management UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
+**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) + org onboarding (create/join) + member management (invite, role change, remove) wired to Gateway. Typed API client for auth + org endpoints. Router guards with org check.
+**What is missing:** No workspace selection / management UI. No join request review UI (admin can approve/reject). No custom role creation UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
 
 ---
 
@@ -199,9 +201,10 @@
 ### Client
 
 - ~~Login and register forms wired to Gateway auth endpoints.~~ *(done in CR-96)*
-- Organization selection / management UI.
+- ~~Organization onboarding (create / search & join).~~ *(done in CR-96)*
+- ~~Organization member management (list, invite, role change, remove).~~ *(done in CR-96)*
 - Workspace selection / management UI.
-- Member and invitation management UI.
+- Join request review UI (approve/reject pending requests).
 - Role and permission management UI.
 - Deal/client management pages.
 - Dashboard with analytics.
