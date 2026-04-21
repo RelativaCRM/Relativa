@@ -6,6 +6,7 @@ const LoginView = () => import('@/views/LoginView.vue');
 const RegisterView = () => import('@/views/RegisterView.vue');
 const HomeView = () => import('@/views/HomeView.vue');
 const GraphView = () => import('@/views/GraphView.vue');
+const WorkspaceSelectView = () => import('@/views/WorkspaceSelectView.vue');
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -21,6 +22,12 @@ const router = createRouter({
       name: 'register',
       component: RegisterView,
       meta: { public: true, guestOnly: true },
+    },
+    {
+      path: '/select-workspace',
+      name: 'select-workspace',
+      component: WorkspaceSelectView,
+      meta: { skipWorkspaceCheck: true },
     },
     {
       path: '/',
@@ -47,6 +54,15 @@ router.beforeEach((to) => {
 
   if (!to.meta.public && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } };
+  }
+
+  if (
+    auth.isAuthenticated &&
+    !auth.workspaceId &&
+    !to.meta.public &&
+    !to.meta.skipWorkspaceCheck
+  ) {
+    return { name: 'select-workspace', query: { redirect: to.fullPath } };
   }
 
   const required = (to.meta.roles as string[] | undefined) ?? [];

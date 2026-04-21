@@ -22,10 +22,8 @@ defineProps<{ tagline?: string }>();
         <slot />
       </section>
 
-      <footer class="mt-6 text-center text-[11px] text-ink-400">
-        <slot name="footer">
-          Secured with JWT · bcrypt password hashing · HTTPS/TLS
-        </slot>
+      <footer v-if="$slots.footer" class="mt-6 text-center text-[11px] text-ink-400">
+        <slot name="footer" />
       </footer>
     </div>
   </main>
