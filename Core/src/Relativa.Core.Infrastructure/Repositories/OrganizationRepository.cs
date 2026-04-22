@@ -22,11 +22,16 @@ public sealed class OrganizationRepository(RelativaDbContext db) : IOrganization
             .ToListAsync(ct);
     }
 
-    public async Task<List<Organization>> SearchAsync(string query, CancellationToken ct = default)
+    public async Task<List<OrganizationSearchHit>> SearchAsync(string query, CancellationToken ct = default)
     {
         return await db.Organizations
             .Where(o => EF.Functions.ILike(o.Name, $"%{query}%") && !o.IsArchived)
+            .OrderBy(o => o.Name)
             .Take(20)
+            .Select(o => new OrganizationSearchHit(
+                o.Id,
+                o.Name,
+                o.Members.Count(m => !m.IsArchived)))
             .ToListAsync(ct);
     }
 

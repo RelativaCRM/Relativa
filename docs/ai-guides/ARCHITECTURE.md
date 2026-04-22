@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-04-17
+> **Last verified:** 2026-04-17 (gateway-only JWT validation with X-User-Id header forwarding)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -99,7 +99,7 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 |---|---|
 | `Entities/` | 20 entity classes (see list below) |
 | `Configurations/` | EF Fluent API `IEntityTypeConfiguration<T>` classes for each entity |
-| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (User only) and `ApplyAllEntityConfigurations` (full model) |
+| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full 20-entity model) |
 
 ### Entity list (20 entities)
 
@@ -134,7 +134,7 @@ Different services compose **different slices** of the entity model:
 
 | DbContext | Location | What it maps | Extension used |
 |---|---|---|---|
-| `AuthDbContext` | `Authentication/.../Infrastructure/Data/AuthDbContext.cs` | User | `ApplyAuthEntityConfigurations` |
+| `AuthDbContext` | `Authentication/.../Infrastructure/Data/AuthDbContext.cs` | User only (other entities reachable via `User` navigation properties are cut with `Ignore<UserRoleWorkspace>()` + `Ignore<UserRoleOrganization>()`) | `ApplyAuthEntityConfigurations` |
 | `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | All 20 entities | `ApplyAllEntityConfigurations` |
 | `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | All 20 entities | `ApplyAllEntityConfigurations` |
 
@@ -283,15 +283,17 @@ sequenceDiagram
     GW-->>Client: 200 { id, email, firstName, lastName }
 
     Client->>GW: POST /core/api/v1/organizations (Bearer JWT)
-    GW->>GW: Validate JWT
-    GW->>Core: Forward request
+    GW->>GW: Validate JWT, extract sub + email
+    GW->>Core: Forward request with X-User-Id, X-User-Email
+    Core->>Core: Read userId from X-User-Id header
     Core->>DB: Create org, assign creator as org_owner
     Core-->>GW: 201 organization
     GW-->>Client: 201 organization
 
     Client->>GW: GET /core/api/v1/workspaces/{id}/members (Bearer JWT)
-    GW->>GW: Validate JWT
-    GW->>Core: Forward request
+    GW->>GW: Validate JWT, extract sub + email
+    GW->>Core: Forward request with X-User-Id, X-User-Email
+    Core->>Core: Read userId from X-User-Id header
     Core->>DB: Lookup UserRoleWorkspace by userId + workspaceId
     DB-->>Core: Membership + Role + Permissions
     Core->>Core: Authorize based on workspace role
@@ -304,13 +306,25 @@ sequenceDiagram
 - **Issuing service:** Authentication (`JwtTokenService`)
 - **Algorithm:** HMAC-SHA256 (symmetric key from `JWT_SECRET`)
 - **Claims:** `sub` (user ID), `email`, `jti` (token ID). Role and permissions are **not** embedded in the JWT -- they are resolved per-request by Core using organization/workspace membership DB lookups.
-- **Validation point:** Gateway validates issuer, audience, signing key, and lifetime
-- **Audit exception:** Audit service has JWT registered but all validation checks disabled (stub)
+- **Validation point:** Gateway validates issuer, audience, signing key, and lifetime. The Gateway is the **only** component that parses or validates JWTs for downstream services; Core/Graph/ML/Audit do not reference `Microsoft.AspNetCore.Authentication.JwtBearer` and have no `Jwt:*` configuration.
+- **Authentication exception:** The Authentication service also validates its own tokens because its `/me` endpoint needs the claims from the JWT it just issued. That is the issuer's own job, not a duplication of gateway logic.
+- **Audit exception:** Audit service has JWT registered but all validation checks disabled (stub).
+
+### Internal identity propagation (Gateway → downstream)
+
+After the Gateway validates the JWT, a YARP request transform copies the validated claims into trusted request headers before proxying:
+
+| Header | Source claim | Consumed by |
+|---|---|---|
+| `X-User-Id` | `sub` | Core (all endpoint handlers via `WorkspaceEndpoints.GetUserId(HttpContext)`) |
+| `X-User-Email` | `email` | Core (invitation accept flows via `WorkspaceEndpoints.GetUserEmail(HttpContext)`) |
+
+**Trust boundary.** The transform **unconditionally removes** any incoming `X-User-Id` / `X-User-Email` on every proxied request before injecting its own values, so a client cannot spoof identity by sending these headers. The trust assumption is that downstream services are **not reachable from outside the Gateway's network** -- enforced today by `docker-compose.yml` (only the Gateway publishes a host port) and in production by network policy / service mesh. Downstream services treat a missing header as a deployment-level bypass and return 401.
 
 ### Organization-scoped authorization
 
 Authorization for organization endpoints:
-1. Core extracts the user ID from the JWT `sub` claim.
+1. Core reads the user ID from the `X-User-Id` request header (injected by the Gateway after JWT validation).
 2. Core looks up the `UserRoleOrganization` record for the user + organization pair, which includes the org role and its permissions.
 3. Each org endpoint handler checks the required org permission before executing business logic.
 4. Some endpoints only require org membership (e.g. listing members), while others require specific permissions (e.g. `manage_org_settings` to update org details).
@@ -318,7 +332,7 @@ Authorization for organization endpoints:
 ### Workspace-scoped authorization
 
 Authorization for workspace endpoints:
-1. Core extracts the user ID from the JWT `sub` claim.
+1. Core reads the user ID from the `X-User-Id` request header (injected by the Gateway after JWT validation).
 2. Core looks up the `UserRoleWorkspace` record for the user + workspace pair, which includes the ws role and its permissions.
 3. Each workspace endpoint handler checks the required ws permission before executing business logic.
 4. Workspace creation requires the `create_workspaces` **org-scoped** permission in the target organization.
@@ -327,7 +341,7 @@ Authorization for workspace endpoints:
 
 - **Gateway:** `MapReverseProxy().RequireAuthorization()` -- all proxied routes require a valid JWT unless explicitly marked anonymous in YARP route config. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
 - **Audit:** `AuditReaders` policy requires any authenticated user (stub -- will be refined when Audit is implemented).
-- **Core:** Per-endpoint authorization via `UserRoleOrganization` or `UserRoleWorkspace` DB lookups (no ASP.NET authorization policies; checked in application service layer).
+- **Core:** No ASP.NET authentication or authorization middleware. Identity comes exclusively from `X-User-Id` / `X-User-Email` headers (see "Internal identity propagation" above). Per-endpoint authorization is then enforced via `UserRoleOrganization` / `UserRoleWorkspace` DB lookups inside the application service layer.
 
 ---
 
@@ -348,7 +362,8 @@ Authorization for workspace endpoints:
 | **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()` | Core, Authentication, Gateway (distinct implementations per host) |
 | **Health checks** | `/health` endpoint, EF Core DB checks on Auth and Core | All .NET services |
 | **API docs** | OpenAPI + Scalar (`/scalar/v1`, `/openapi/v1.json`) | Auth, Core, Gateway, Graph (dev) |
-| **CORS** | `AllowAnyOrigin/Header/Method` | Core only (tighten for production) |
+| **CORS** | Gateway: named-origin allowlist with credentials (reads `Cors:Origins` from config, defaults to `http://localhost:5173` and `http://localhost:3000`). Core: `AllowAnyOrigin/Header/Method` (dev-only, Core is only reached via the gateway in deployed environments). | Gateway + Core |
+| **Identity forwarding** | YARP request transform on every proxied request: strips any incoming `X-User-Id` / `X-User-Email`, then re-adds them from the validated `ClaimsPrincipal` (`sub` and `email` claims). Downstream services trust these headers and do not re-validate JWTs. | Gateway |
 | **Forwarded headers** | `X-Forwarded-For`, `X-Forwarded-Proto` | Gateway |
 
 ---

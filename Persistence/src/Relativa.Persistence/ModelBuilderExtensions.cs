@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Relativa.Persistence.Configurations;
+using Relativa.Persistence.Entities;
 
 namespace Relativa.Persistence;
 
@@ -8,7 +9,12 @@ public static class PersistenceModelBuilderExtensions
     public static ModelBuilder ApplyAuthEntityConfigurations(this ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new UserConfiguration());
-        modelBuilder.ApplyConfiguration(new PermissionConfiguration());
+
+        // EF Core convention follows User's navigation properties into the full RBAC
+        // graph. Cut both chains at the root so the Auth context stays User-only.
+        modelBuilder.Ignore<UserRoleWorkspace>();
+        modelBuilder.Ignore<UserRoleOrganization>();
+
         return modelBuilder;
     }
 

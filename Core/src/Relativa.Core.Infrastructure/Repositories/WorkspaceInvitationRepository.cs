@@ -11,6 +11,7 @@ public sealed class WorkspaceInvitationRepository(RelativaDbContext db) : IWorks
     {
         return await db.WorkspaceInvitations
             .Include(i => i.Role)
+            .Include(i => i.Workspace)
             .FirstOrDefaultAsync(i => i.Id == id, ct);
     }
 
@@ -18,6 +19,7 @@ public sealed class WorkspaceInvitationRepository(RelativaDbContext db) : IWorks
     {
         return await db.WorkspaceInvitations
             .Include(i => i.Role)
+            .Include(i => i.Workspace)
             .FirstOrDefaultAsync(i => i.Token == token, ct);
     }
 
@@ -25,6 +27,7 @@ public sealed class WorkspaceInvitationRepository(RelativaDbContext db) : IWorks
     {
         return await db.WorkspaceInvitations
             .Include(i => i.Role)
+            .Include(i => i.Workspace)
             .Where(i => i.WorkspaceId == workspaceId)
             .ToListAsync(ct);
     }
@@ -33,6 +36,7 @@ public sealed class WorkspaceInvitationRepository(RelativaDbContext db) : IWorks
     {
         return await db.WorkspaceInvitations
             .Include(i => i.Role)
+            .Include(i => i.Workspace)
             .Where(i => i.Email.ToLower() == email.ToLower() && i.Status == "Pending")
             .ToListAsync(ct);
     }

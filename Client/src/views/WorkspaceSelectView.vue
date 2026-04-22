@@ -31,8 +31,9 @@ function select(ws: WorkspaceDto) {
 onMounted(async () => {
   try {
     workspaces.value = await workspacesApi.list();
-    if (workspaces.value.length === 1) {
-      select(workspaces.value[0]);
+    const only = workspaces.value.length === 1 ? workspaces.value[0] : null;
+    if (only) {
+      select(only);
       return;
     }
   } catch (err) {

@@ -38,7 +38,8 @@ async function handleSubmit() {
   submitting.value = true;
   try {
     await auth.login({ email: form.email, password: form.password });
-    router.push({ name: 'home' });
+    const redirect = router.currentRoute.value.query.redirect as string | undefined;
+    router.push(redirect ?? { name: 'home' });
   } catch (err) {
     if (err instanceof ApiError) {
       serverError.value =

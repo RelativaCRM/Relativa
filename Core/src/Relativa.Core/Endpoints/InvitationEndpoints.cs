@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Relativa.Core.Application.DTOs.Invitation;
 using Relativa.Core.Application.Interfaces;
 
@@ -11,9 +10,9 @@ public static class InvitationEndpoints
         var wsGroup = routes.MapGroup("/api/v1/workspaces/{workspaceId:int}/invitations")
             .WithTags("Invitations");
 
-        wsGroup.MapPost("/", async (int workspaceId, InviteMemberRequest request, IInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        wsGroup.MapPost("/", async (int workspaceId, InviteMemberRequest request, IInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.InviteAsync(workspaceId, userId, request, ct);
             return Results.Created($"/api/v1/workspaces/{workspaceId}/invitations/{result.Id}", result);
         })
@@ -22,9 +21,9 @@ public static class InvitationEndpoints
         .Produces<InvitationDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
-        wsGroup.MapGet("/", async (int workspaceId, IInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        wsGroup.MapGet("/", async (int workspaceId, IInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.GetPendingAsync(workspaceId, userId, ct);
             return Results.Ok(result);
         })
@@ -32,9 +31,9 @@ public static class InvitationEndpoints
         .WithSummary("List pending invitations for the workspace")
         .Produces<List<InvitationDto>>();
 
-        wsGroup.MapDelete("/{invitationId:int}", async (int workspaceId, int invitationId, IInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        wsGroup.MapDelete("/{invitationId:int}", async (int workspaceId, int invitationId, IInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.CancelAsync(workspaceId, invitationId, userId, ct);
             return Results.NoContent();
         })
@@ -45,11 +44,10 @@ public static class InvitationEndpoints
         var invGroup = routes.MapGroup("/api/v1/invitations")
             .WithTags("Invitations");
 
-        invGroup.MapPost("/accept", async (AcceptInvitationRequest request, IInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        invGroup.MapPost("/accept", async (AcceptInvitationRequest request, IInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
-            var email = user.FindFirstValue("email")
-                ?? throw new UnauthorizedAccessException("Missing email claim.");
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            var email = WorkspaceEndpoints.GetUserEmail(httpContext);
             await service.AcceptAsync(userId, email, request, ct);
             return Results.Ok(new { message = "Invitation accepted." });
         })
@@ -58,11 +56,10 @@ public static class InvitationEndpoints
         .Produces(StatusCodes.Status200OK)
         .ProducesValidationProblem();
 
-        invGroup.MapGet("/mine", async (IInvitationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        invGroup.MapGet("/mine", async (IInvitationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
-            var email = user.FindFirstValue("email")
-                ?? throw new UnauthorizedAccessException("Missing email claim.");
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            var email = WorkspaceEndpoints.GetUserEmail(httpContext);
             var result = await service.GetMyInvitationsAsync(userId, email, ct);
             return Results.Ok(result);
         })

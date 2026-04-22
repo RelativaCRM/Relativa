@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import BrandMark from '@/components/layout/BrandMark.vue';
-
-defineProps<{ tagline?: string }>();
 </script>
 
 <template>
@@ -9,11 +7,8 @@ defineProps<{ tagline?: string }>();
     class="min-h-screen w-full bg-surface flex items-center justify-center px-4 py-10"
   >
     <div class="w-full max-w-[440px] flex flex-col">
-      <header class="flex flex-col items-center gap-3">
+      <header class="flex flex-col items-center">
         <BrandMark />
-        <p class="text-sm text-ink-500">
-          {{ tagline ?? 'B2B CRM Platform · Secure Workspace' }}
-        </p>
       </header>
 
       <section

@@ -1,16 +1,40 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
+import { ref, onMounted } from 'vue';
+import { useRouter, RouterLink, RouterView } from 'vue-router';
 import Button from 'primevue/button';
+import Badge from 'primevue/badge';
 import BrandMark from '@/components/layout/BrandMark.vue';
 import { useAuthStore } from '@/stores/auth';
+import { useOrganizationStore } from '@/stores/organization';
+import { useWorkspaceStore } from '@/stores/workspace';
+import { orgApi } from '@/api/organizations';
 
 const auth = useAuthStore();
+const orgStore = useOrganizationStore();
+const wsStore = useWorkspaceStore();
 const router = useRouter();
+
+const pendingInvitationsCount = ref(0);
+
+async function refreshInvitationCount() {
+  try {
+    const inbox = await orgApi.myInvitations();
+    pendingInvitationsCount.value =
+      inbox.organizationInvitations.length +
+      inbox.workspaceInvitations.length;
+  } catch {
+    pendingInvitationsCount.value = 0;
+  }
+}
 
 function handleLogout() {
   auth.logout();
+  orgStore.clear();
+  wsStore.clear();
   router.push({ name: 'login' });
 }
+
+onMounted(refreshInvitationCount);
 </script>
 
 <template>
@@ -18,14 +42,27 @@ function handleLogout() {
     <header
       class="h-16 border-b border-line bg-white flex items-center justify-between px-6"
     >
-      <BrandMark size="sm" />
-      <Button
-        label="Sign out"
-        severity="secondary"
-        text
-        icon="pi pi-sign-out"
-        @click="handleLogout"
-      />
+      <div class="flex items-center gap-4">
+        <BrandMark size="sm" />
+        <span
+          v-if="orgStore.currentOrg"
+          class="hidden sm:inline text-sm text-ink-500 border-l border-line pl-4"
+        >
+          {{ orgStore.currentOrg.name }}
+        </span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span v-if="auth.user" class="text-sm text-ink-600 hidden sm:inline">
+          {{ auth.user.firstName }} {{ auth.user.lastName }}
+        </span>
+        <Button
+          label="Sign out"
+          severity="secondary"
+          text
+          icon="pi pi-sign-out"
+          @click="handleLogout"
+        />
+      </div>
     </header>
 
     <div class="flex-1 flex">
@@ -37,6 +74,33 @@ function handleLogout() {
             active-class="bg-brand-50 text-brand-700 font-medium"
           >
             <i class="pi pi-home mr-2" />Home
+          </RouterLink>
+          <RouterLink
+            to="/members"
+            class="px-3 py-2 rounded-lg hover:bg-surface"
+            active-class="bg-brand-50 text-brand-700 font-medium"
+          >
+            <i class="pi pi-users mr-2" />Members
+          </RouterLink>
+          <RouterLink
+            to="/workspaces"
+            class="px-3 py-2 rounded-lg hover:bg-surface"
+            active-class="bg-brand-50 text-brand-700 font-medium"
+          >
+            <i class="pi pi-folder mr-2" />Workspaces
+          </RouterLink>
+          <RouterLink
+            to="/invitations"
+            class="px-3 py-2 rounded-lg hover:bg-surface flex items-center"
+            active-class="bg-brand-50 text-brand-700 font-medium"
+          >
+            <i class="pi pi-envelope mr-2" />
+            <span class="flex-1">Invitations</span>
+            <Badge
+              v-if="pendingInvitationsCount > 0"
+              :value="pendingInvitationsCount"
+              severity="info"
+            />
           </RouterLink>
           <RouterLink
             to="/graph"

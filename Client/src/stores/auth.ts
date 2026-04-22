@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { authApi, type LoginRequest, type RegisterRequest } from '@/api/auth';
+import {
+  authApi,
+  type LoginRequest,
+  type RegisterRequest,
+  type UserProfile,
+} from '@/api/auth';
 
 const STORAGE_KEY = 'relativa_jwt';
 const EXPIRY_KEY = 'relativa_jwt_expires_at';
@@ -17,6 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
     typeof localStorage !== 'undefined' ? localStorage.getItem(WORKSPACE_KEY) ?? '' : '',
   );
   const roles = ref<string[]>(['User']);
+  const user = ref<UserProfile | null>(null);
 
   const isAuthenticated = computed(() => {
     if (!accessToken.value) return false;
@@ -55,12 +61,23 @@ export const useAuthStore = defineStore('auth', () => {
     setToken(null);
     setWorkspace('');
     roles.value = ['User'];
+    user.value = null;
+  }
+
+  async function fetchProfile() {
+    user.value = await authApi.me();
+    return user.value;
   }
 
   async function login(payload: LoginRequest) {
     const res = await authApi.login(payload);
     setToken(res.accessToken, res.expiresAt);
     setWorkspace('');
+    try {
+      await fetchProfile();
+    } catch {
+      user.value = null;
+    }
     return res;
   }
 
@@ -77,11 +94,13 @@ export const useAuthStore = defineStore('auth', () => {
     expiresAt,
     workspaceId,
     roles,
+    user,
     isAuthenticated,
     setToken,
     setWorkspace,
     setRoles,
     clearSession,
+    fetchProfile,
     login,
     register,
     logout,
