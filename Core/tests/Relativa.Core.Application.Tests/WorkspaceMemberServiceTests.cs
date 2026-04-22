@@ -10,29 +10,33 @@ namespace Relativa.Core.Application.Tests;
 
 public sealed class WorkspaceMemberServiceTests
 {
-    private readonly Mock<IWorkspaceMemberRepository> _memberRepo = new();
-    private readonly Mock<IRoleRepository> _roleRepo = new();
+    private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
+    private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
+    private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
+    private readonly Mock<IWorkspaceRepository> _workspaceRepo = new();
     private readonly WorkspaceMemberService _sut;
 
     public WorkspaceMemberServiceTests()
     {
         _sut = new WorkspaceMemberService(
             _memberRepo.Object,
-            _roleRepo.Object
+            _roleRepo.Object,
+            _orgMemberRepo.Object,
+            _workspaceRepo.Object
         );
     }
 
-    private WorkspaceMember MemberWithPermission(int userId, int workspaceId, string permission) =>
+    private UserRoleWorkspace MemberWithPermission(int userId, int workspaceId, string permission) =>
         new()
         {
             UserId = userId,
             WorkspaceId = workspaceId,
-            Role = new Role
+            Role = new WorkspaceRole
             {
                 Name = "sales_manager",
                 RolePermissions =
                 [
-                    new RolePermission { Permission = new Permission { Name = permission } }
+                    new WorkspaceRolePermission { Permission = new Permission { Name = permission } }
                 ]
             }
         };
@@ -42,7 +46,7 @@ public sealed class WorkspaceMemberServiceTests
     {
         _memberRepo
             .Setup(r => r.GetAsync(10, 3, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WorkspaceMember?)null);
+            .ReturnsAsync((UserRoleWorkspace?)null);
 
         var act = () => _sut.GetMembersAsync(3, 10);
 
@@ -53,8 +57,8 @@ public sealed class WorkspaceMemberServiceTests
     [Fact]
     public async Task GetMembersAsync_ValidMember_ReturnsOnlyActiveMembers()
     {
-        var caller = MemberWithPermission(1, 2, "can_view_analytics");
-        var members = new List<WorkspaceMember>
+        var caller = MemberWithPermission(1, 2, "view_ws_members");
+        var members = new List<UserRoleWorkspace>
         {
             new()
             {
@@ -63,7 +67,7 @@ public sealed class WorkspaceMemberServiceTests
                 IsArchived = false,
                 JoinedAt = DateTime.UtcNow,
                 User = new User { FirstName = "Andriy", LastName = "Savchenko", Email = "savchenko@relativa.io" },
-                Role = new Role { Name = "admin" }
+                Role = new WorkspaceRole { Name = "ws_admin" }
             },
             new()
             {
@@ -72,7 +76,7 @@ public sealed class WorkspaceMemberServiceTests
                 IsArchived = true,
                 JoinedAt = DateTime.UtcNow,
                 User = new User { FirstName = "Iryna", LastName = "Tkach", Email = "tkach@relativa.io" },
-                Role = new Role { Name = "analyst" }
+                Role = new WorkspaceRole { Name = "analyst" }
             }
         };
 
@@ -92,11 +96,11 @@ public sealed class WorkspaceMemberServiceTests
     [Fact]
     public async Task UpdateRoleAsync_UserLacksPermission_ThrowsUnauthorizedAccessException()
     {
-        var caller = new WorkspaceMember
+        var caller = new UserRoleWorkspace
         {
             UserId = 5,
             WorkspaceId = 4,
-            Role = new Role { Name = "analyst", RolePermissions = [] }
+            Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
         };
 
         _memberRepo
@@ -114,14 +118,14 @@ public sealed class WorkspaceMemberServiceTests
     [Fact]
     public async Task UpdateRoleAsync_TargetNotMember_ThrowsKeyNotFoundException()
     {
-        var caller = MemberWithPermission(1, 4, "can_assign_roles");
+        var caller = MemberWithPermission(1, 4, "assign_ws_roles");
 
         _memberRepo
             .Setup(r => r.GetAsync(1, 4, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
         _memberRepo
             .Setup(r => r.GetAsync(99, 4, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WorkspaceMember?)null);
+            .ReturnsAsync((UserRoleWorkspace?)null);
 
         var act = () => _sut.UpdateRoleAsync(4, 99, 1, new UpdateMemberRoleRequest(3));
 
@@ -132,9 +136,9 @@ public sealed class WorkspaceMemberServiceTests
     [Fact]
     public async Task UpdateRoleAsync_RoleFromAnotherWorkspace_ThrowsArgumentException()
     {
-        var caller = MemberWithPermission(1, 4, "can_assign_roles");
-        var target = new WorkspaceMember { UserId = 2, WorkspaceId = 4, Role = new Role { Name = "analyst", RolePermissions = [] } };
-        var foreignRole = new Role { Id = 7, Name = "custom", WorkspaceId = 99 };
+        var caller = MemberWithPermission(1, 4, "assign_ws_roles");
+        var target = new UserRoleWorkspace { UserId = 2, WorkspaceId = 4, Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] } };
+        var foreignRole = new WorkspaceRole { Id = 7, Name = "custom", WorkspaceId = 99 };
 
         _memberRepo
             .Setup(r => r.GetAsync(1, 4, It.IsAny<CancellationToken>()))
@@ -155,7 +159,7 @@ public sealed class WorkspaceMemberServiceTests
     [Fact]
     public async Task RemoveAsync_SelfRemove_SkipsPermissionCheck()
     {
-        var member = new WorkspaceMember { UserId = 3, WorkspaceId = 6, Role = new Role { Name = "analyst", RolePermissions = [] } };
+        var member = new UserRoleWorkspace { UserId = 3, WorkspaceId = 6, Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] } };
 
         _memberRepo
             .Setup(r => r.GetAsync(3, 6, It.IsAny<CancellationToken>()))
@@ -169,11 +173,11 @@ public sealed class WorkspaceMemberServiceTests
     [Fact]
     public async Task RemoveAsync_RemoveOtherWithoutPermission_ThrowsUnauthorizedAccessException()
     {
-        var caller = new WorkspaceMember
+        var caller = new UserRoleWorkspace
         {
             UserId = 1,
             WorkspaceId = 6,
-            Role = new Role { Name = "analyst", RolePermissions = [] }
+            Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
         };
 
         _memberRepo
@@ -184,21 +188,21 @@ public sealed class WorkspaceMemberServiceTests
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>();
         _memberRepo.Verify(
-            r => r.RemoveAsync(It.IsAny<WorkspaceMember>(), It.IsAny<CancellationToken>()),
+            r => r.RemoveAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
     [Fact]
     public async Task RemoveAsync_TargetNotMember_ThrowsKeyNotFoundException()
     {
-        var caller = MemberWithPermission(1, 6, "can_assign_roles");
+        var caller = MemberWithPermission(1, 6, "remove_ws_members");
 
         _memberRepo
             .Setup(r => r.GetAsync(1, 6, It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
         _memberRepo
             .Setup(r => r.GetAsync(77, 6, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WorkspaceMember?)null);
+            .ReturnsAsync((UserRoleWorkspace?)null);
 
         var act = () => _sut.RemoveAsync(6, 77, 1);
 

@@ -13,8 +13,9 @@ namespace Relativa.Core.Application.Tests;
 public sealed class WorkspaceServiceTests
 {
     private readonly Mock<IWorkspaceRepository> _workspaceRepo = new();
-    private readonly Mock<IWorkspaceMemberRepository> _memberRepo = new();
-    private readonly Mock<IRoleRepository> _roleRepo = new();
+    private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
+    private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
+    private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IValidator<CreateWorkspaceRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateWorkspaceRequest>> _updateValidator = new();
     private readonly WorkspaceService _sut;
@@ -25,6 +26,7 @@ public sealed class WorkspaceServiceTests
             _workspaceRepo.Object,
             _memberRepo.Object,
             _roleRepo.Object,
+            _orgMemberRepo.Object,
             _createValidator.Object,
             _updateValidator.Object
         );
@@ -44,17 +46,17 @@ public sealed class WorkspaceServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
 
-    private WorkspaceMember MemberWithPermission(int userId, int workspaceId, string permission) =>
+    private UserRoleWorkspace MemberWithPermission(int userId, int workspaceId, string permission) =>
         new()
         {
             UserId = userId,
             WorkspaceId = workspaceId,
-            Role = new Role
+            Role = new WorkspaceRole
             {
                 Name = "sales_manager",
                 RolePermissions =
                 [
-                    new RolePermission
+                    new WorkspaceRolePermission
                     {
                         Permission = new Permission { Name = permission }
                     }
@@ -62,23 +64,45 @@ public sealed class WorkspaceServiceTests
             }
         };
 
-    private WorkspaceMember AdminMember(int userId, int workspaceId) =>
+    private UserRoleWorkspace AdminMember(int userId, int workspaceId) =>
         new()
         {
             UserId = userId,
             WorkspaceId = workspaceId,
-            Role = new Role { Name = "admin", RolePermissions = [] }
+            Role = new WorkspaceRole { Name = "ws_admin", RolePermissions = [] }
+        };
+
+    private UserRoleOrganization OrgMemberWithPermission(int userId, int orgId, string permission) =>
+        new()
+        {
+            UserId = userId,
+            OrganizationId = orgId,
+            Role = new OrganizationRole
+            {
+                Name = "org_admin",
+                RolePermissions =
+                [
+                    new OrganizationRolePermission
+                    {
+                        Permission = new Permission { Name = permission }
+                    }
+                ]
+            }
         };
 
     [Fact]
     public async Task CreateAsync_ValidRequest_CreatesWorkspaceAndAddsCreatorAsAdmin()
     {
-        var request = new CreateWorkspaceRequest("Kyiv Sales Team");
-        var adminRole = new Role { Id = 1, Name = "admin" };
+        var request = new CreateWorkspaceRequest("Kyiv Sales Team", 10);
+        var adminRole = new WorkspaceRole { Id = 1, Name = "ws_admin" };
+        var orgMember = OrgMemberWithPermission(42, 10, "create_workspaces");
 
         SetupValidCreate();
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(42, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(orgMember);
         _roleRepo
-            .Setup(r => r.GetSystemRoleByNameAsync("admin", It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetSystemRoleByNameAsync("ws_admin", It.IsAny<CancellationToken>()))
             .ReturnsAsync(adminRole);
 
         Workspace? capturedWorkspace = null;
@@ -86,35 +110,39 @@ public sealed class WorkspaceServiceTests
             .Setup(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()))
             .Callback<Workspace, CancellationToken>((w, _) => capturedWorkspace = w);
 
-        WorkspaceMember? capturedMember = null;
+        UserRoleWorkspace? capturedMember = null;
         _memberRepo
-            .Setup(r => r.AddAsync(It.IsAny<WorkspaceMember>(), It.IsAny<CancellationToken>()))
-            .Callback<WorkspaceMember, CancellationToken>((m, _) => capturedMember = m);
+            .Setup(r => r.AddAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()))
+            .Callback<UserRoleWorkspace, CancellationToken>((m, _) => capturedMember = m);
 
         var result = await _sut.CreateAsync(42, request);
 
         result.Name.Should().Be(request.Name);
-        result.UserRole.Should().Be("admin");
+        result.UserRole.Should().Be("ws_admin");
         result.MemberCount.Should().Be(1);
         capturedWorkspace!.CreatedByUserId.Should().Be(42);
         capturedMember!.UserId.Should().Be(42);
-        capturedMember.RoleId.Should().Be(adminRole.Id);
+        capturedMember.WsRoleId.Should().Be(adminRole.Id);
     }
 
     [Fact]
     public async Task CreateAsync_AdminRoleNotFound_ThrowsInvalidOperationException()
     {
-        var request = new CreateWorkspaceRequest("Lviv Team");
+        var request = new CreateWorkspaceRequest("Lviv Team", 1);
+        var orgMember = OrgMemberWithPermission(1, 1, "create_workspaces");
 
         SetupValidCreate();
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(orgMember);
         _roleRepo
-            .Setup(r => r.GetSystemRoleByNameAsync("admin", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Role?)null);
+            .Setup(r => r.GetSystemRoleByNameAsync("ws_admin", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WorkspaceRole?)null);
 
         var act = () => _sut.CreateAsync(1, request);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("System admin role not found.");
+            .WithMessage("System ws_admin role not found.");
         _workspaceRepo.Verify(
             r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -123,7 +151,7 @@ public sealed class WorkspaceServiceTests
     [Fact]
     public async Task CreateAsync_InvalidRequest_ThrowsValidationException()
     {
-        var request = new CreateWorkspaceRequest("");
+        var request = new CreateWorkspaceRequest("", 1);
 
         _createValidator
             .Setup(v => v.ValidateAsync(
@@ -147,7 +175,7 @@ public sealed class WorkspaceServiceTests
     {
         _memberRepo
             .Setup(r => r.GetAsync(99, 5, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WorkspaceMember?)null);
+            .ReturnsAsync((UserRoleWorkspace?)null);
 
         var act = () => _sut.GetByIdAsync(5, 99);
 
@@ -180,11 +208,11 @@ public sealed class WorkspaceServiceTests
     public async Task UpdateAsync_UserLacksPermission_ThrowsUnauthorizedAccessException()
     {
         var request = new UpdateWorkspaceRequest("New Name");
-        var member = new WorkspaceMember
+        var member = new UserRoleWorkspace
         {
             UserId = 3,
             WorkspaceId = 10,
-            Role = new Role { Name = "analyst", RolePermissions = [] }
+            Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
         };
 
         SetupValidUpdate();
@@ -204,7 +232,7 @@ public sealed class WorkspaceServiceTests
     public async Task UpdateAsync_WorkspaceNotFound_ThrowsKeyNotFoundException()
     {
         var request = new UpdateWorkspaceRequest("Renamed");
-        var member = MemberWithPermission(2, 7, "can_manage_settings");
+        var member = MemberWithPermission(2, 7, "manage_ws_settings");
 
         SetupValidUpdate();
         _memberRepo
@@ -242,7 +270,7 @@ public sealed class WorkspaceServiceTests
     [Fact]
     public async Task ArchiveAsync_NonAdminRole_ThrowsUnauthorizedAccessException()
     {
-        var member = MemberWithPermission(5, 3, "can_manage_settings");
+        var member = MemberWithPermission(5, 3, "manage_ws_settings");
 
         _memberRepo
             .Setup(r => r.GetAsync(5, 3, It.IsAny<CancellationToken>()))
