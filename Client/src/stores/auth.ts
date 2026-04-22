@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { authApi, type LoginRequest, type RegisterRequest } from '@/api/auth';
+import {
+  authApi,
+  type LoginRequest,
+  type RegisterRequest,
+  type UserProfile,
+} from '@/api/auth';
 
 const STORAGE_KEY = 'relativa_jwt';
 const EXPIRY_KEY = 'relativa_jwt_expires_at';
@@ -12,8 +17,8 @@ export const useAuthStore = defineStore('auth', () => {
   const expiresAt = ref<string | null>(
     typeof localStorage !== 'undefined' ? localStorage.getItem(EXPIRY_KEY) : null,
   );
+  const user = ref<UserProfile | null>(null);
   const workspaceId = ref('');
-  const roles = ref<string[]>(['User']);
 
   const isAuthenticated = computed(() => {
     if (!accessToken.value) return false;
@@ -40,19 +45,21 @@ export const useAuthStore = defineStore('auth', () => {
     workspaceId.value = id;
   }
 
-  function setRoles(next: string[]) {
-    roles.value = next;
-  }
-
   function clearSession() {
     setToken(null);
     workspaceId.value = '';
-    roles.value = ['User'];
+    user.value = null;
+  }
+
+  async function fetchProfile() {
+    user.value = await authApi.me();
+    return user.value;
   }
 
   async function login(payload: LoginRequest) {
     const res = await authApi.login(payload);
     setToken(res.accessToken, res.expiresAt);
+    await fetchProfile();
     return res;
   }
 
@@ -67,13 +74,13 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     accessToken,
     expiresAt,
+    user,
     workspaceId,
-    roles,
     isAuthenticated,
     setToken,
     setWorkspace,
-    setRoles,
     clearSession,
+    fetchProfile,
     login,
     register,
     logout,

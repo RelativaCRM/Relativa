@@ -84,9 +84,9 @@ public sealed class OrganizationService(
 
     public async Task<List<OrganizationSearchResultDto>> SearchAsync(string query, CancellationToken ct = default)
     {
-        var organizations = await organizationRepository.SearchAsync(query, ct);
-        return organizations
-            .Select(o => new OrganizationSearchResultDto(o.Id, o.Name))
+        var hits = await organizationRepository.SearchAsync(query, ct);
+        return hits
+            .Select(h => new OrganizationSearchResultDto(h.Id, h.Name, h.MemberCount))
             .ToList();
     }
 

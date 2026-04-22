@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Relativa.Core.Application.DTOs.Member;
 using Relativa.Core.Application.Interfaces;
 
@@ -11,9 +10,9 @@ public static class MemberEndpoints
         var group = routes.MapGroup("/api/v1/workspaces/{workspaceId:int}/members")
             .WithTags("Members");
 
-        group.MapGet("/", async (int workspaceId, IWorkspaceMemberService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapGet("/", async (int workspaceId, IWorkspaceMemberService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.GetMembersAsync(workspaceId, userId, ct);
             return Results.Ok(result);
         })
@@ -21,9 +20,9 @@ public static class MemberEndpoints
         .WithSummary("List workspace members")
         .Produces<List<WorkspaceMemberDto>>();
 
-        group.MapPost("/", async (int workspaceId, AddWorkspaceMemberRequest request, IWorkspaceMemberService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapPost("/", async (int workspaceId, AddWorkspaceMemberRequest request, IWorkspaceMemberService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var callerUserId = WorkspaceEndpoints.GetUserId(user);
+            var callerUserId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.AddMemberAsync(workspaceId, callerUserId, request, ct);
             return Results.Created($"/api/v1/workspaces/{workspaceId}/members/{result.UserId}", result);
         })
@@ -31,9 +30,9 @@ public static class MemberEndpoints
         .WithSummary("Add a member to the workspace directly")
         .Produces<WorkspaceMemberDto>(StatusCodes.Status201Created);
 
-        group.MapPut("/{targetUserId:int}/role", async (int workspaceId, int targetUserId, UpdateMemberRoleRequest request, IWorkspaceMemberService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapPut("/{targetUserId:int}/role", async (int workspaceId, int targetUserId, UpdateMemberRoleRequest request, IWorkspaceMemberService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var callerUserId = WorkspaceEndpoints.GetUserId(user);
+            var callerUserId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.UpdateRoleAsync(workspaceId, targetUserId, callerUserId, request, ct);
             return Results.NoContent();
         })
@@ -41,9 +40,9 @@ public static class MemberEndpoints
         .WithSummary("Change a member's role")
         .Produces(StatusCodes.Status204NoContent);
 
-        group.MapDelete("/{targetUserId:int}", async (int workspaceId, int targetUserId, IWorkspaceMemberService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapDelete("/{targetUserId:int}", async (int workspaceId, int targetUserId, IWorkspaceMemberService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var callerUserId = WorkspaceEndpoints.GetUserId(user);
+            var callerUserId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.RemoveAsync(workspaceId, targetUserId, callerUserId, ct);
             return Results.NoContent();
         })

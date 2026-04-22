@@ -40,7 +40,8 @@ public sealed class InvitationService(
 
         await invitationRepository.AddAsync(invitation, ct);
 
-        return new InvitationDto(invitation.Id, invitation.Email, role.Name, invitation.Status, invitation.Token, invitation.ExpiresAt);
+        var reloaded = await invitationRepository.GetByIdAsync(invitation.Id, ct) ?? invitation;
+        return new InvitationDto(reloaded.Id, reloaded.Email, reloaded.Workspace?.Name ?? "", role.Name, reloaded.Status, reloaded.Token, reloaded.ExpiresAt);
     }
 
     public async Task<List<InvitationDto>> GetPendingAsync(int workspaceId, int callerUserId, CancellationToken ct = default)
@@ -50,7 +51,7 @@ public sealed class InvitationService(
         var invitations = await invitationRepository.GetByWorkspaceIdAsync(workspaceId, ct);
         return invitations
             .Where(i => i.Status == "Pending")
-            .Select(i => new InvitationDto(i.Id, i.Email, i.Role.Name, i.Status, i.Token, i.ExpiresAt))
+            .Select(i => new InvitationDto(i.Id, i.Email, i.Workspace?.Name ?? "", i.Role.Name, i.Status, i.Token, i.ExpiresAt))
             .ToList();
     }
 
@@ -112,7 +113,7 @@ public sealed class InvitationService(
         var wsInvitations = await invitationRepository.GetByEmailAsync(userEmail, ct);
         var workspaceInvitations = wsInvitations
             .Where(i => i.Status == "Pending")
-            .Select(i => new InvitationDto(i.Id, i.Email, i.Role.Name, i.Status, i.Token, i.ExpiresAt))
+            .Select(i => new InvitationDto(i.Id, i.Email, i.Workspace?.Name ?? "", i.Role.Name, i.Status, i.Token, i.ExpiresAt))
             .ToList();
 
         var orgInvitations = await orgInvitationRepository.GetByEmailAsync(userEmail, ct);

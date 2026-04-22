@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Interfaces;
 
@@ -11,9 +10,9 @@ public static class OrgMemberEndpoints
         var group = routes.MapGroup("/api/v1/organizations/{organizationId:int}/members")
             .WithTags("Organization Members");
 
-        group.MapGet("/", async (int organizationId, IOrganizationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapGet("/", async (int organizationId, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var userId = WorkspaceEndpoints.GetUserId(user);
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.GetMembersAsync(organizationId, userId, ct);
             return Results.Ok(result);
         })
@@ -21,9 +20,9 @@ public static class OrgMemberEndpoints
         .WithSummary("List organization members")
         .Produces<List<OrgMemberDto>>();
 
-        group.MapDelete("/{userId:int}", async (int organizationId, int userId, IOrganizationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapDelete("/{userId:int}", async (int organizationId, int userId, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var callerUserId = WorkspaceEndpoints.GetUserId(user);
+            var callerUserId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.RemoveMemberAsync(organizationId, userId, callerUserId, ct);
             return Results.NoContent();
         })
@@ -31,9 +30,9 @@ public static class OrgMemberEndpoints
         .WithSummary("Remove a member from the organization")
         .Produces(StatusCodes.Status204NoContent);
 
-        group.MapPut("/{userId:int}/role", async (int organizationId, int userId, ChangeOrgMemberRoleRequest request, IOrganizationService service, ClaimsPrincipal user, CancellationToken ct) =>
+        group.MapPut("/{userId:int}/role", async (int organizationId, int userId, ChangeOrgMemberRoleRequest request, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
         {
-            var callerUserId = WorkspaceEndpoints.GetUserId(user);
+            var callerUserId = WorkspaceEndpoints.GetUserId(httpContext);
             await service.ChangeMemberRoleAsync(organizationId, userId, callerUserId, request, ct);
             return Results.NoContent();
         })
