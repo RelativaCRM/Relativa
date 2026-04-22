@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-04-17
+> **Last verified:** 2026-04-21
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -95,10 +95,11 @@
 - **UI stack:** PrimeVue 4 (Aura preset) + Tailwind CSS 3 (`tailwindcss-primeui` bridge) + Inter font.
 - **Typed API client** (`src/api/http.ts`): `gatewayFetch` with JWT + `X-Workspace-ID` headers, `ApiError` class, JSON helpers (`api.get/post/put/del`), auto session clear on `401`.
 - **Auth service** (`src/api/auth.ts`): `authApi.register` → `/auth/api/v1/auth/register`, `authApi.login` → `/auth/api/v1/auth/login` (via Gateway, CR-96).
-- **Auth store** (Pinia) persists `accessToken` + `expiresAt` in `localStorage`; exposes `login`, `register`, `logout`, `clearSession`; `isAuthenticated` respects token expiry.
+- **Workspaces service** (`src/api/workspaces.ts`): `workspacesApi.list` → `GET /core/api/v1/workspaces` returning `WorkspaceDto[]`.
+- **Auth store** (Pinia) persists `accessToken`, `expiresAt`, and `workspaceId` in `localStorage`; exposes `login` (auto-clears stale `workspaceId`), `register`, `logout`, `clearSession`, `setWorkspace`; `isAuthenticated` respects token expiry.
 - **Layouts:** `AuthLayout.vue` (centered card, brand mark, taglines, footer) and `MainLayout.vue` (top bar with logout, sidebar nav).
-- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype, Register mirrors same style with `firstName`/`lastName`/`email`/`password`), `HomeView.vue` (session info card).
-- **Router guards:** `meta.public` and `meta.guestOnly` flags; unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users cannot visit `/login` or `/register`.
+- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype, Register mirrors same style with `firstName`/`lastName`/`email`/`password`), `WorkspaceSelectView.vue` (card list fetched from `GET /workspaces`, auto-selects and redirects when exactly one workspace exists, empty-state hint when user belongs to none), `HomeView.vue` (session info card).
+- **Router guards:** `meta.public`, `meta.guestOnly`, and `meta.skipWorkspaceCheck` flags; unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users cannot visit `/login` or `/register`; authenticated users without a selected workspace are redirected to `/select-workspace` with `?redirect=<original>` query.
 - `GraphView.vue` with vis-network placeholder (unchanged).
 - Reads `VITE_GATEWAY_URL` from environment; all traffic goes through the gateway.
 
@@ -132,8 +133,8 @@
 
 ### Client
 
-**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) wired to Gateway. `AuthLayout` + `MainLayout` base layouts. Typed API client with JWT handling. Router guards.
-**What is missing:** No organization selection / management UI. No workspace selection / management UI. No member/invitation/role management UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
+**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) wired to Gateway. Workspace selection after login (`/select-workspace`) with auto-select for single-workspace users. `AuthLayout` + `MainLayout` base layouts. Typed API client with JWT and `X-Workspace-ID` handling. Router guards for auth + workspace selection.
+**What is missing:** No organization selection / management UI. No workspace creation or management UI (selection only). No member/invitation/role management UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
 
 ---
 
@@ -199,8 +200,9 @@
 ### Client
 
 - ~~Login and register forms wired to Gateway auth endpoints.~~ *(done in CR-96)*
+- ~~Workspace selection UI after login.~~ *(done in CR-96)*
 - Organization selection / management UI.
-- Workspace selection / management UI.
+- Workspace creation / management UI.
 - Member and invitation management UI.
 - Role and permission management UI.
 - Deal/client management pages.
