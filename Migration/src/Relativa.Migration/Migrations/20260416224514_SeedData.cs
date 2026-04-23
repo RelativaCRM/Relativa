@@ -86,9 +86,9 @@ INSERT INTO organizations (id, name, is_archived) VALUES
 -- 5. Users (placeholder bcrypt hashes)
 -- ============================================================
 INSERT INTO users (id, first_name, last_name, email, password, created_at, is_archived) VALUES
-(1, 'Dorian',  'Gray',    'admin@relativa.com',    '$2a$11$placeholder00000000000000000000000000000000000000000', CURRENT_TIMESTAMP, FALSE),
-(2, 'Ivan',    'Franko',  'ivan.f@relativa.com',   '$2a$11$placeholder00000000000000000000000000000000000000000', CURRENT_TIMESTAMP, FALSE),
-(3, 'Lesya',   'Ukrainka', 'lesya.u@relativa.com', '$2a$11$placeholder00000000000000000000000000000000000000000', CURRENT_TIMESTAMP, FALSE);
+(1, 'Dorian',  'Gray',     'admin@relativa.com',    '$2a$11$U0L3412xLEeQjOfrj5VGb.kPt.RAHBaV/lSNIbHesBuQc90DmFHfC', CURRENT_TIMESTAMP, FALSE),
+(2, 'Ivan',    'Franko',  'ivan.f@relativa.com',   '$2a$11$4J7luzuGBbWMQhuGnebPnu34QyUe867wkeBqahTtrVfjV0YMHNhqu',  CURRENT_TIMESTAMP, FALSE),
+(3, 'Lesya',   'Ukrainka', 'lesya.u@relativa.com', '$2a$11$whaqAlWKw6kwO5K4hh2c5.DsjWOsSxIIP5QOLQK0/yZFWFZVDQMW2', CURRENT_TIMESTAMP, FALSE);
 
 -- ============================================================
 -- 6. Organization Memberships

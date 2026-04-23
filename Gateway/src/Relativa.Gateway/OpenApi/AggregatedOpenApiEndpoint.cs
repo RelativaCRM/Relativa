@@ -95,6 +95,18 @@ public static class AggregatedOpenApiEndpoint
         }
 
         InjectExamples(mergedPaths);
+        ApplyGatewaySecurity(mergedPaths);
+
+        var securitySchemes = new JsonObject
+        {
+            ["Bearer"] = new JsonObject
+            {
+                ["type"] = "http",
+                ["scheme"] = "bearer",
+                ["bearerFormat"] = "JWT",
+                ["description"] = "Paste JWT as: Bearer {token}"
+            }
+        };
 
         var doc = new JsonObject
         {
@@ -113,8 +125,19 @@ public static class AggregatedOpenApiEndpoint
                     ["description"] = "API Gateway"
                 }
             },
+            ["security"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["Bearer"] = new JsonArray()
+                }
+            },
             ["paths"] = mergedPaths,
-            ["components"] = new JsonObject { ["schemas"] = mergedSchemas }
+            ["components"] = new JsonObject
+            {
+                ["schemas"] = mergedSchemas,
+                ["securitySchemes"] = securitySchemes
+            }
         };
 
         return doc.ToJsonString(WriteOptions);
@@ -166,14 +189,34 @@ public static class AggregatedOpenApiEndpoint
         }
     }
 
+    // Default example values for well-known path / query parameters.
+    // These are injected into every operation that contains a matching parameter name,
+    // so Scalar can pre-fill them and the user can hit "Send" without typing anything.
+    private static readonly Dictionary<string, JsonNode> ParameterExamples = new()
+    {
+        ["workspaceId"]    = JsonValue.Create(1)!,
+        ["organizationId"] = JsonValue.Create(1)!,
+        ["entityId"]       = JsonValue.Create(1)!,
+        ["invitationId"]   = JsonValue.Create(1)!,
+        ["requestId"]      = JsonValue.Create(1)!,
+        ["roleId"]         = JsonValue.Create(1)!,
+        ["memberId"]       = JsonValue.Create(1)!,
+        ["userId"]         = JsonValue.Create(2)!,
+        ["id"]             = JsonValue.Create(1)!,
+        ["q"]              = JsonValue.Create("acme")!,
+    };
+
     /// <summary>
-    /// Injects pre-filled <c>example</c> values into request body media-type objects
-    /// for every operation that has a known example payload.  The operationIds here
-    /// already carry the service prefix added by <see cref="PrefixOperationIds"/>.
+    /// Injects pre-filled <c>example</c> values into:
+    /// <list type="bullet">
+    ///   <item>path / query <c>parameters</c> — so Scalar auto-fills route segments and query strings.</item>
+    ///   <item>request body <c>application/json</c> media-type — for operations with known payloads.</item>
+    /// </list>
+    /// OperationIds here already carry the service prefix added by <see cref="PrefixOperationIds"/>.
     /// </summary>
     private static void InjectExamples(JsonObject mergedPaths)
     {
-        var examples = BuildExamples();
+        var bodyExamples = BuildBodyExamples();
 
         foreach (var (_, pathNode) in mergedPaths)
         {
@@ -182,36 +225,49 @@ public static class AggregatedOpenApiEndpoint
             foreach (var method in new[] { "get", "post", "put", "patch", "delete" })
             {
                 if (pathObj[method] is not JsonObject op) continue;
+
+                // ── Path / query parameters ──────────────────────────────────────
+                if (op["parameters"] is JsonArray parameters)
+                {
+                    foreach (var param in parameters)
+                    {
+                        if (param is not JsonObject paramObj) continue;
+                        if (paramObj["name"] is not JsonValue nameVal) continue;
+
+                        var paramName = nameVal.GetValue<string>();
+                        if (ParameterExamples.TryGetValue(paramName, out var paramExample))
+                            paramObj["example"] = JsonNode.Parse(paramExample.ToJsonString())!;
+                    }
+                }
+
+                // ── Request body ─────────────────────────────────────────────────
                 if (op["operationId"] is not JsonValue idVal) continue;
-
                 var operationId = idVal.GetValue<string>();
-                if (!examples.TryGetValue(operationId, out var example)) continue;
+                if (!bodyExamples.TryGetValue(operationId, out var bodyExample)) continue;
 
-                // Ensure the path to requestBody.content.application/json exists
                 if (op["requestBody"] is not JsonObject reqBody) continue;
                 if (reqBody["content"] is not JsonObject content) continue;
                 if (content["application/json"] is not JsonObject mediaType) continue;
 
-                // Clone to avoid sharing nodes between multiple serialisations
-                mediaType["example"] = JsonNode.Parse(example.ToJsonString())!;
+                mediaType["example"] = JsonNode.Parse(bodyExample.ToJsonString())!;
             }
         }
     }
 
-    private static Dictionary<string, JsonNode> BuildExamples() => new()
+    private static Dictionary<string, JsonNode> BuildBodyExamples() => new()
     {
         // ── Auth ────────────────────────────────────────────────────────────────
         ["Auth_Login"] = new JsonObject
         {
             ["email"]    = "admin@relativa.com",
-            ["password"] = "Relativa2026!"
+            ["password"] = "Admin1234!"
         },
         ["Auth_Register"] = new JsonObject
         {
             ["firstName"] = "Jane",
             ["lastName"]  = "Doe",
             ["email"]     = "jane.doe@example.com",
-            ["password"]  = "SecurePass123!"
+            ["password"]  = "Admin1234!"
         },
 
         // ── Organizations ───────────────────────────────────────────────────────
@@ -320,6 +376,55 @@ public static class AggregatedOpenApiEndpoint
             }
         },
     };
+
+    /// <summary>
+    /// Applies Gateway auth behavior to the aggregated OpenAPI document:
+    /// global Bearer requirement for all operations, with explicit anonymous
+    /// overrides for the routes that are configured as anonymous in YARP.
+    /// </summary>
+    private static void ApplyGatewaySecurity(JsonObject mergedPaths)
+    {
+        foreach (var (path, pathNode) in mergedPaths)
+        {
+            if (pathNode is not JsonObject pathObj) continue;
+
+            foreach (var method in new[] { "get", "post", "put", "patch", "delete", "head", "options" })
+            {
+                if (pathObj[method] is not JsonObject op) continue;
+
+                if (IsAnonymousGatewayOperation(path, method))
+                {
+                    // Empty security array means "no auth required" for this operation.
+                    op["security"] = new JsonArray();
+                }
+            }
+        }
+    }
+
+    private static bool IsAnonymousGatewayOperation(string path, string method)
+    {
+        if (path.Equals("/auth/api/v1/auth/login", StringComparison.OrdinalIgnoreCase) &&
+            method.Equals("post", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (path.Equals("/auth/api/v1/auth/register", StringComparison.OrdinalIgnoreCase) &&
+            method.Equals("post", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (path.Equals("/auth/health", StringComparison.OrdinalIgnoreCase) &&
+            method.Equals("get", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (path.Equals("/core/health", StringComparison.OrdinalIgnoreCase) &&
+            method.Equals("get", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (path.Equals("/core/api/v1/entity-types", StringComparison.OrdinalIgnoreCase) &&
+            method.Equals("get", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
 
     private sealed record ServiceSpec(string PathPrefix, string SchemaPrefix, JsonDocument? Spec);
 }
