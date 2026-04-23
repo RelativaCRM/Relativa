@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-04-17 (gateway-only JWT validation with X-User-Id header forwarding)
+> **Last verified:** 2026-04-23 (EAV schema migration — entity model restructured to Entity-Attribute-Value pattern)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -97,36 +97,39 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 
 | Directory / File | What it contains |
 |---|---|
-| `Entities/` | 20 entity classes (see list below) |
+| `Entities/` | 21 entity classes (see list below) |
 | `Configurations/` | EF Fluent API `IEntityTypeConfiguration<T>` classes for each entity |
-| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full 20-entity model) |
+| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full 21-entity model) |
 
-### Entity list (20 entities)
+### Entity list (21 entities)
 
 | Entity | Table name | Notes |
 |---|---|---|
 | `User` | `users` | Credentials and profile. No `role_id` column (dropped). |
 | `Organization` | `organizations` | Top-level tenant boundary. |
 | `Workspace` | `workspaces` | Has `organization_id` FK (direct, no join table). |
-| `OrganizationRole` | `organization_roles` | **NEW.** Org-scoped roles (system + custom). |
-| `OrganizationRolePermission` | `organization_role_permissions` | **NEW.** Join between org roles and permissions. |
-| `UserRoleOrganization` | `user_role_organization` | **NEW.** Org membership: user + org + org role. |
-| `OrganizationJoinRequest` | `organization_join_requests` | **NEW.** Pending/approved/rejected requests to join an org. |
-| `OrganizationInvitation` | `organization_invitations` | **NEW.** Email-based invitations to join an org. |
-| `WorkspaceRole` | `workspace_roles` | **Renamed** from `roles`. Ws-scoped roles (system + custom). |
-| `WorkspaceRolePermission` | `workspace_role_permissions` | **Renamed** from `role_permissions`. Join between ws roles and permissions. |
-| `UserRoleWorkspace` | `user_role_workspace` | **Renamed** from `workspace_members`. Ws membership: user + workspace + ws role. |
-| `Permission` | `permissions` | **Shared** by both org and ws role-permission joins. 16 granular permissions. |
+| `OrganizationRole` | `organization_roles` | Org-scoped roles (system + custom). |
+| `OrganizationRolePermission` | `organization_role_permissions` | Join between org roles and permissions. |
+| `UserRoleOrganization` | `user_role_organization` | Org membership: user + org + org role. |
+| `OrganizationJoinRequest` | `organization_join_requests` | Pending/approved/rejected requests to join an org. |
+| `OrganizationInvitation` | `organization_invitations` | Email-based invitations to join an org. |
+| `WorkspaceRole` | `workspace_roles` | Ws-scoped roles (system + custom). |
+| `WorkspaceRolePermission` | `workspace_role_permissions` | Join between ws roles and permissions. |
+| `UserRoleWorkspace` | `user_role_workspace` | Ws membership: user + workspace + ws role. |
+| `Permission` | `permissions` | Shared by both org and ws role-permission joins. 16 granular permissions. |
 | `WorkspaceInvitation` | `workspace_invitations` | Email-based invitations to join a workspace. |
-| `EntityType` | `entity_types` | Discriminator (`client`, `deal`). |
-| `Entity` | `entities` | Business record typed by EntityType. |
-| `EntityWorkspace` | `entity_workspaces` | Join between Entity and Workspace. |
-| `EntityProperty` | `entity_properties` | Polymorphic property row for an Entity. |
-| `PersonalDataPropertyValue` | `personal_data_property_values` | Name/contact data for client-type entities. |
-| `LocationPropertyValue` | `location_property_values` | Address/geo data for client-type entities. |
-| `DealPropertyValue` | `deal_property_values` | Deal value, expected close, closure_score, owner, linked client. |
+| `EntityType` | `entity_type` | Named type discriminator (`client`, `deal`). Singular table name. |
+| `Entity` | `entity` | Business record typed by EntityType. Singular table name. |
+| `EntityWorkspace` | `entity_workspace` | Join between Entity and Workspace. Singular table name. |
+| `Property` | `property` | **EAV.** Named attribute definition with data type (`String/Int/Decimal/Bool/Date`). `organization_id` nullable: `null` = global, set = org-specific custom property. |
+| `EntityTypeProperty` | `entity_type_property` | **EAV schema layer.** Maps which properties belong to which entity type, with `is_required` flag. Composite PK `(entity_type_id, property_id)`. |
+| `EntityPropertyValue` | `entity_property_value` | **EAV data layer.** Stores a concrete attribute value for an entity. Composite PK `(entity_id, property_id)`. Five typed value columns: `value_string`, `value_int`, `value_decimal`, `value_bool`, `value_date`. Only one is populated per row. |
+| `EntityRelationshipType` | `entity_relationship_type` | **EAV schema layer.** Defines valid entity-type-to-entity-type link schemas (e.g. `deal_client`: deal → client). |
+| `EntityRelationship` | `entity_relationship` | **EAV data layer.** A concrete directed link between two entity instances, typed by `EntityRelationshipType`. |
 
-**Dropped:** `OrganizationWorkspace` (replaced by `workspaces.organization_id` FK). `users.role_id` column removed.
+**Dropped in EAV migration:** `EntityProperty` (polymorphic hub), `PersonalDataPropertyValue`, `LocationPropertyValue`, `DealPropertyValue`. Their data is now stored as `EntityPropertyValue` rows. The deal→client association previously held as a FK in `DealPropertyValue.client_id` is now an `EntityRelationship` row of type `deal_client`.
+
+**Table naming convention:** All entity-related tables use singular names (`entity_type`, `entity`, `entity_workspace`, `property`, etc.). Non-entity tables retain their original plural names (`users`, `organizations`, `workspaces`, etc.) and will be renamed in a future migration.
 
 ### Multiple DbContexts over one model
 
@@ -135,8 +138,8 @@ Different services compose **different slices** of the entity model:
 | DbContext | Location | What it maps | Extension used |
 |---|---|---|---|
 | `AuthDbContext` | `Authentication/.../Infrastructure/Data/AuthDbContext.cs` | User only (other entities reachable via `User` navigation properties are cut with `Ignore<UserRoleWorkspace>()` + `Ignore<UserRoleOrganization>()`) | `ApplyAuthEntityConfigurations` |
-| `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | All 20 entities | `ApplyAllEntityConfigurations` |
-| `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | All 20 entities | `ApplyAllEntityConfigurations` |
+| `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | All 21 entities | `ApplyAllEntityConfigurations` |
+| `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | All 21 entities | `ApplyAllEntityConfigurations` |
 
 Migrations are owned by the **Migration** service. The migration assembly name is `Relativa.Migration`. Schema changes always go through `Migration/src/Relativa.Migration/Migrations/`.
 
@@ -159,7 +162,14 @@ This matrix defines which service is the **authoritative writer** for each table
 | `user_role_workspace` | -- | **Read/Write** |
 | `workspace_invitations` | -- | **Read/Write** |
 | `permissions` | -- | **Read/Write** |
-| All entity/property tables | -- | **Read/Write** |
+| `entity_type` | -- | **Read/Write** |
+| `entity` | -- | **Read/Write** |
+| `entity_workspace` | -- | **Read/Write** |
+| `property` | -- | **Read/Write** |
+| `entity_type_property` | -- | **Read/Write** |
+| `entity_property_value` | -- | **Read/Write** |
+| `entity_relationship_type` | -- | **Read/Write** |
+| `entity_relationship` | -- | **Read/Write** |
 
 **Rules:**
 1. Auth service must **never write** to any table other than `users`.
@@ -177,6 +187,7 @@ erDiagram
     Organization ||--o{ OrganizationRole : "has roles"
     Organization ||--o{ OrganizationJoinRequest : "join requests"
     Organization ||--o{ OrganizationInvitation : "invitations"
+    Organization ||--o{ Property : "org-scoped properties"
     OrganizationRole ||--o{ OrganizationRolePermission : grants
     OrganizationRole ||--o{ UserRoleOrganization : "assigned via"
     Workspace ||--o{ EntityWorkspace : contains
@@ -187,13 +198,17 @@ erDiagram
     WorkspaceRole ||--o{ UserRoleWorkspace : "assigned via"
     Permission ||--o{ OrganizationRolePermission : "org granted via"
     Permission ||--o{ WorkspaceRolePermission : "ws granted via"
-    Entity ||--o{ EntityWorkspace : "belongs to"
     EntityType ||--o{ Entity : types
-    Entity ||--o{ EntityProperty : has
-    EntityProperty ||--o| PersonalDataPropertyValue : "value (client)"
-    EntityProperty ||--o| LocationPropertyValue : "value (client)"
-    EntityProperty ||--o| DealPropertyValue : "value (deal)"
-    DealPropertyValue }o--|| User : "owned by"
+    EntityType ||--o{ EntityTypeProperty : "schema"
+    EntityType ||--o{ EntityRelationshipType : "source type"
+    EntityType ||--o{ EntityRelationshipType : "target type"
+    Entity ||--o{ EntityWorkspace : "belongs to"
+    Entity ||--o{ EntityPropertyValue : "attribute values"
+    Entity ||--o{ EntityRelationship : "source of"
+    Entity ||--o{ EntityRelationship : "target of"
+    Property ||--o{ EntityTypeProperty : "mapped via"
+    Property ||--o{ EntityPropertyValue : "values via"
+    EntityRelationshipType ||--o{ EntityRelationship : "instances"
     User ||--o{ UserRoleOrganization : "member of orgs"
     User ||--o{ UserRoleWorkspace : "member of workspaces"
 ```
@@ -213,9 +228,11 @@ erDiagram
   - **4 ws roles:** `ws_admin` (all 9 ws perms), `ws_manager` (subset), `ws_analyst` (view-only), `ws_member` (minimal)
 - `OrganizationJoinRequest` tracks pending/approved/rejected requests from users wanting to join an org.
 - `OrganizationInvitation` tracks email-based invitations to join an org (parallel to `WorkspaceInvitation` for workspaces).
-- `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client` or `deal`).
-- `EntityProperty` is a polymorphic property bag: each row points to at most one of `PersonalDataPropertyValue`, `LocationPropertyValue`, or `DealPropertyValue`.
-- `DealPropertyValue` has an `owner` (User) and a linked `client` (Entity), plus `value`, `expected_close`, `closure_score`, and timestamps.
+- `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client` or `deal`). All entity types use the same EAV storage — there are no separate per-type tables.
+- **EAV two-level pattern:**
+  - **Schema layer:** `EntityTypeProperty` defines which `Property` definitions belong to each `EntityType` (with `is_required`). `EntityRelationshipType` defines which entity type pairs can be linked (e.g. `deal_client`: deal → client).
+  - **Data layer:** `EntityPropertyValue` holds a concrete typed value for one entity+property pair (composite PK). `EntityRelationship` holds a directed link between two entity instances, typed by `EntityRelationshipType`.
+- **`Property` scoping:** `property.organization_id = NULL` means the property is global (system-wide); non-null means it is an org-defined custom property visible only to that organization.
 - `OrganizationRole.OrganizationId` is **nullable** -- `null` for system roles, set for custom org-specific roles.
 - `WorkspaceRole.WorkspaceId` is **nullable** -- `null` for system roles, set for custom workspace-specific roles.
 

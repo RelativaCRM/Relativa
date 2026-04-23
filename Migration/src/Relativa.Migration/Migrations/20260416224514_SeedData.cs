@@ -50,8 +50,6 @@ INSERT INTO organization_role_permissions (id, org_role_id, permission_id) VALUE
 INSERT INTO organization_role_permissions (id, org_role_id, permission_id) VALUES
 (8, 2, 1), (9, 2, 2), (10, 2, 3), (11, 2, 4), (12, 2, 5), (13, 2, 7);
 
--- org_member: no org permissions
-
 -- ============================================================
 -- 3. Workspace Roles (system, workspace_id = NULL)
 -- ============================================================
@@ -101,7 +99,7 @@ INSERT INTO user_role_organization (id, user_id, organization_id, org_role_id, j
 (3, 3, 1, 3, CURRENT_TIMESTAMP, FALSE);  -- Lesya  = org_member @ Relativa Global
 
 -- ============================================================
--- 7. Workspaces (now with organization_id)
+-- 7. Workspaces
 -- ============================================================
 INSERT INTO workspaces (id, name, organization_id, created_by_user_id, is_archived) VALUES
 (1, 'EU Sales Workspace', 1, 1, FALSE),
@@ -116,7 +114,7 @@ INSERT INTO user_role_workspace (id, user_id, workspace_id, ws_role_id, joined_a
 (3, 3, 1, 3, CURRENT_TIMESTAMP, FALSE);  -- Lesya  = ws_analyst @ EU Sales
 
 -- ============================================================
--- 9. Entity Types
+-- 9. Entity Types (InitialCreate schema — EAV applied in later migration)
 -- ============================================================
 INSERT INTO entity_types (id, type_id, is_archived) VALUES
 (1, 'client', FALSE),
@@ -135,9 +133,6 @@ INSERT INTO entities (id, type, is_archived) VALUES
 INSERT INTO entity_workspaces (id, entity_id, workspace_id) VALUES
 (1, 1, 1), (2, 2, 1), (3, 3, 1), (4, 4, 1), (5, 5, 1);
 
--- ============================================================
--- 11. Property Values
--- ============================================================
 INSERT INTO personal_data_property_values (id, first_name, last_name, phone_number, email, passport_number, birth_date) VALUES
 (1, 'Oleksiy', 'Ivanenko',    '+380671234567', 'o.ivanenko@tech.ua', NULL, '1985-05-20'),
 (2, 'Maria',   'Zankovetska', '+380501234567', 'm.zan@corp.ua',      NULL, '1990-11-15');
@@ -151,9 +146,6 @@ INSERT INTO deal_property_values (id, value, owner_id, client_id, expected_close
 (2, 15000.00, 3, 2, '2026-05-15 00:00:00+00', 0.85, CURRENT_TIMESTAMP),
 (3, 50000.00, 2, 1, '2026-08-01 00:00:00+00', 0.45, CURRENT_TIMESTAMP);
 
--- ============================================================
--- 12. Entity Properties (polymorphic hub)
--- ============================================================
 INSERT INTO entity_properties (id, entity_id, personal_data_property_id, location_property_id, deal_property_id) VALUES
 (1, 1, 1, 1, NULL),
 (2, 2, 2, 2, NULL),
@@ -162,7 +154,7 @@ INSERT INTO entity_properties (id, entity_id, personal_data_property_id, locatio
 (5, 5, NULL, NULL, 3);
 
 -- ============================================================
--- 13. Reset sequences
+-- 11. Reset sequences (InitialCreate tables only)
 -- ============================================================
 SELECT setval(pg_get_serial_sequence('permissions', 'id'), (SELECT COALESCE(MAX(id),1) FROM permissions));
 SELECT setval(pg_get_serial_sequence('organization_roles', 'id'), (SELECT COALESCE(MAX(id),1) FROM organization_roles));

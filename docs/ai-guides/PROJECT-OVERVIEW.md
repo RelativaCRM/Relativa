@@ -1,6 +1,6 @@
 # Project Overview -- What is Relativa?
 
-> **Last verified:** 2026-04-17
+> **Last verified:** 2026-04-23
 
 > **Maintenance obligation:** If you change the general purpose, domain model, tech stack, or repo layout, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -27,12 +27,13 @@ Relativa is a **multi-tenant CRM / sales-workspace platform**. It lets organizat
 | **OrganizationRole** | Named role scoped to an organization (e.g. `org_owner`, `org_admin`, `org_member`). Linked to permissions via `OrganizationRolePermission`. `OrganizationId` is nullable: `null` for system roles, set for custom org-specific roles. |
 | **WorkspaceRole** | Named role scoped to a workspace (e.g. `ws_admin`, `ws_manager`, `ws_analyst`, `ws_member`). Linked to permissions via `WorkspaceRolePermission`. `WorkspaceId` is nullable: `null` for system roles, set for custom workspace-specific roles. |
 | **Permission** | Granular capability shared by both org and ws role hierarchies. 16 total: 7 org-scoped (e.g. `manage_org_settings`, `create_workspaces`) and 9 ws-scoped (e.g. `manage_ws_settings`, `edit_deals`, `view_analytics`). |
-| **EntityType** | Discriminator string (`client`, `deal`). |
-| **Entity** | A business record typed by EntityType. Lives in workspaces. |
-| **EntityProperty** | A property row for an Entity, pointing to one of the polymorphic value tables below. |
-| **PersonalDataPropertyValue** | Name/contact data for client-type entities. |
-| **LocationPropertyValue** | Address/geo data for client-type entities. |
-| **DealPropertyValue** | Deal value, expected close date, closure_score, owner (User), linked client. |
+| **EntityType** | Named type discriminator (`client`, `deal`). Extensible — new types can be added by inserting a row. |
+| **Entity** | A business record typed by `EntityType`. Lives in workspaces via `EntityWorkspace`. All entity types share the same EAV storage — no per-type tables. |
+| **Property** | A named attribute definition with a data type (`String`, `Int`, `Decimal`, `Bool`, `Date`). Global (`organization_id = NULL`) or org-specific (`organization_id` set). |
+| **EntityTypeProperty** | Schema-layer mapping: which `Property` definitions belong to which `EntityType`, with an `is_required` flag. Composite PK on `(entity_type_id, property_id)`. |
+| **EntityPropertyValue** | Data-layer storage: one row per entity+property pair holding the actual typed value. Only one of `value_string / value_int / value_decimal / value_bool / value_date` is populated per row. |
+| **EntityRelationshipType** | Schema-layer definition of a valid directed link between two entity types (e.g. `deal_client`: deal → client). |
+| **EntityRelationship** | Data-layer instance of a directed link between two entity records, typed by `EntityRelationshipType`. Replaces the old hard-coded `deal_property_values.client_id` FK. |
 
 The domain model lives entirely in the shared Persistence library (`Persistence/src/Relativa.Persistence/Entities/`).
 
@@ -98,7 +99,7 @@ Relativa/
 │   └── src/Relativa.Migration/
 ├── Persistence/                # Shared EF Core entity library (no .sln)
 │   └── src/Relativa.Persistence/
-│       ├── Entities/           # 20 entity classes
+│       ├── Entities/           # 21 entity classes
 │       ├── Configurations/     # Fluent API configs
 │       └── ModelBuilderExtensions.cs
 ├── Client/                     # Vue 3 + Vite SPA

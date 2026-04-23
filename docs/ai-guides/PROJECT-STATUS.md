@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-04-17 (gateway-only JWT validation with X-User-Id header forwarding)
+> **Last verified:** 2026-04-23 (EAV schema migration — entity model restructured)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -15,10 +15,10 @@
 | Core | **Functional** (org + ws RBAC) | Organization management, workspace management, split RBAC (org roles + ws roles), members, invitations, join requests, role/permission management all implemented; entity/deal CRUD not yet |
 | Graph | **Stub** | SignalR hub exists but has no logic |
 | Audit | **Stub** | Returns empty array; JWT validation disabled |
-| Migration | **Functional** | Applies EF migrations on startup; schema + seed data work |
+| Migration | **Functional** | Applies EF migrations on startup; schema + seed data work. Three migrations: `InitialCreate`, `SeedData`, `EavSchemaReplace`. |
 | ML | **Stub** | Single endpoint returns hardcoded stub |
 | Client | **Partial** | Vue 3 + PrimeVue + Tailwind. Auth flow + org onboarding + members/invitations wired to Gateway; base layouts in place; typed API client for auth + org endpoints |
-| Persistence | **Functional** | Full entity model (20 entities), fluent configs, ModelBuilderExtensions |
+| Persistence | **Functional** | Full EAV entity model (21 entities), fluent configs, ModelBuilderExtensions |
 
 ---
 
@@ -71,17 +71,21 @@
 
 ### Migration
 
-- `MigrationDbContext` mirrors full Persistence model (20 entities).
+- `MigrationDbContext` mirrors full Persistence model (21 entities).
 - `Program.cs` runs `Database.MigrateAsync()` as a generic host console app.
-- Migrations in `Migration/src/Relativa.Migration/Migrations/` (`20260416224419_InitialCreate.cs` + `20260416224514_SeedData.cs`) cover the full schema including the split RBAC tables, org management tables, and seed data for 7 default roles, 16 permissions, and demo data.
+- Three migrations in `Migration/src/Relativa.Migration/Migrations/`:
+  - `20260416224419_InitialCreate.cs` — full initial schema (RBAC, org management, old polymorphic entity tables).
+  - `20260416224514_SeedData.cs` — rewritten to seed using EAV tables: `entity_type`, `entity`, `entity_workspace`, `property`, `entity_type_property`, `entity_property_value`, `entity_relationship_type`, `entity_relationship`.
+  - `20260423000000_EavSchemaReplace.cs` — EAV schema migration: drops old property tables, renames entity tables to singular, creates new EAV tables.
 - Docker Compose runs this before auth and core start.
 
 ### Persistence library
 
-- 20 entity classes with EF Fluent API configurations.
+- 21 entity classes with EF Fluent API configurations.
 - Split RBAC model: separate `OrganizationRole`/`OrganizationRolePermission` and `WorkspaceRole`/`WorkspaceRolePermission` hierarchies sharing a common `Permission` table.
+- **EAV entity model:** `Property`, `EntityTypeProperty`, `EntityPropertyValue`, `EntityRelationshipType`, `EntityRelationship` replace the old hard-coded `EntityProperty` / `PersonalDataPropertyValue` / `LocationPropertyValue` / `DealPropertyValue` tables.
 - `ModelBuilderExtensions.ApplyAuthEntityConfigurations()` for auth-only subset (User).
-- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 20 entities).
+- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 21 entities).
 - Referenced by Core, Authentication, and Migration via ProjectReference.
 
 ### Docker Compose
@@ -114,8 +118,9 @@
 ### Core service -- remaining gaps
 
 **What is missing:**
-- No CRUD for entities, deals, or clients.
-- No workspace isolation for entity queries (multi-tenant data scoping).
+- No CRUD for entities, deals, or clients (EAV schema is in place but no endpoints or services yet).
+- No workspace isolation for entity queries (multi-tenant data scoping via `EntityWorkspace`).
+- No EAV validation service (enforcing `entity_type_property.is_required` at the application layer).
 - No business rules (BP-01 through BP-06).
 - No domain events.
 - No email notifications for invitations or join request outcomes.
@@ -163,7 +168,9 @@
 
 ### Core service -- business API
 
-- CRUD endpoints for entities, clients, deals.
+- CRUD endpoints for entities (EAV-based: create entity of a type, set property values, create relationships).
+- EAV validation service: enforce `entity_type_property.is_required` and data type constraints at the application layer.
+- Property management endpoints: list/create/update org-scoped custom properties.
 - Workspace isolation for entity queries (multi-tenant data scoping via `EntityWorkspace`).
 - Business rules BP-01 through BP-06 (referenced in `Core/README.md`, not defined in code).
 - Domain events published to Audit after entity mutations.
@@ -181,10 +188,10 @@
 
 ### Graph service
 
-- Recursive CTE queries for entity-relationship traversal.
-- Dynamic RBAC-based filtering of graph data.
+- Recursive CTE queries for entity-relationship traversal using `entity_relationship` and `entity_relationship_type`.
+- Dynamic RBAC-based filtering of graph data (workspace-scoped via `entity_workspace`).
 - Live SignalR push updates when entities change.
-- ML score integration (display closure_score on graph nodes).
+- ML score integration (display `closure_score` property values on graph nodes — stored as `entity_property_value` rows).
 
 ### Audit service
 

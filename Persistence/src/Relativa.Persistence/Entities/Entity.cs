@@ -3,10 +3,11 @@ namespace Relativa.Persistence.Entities;
 public class Entity
 {
     public int Id { get; set; }
-    public int Type { get; set; }
+    public int EntityTypeId { get; set; }
     public bool IsArchived { get; set; }
     public EntityType EntityType { get; set; } = null!;
     public ICollection<EntityWorkspace> EntityWorkspaces { get; set; } = new List<EntityWorkspace>();
-    public ICollection<DealPropertyValue> DealPropertyValues { get; set; } = new List<DealPropertyValue>();
-    public EntityProperty? EntityProperty { get; set; }
+    public ICollection<EntityPropertyValue> EntityPropertyValues { get; set; } = new List<EntityPropertyValue>();
+    public ICollection<EntityRelationship> SourceRelationships { get; set; } = new List<EntityRelationship>();
+    public ICollection<EntityRelationship> TargetRelationships { get; set; } = new List<EntityRelationship>();
 }
