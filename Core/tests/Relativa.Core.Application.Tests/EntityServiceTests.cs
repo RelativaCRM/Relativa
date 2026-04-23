@@ -79,4 +79,68 @@ public sealed class EntityServiceTests
         await act.Should().ThrowAsync<KeyNotFoundException>()
             .WithMessage($"Entity type {entityTypeId} does not exist or has no properties defined.");
     }
+
+    [Fact]
+    public async Task UpdateAsync_OnlySendsChangedFields_MergesExistingRequiredValues()
+    {
+        static Property P(int id, string name) =>
+            new() { Id = id, Name = name, DataType = PropertyDataType.String };
+
+        var storedEntity = new Entity
+        {
+            Id = 1,
+            EntityTypeId = 1,
+            IsArchived = false,
+            EntityType = new EntityType { Id = 1, Name = "client" },
+            EntityPropertyValues =
+            [
+                new EntityPropertyValue { EntityId = 1, PropertyId = 1, ValueString = "Oleksiy", Property = P(1, "first_name") },
+                new EntityPropertyValue { EntityId = 1, PropertyId = 3, ValueString = "Ivanenko", Property = P(3, "last_name") }
+            ]
+        };
+        var typeProps = new List<EntityTypeProperty>
+        {
+            new() { EntityTypeId = 1, PropertyId = 1, IsRequired = true, Property = P(1, "first_name") },
+            new() { EntityTypeId = 1, PropertyId = 3, IsRequired = true, Property = P(3, "last_name") }
+        };
+        var reloaded = new Entity
+        {
+            Id = 1,
+            EntityTypeId = 1,
+            IsArchived = false,
+            EntityType = new EntityType { Id = 1, Name = "client" },
+            EntityPropertyValues =
+            [
+                new EntityPropertyValue { EntityId = 1, PropertyId = 1, ValueString = "Jane", Property = P(1, "first_name") },
+                new EntityPropertyValue { EntityId = 1, PropertyId = 3, ValueString = "Ivanenko", Property = P(3, "last_name") }
+            ]
+        };
+
+        _updateValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateEntityRequest>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+        _memberRepo
+            .Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberWithPermission(1, 1, "manage_entities"));
+        _entityRepo
+            .SetupSequence(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(storedEntity)
+            .ReturnsAsync(reloaded);
+        _entityRepo
+            .Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new UpdateEntityRequest([new PropertyValueInput(1, "Jane")]);
+        await _sut.UpdateAsync(1, 1, 1, request);
+
+        _entityRepo.Verify(
+            r => r.UpdateAsync(
+                storedEntity,
+                It.Is<List<EntityPropertyValue>>(l =>
+                    l.Count == 2
+                    && l.Single(x => x.PropertyId == 1).ValueString == "Jane"
+                    && l.Single(x => x.PropertyId == 3).ValueString == "Ivanenko"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
 }

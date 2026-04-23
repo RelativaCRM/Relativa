@@ -1,3 +1,4 @@
+using System.Globalization;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Entity;
 using Relativa.Core.Application.Interfaces;
@@ -63,9 +64,11 @@ public sealed class EntityService(
             throw new ArgumentException("Cannot update an archived entity.");
 
         var typeProperties = await entityRepository.GetTypePropertiesAsync(entity.EntityTypeId, ct);
-        ValidatePropertyPayload(request.Properties, typeProperties);
+        ValidateRequestPropertyIds(request.Properties, typeProperties);
+        var merged = MergePropertyPayload(entity, request.Properties);
+        ValidatePropertyPayload(merged, typeProperties);
 
-        var propertyValues = BuildPropertyValues(request.Properties, typeProperties);
+        var propertyValues = BuildPropertyValues(merged, typeProperties);
         await entityRepository.UpdateAsync(entity, propertyValues, ct);
 
         var updated = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct);
@@ -102,6 +105,58 @@ public sealed class EntityService(
     }
 
     /// <summary>
+    /// Validates the raw request body: no duplicate property ids, every id belongs to the entity type.
+    /// </summary>
+    private static void ValidateRequestPropertyIds(
+        List<PropertyValueInput> request,
+        List<EntityTypeProperty> typeProperties)
+    {
+        var allowedIds = typeProperties.Select(tp => tp.PropertyId).ToHashSet();
+
+        var duplicates = request.GroupBy(p => p.PropertyId).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicates.Count > 0)
+            throw new ArgumentException($"Duplicate property ids in request: {string.Join(", ", duplicates)}.");
+
+        var unknown = request.Select(p => p.PropertyId).Except(allowedIds).ToList();
+        if (unknown.Count > 0)
+            throw new ArgumentException($"Properties {string.Join(", ", unknown)} do not belong to this entity type.");
+    }
+
+    /// <summary>
+    /// For updates, overlays <paramref name="request"/> onto current <see cref="Entity.EntityPropertyValues"/>.
+    /// Omitted properties keep their stored values; explicit <c>null</c> clears an optional field (no row written).
+    /// </summary>
+    private static List<PropertyValueInput> MergePropertyPayload(Entity entity, List<PropertyValueInput> request)
+    {
+        var reqById = request.ToDictionary(p => p.PropertyId, p => p.Value);
+        var existingStrings = entity.EntityPropertyValues.ToDictionary(
+            epv => epv.PropertyId,
+            epv => ValueToInputString(epv));
+
+        var mergedIds = existingStrings.Keys.Union(reqById.Keys).OrderBy(id => id).ToList();
+        var result = new List<PropertyValueInput>(mergedIds.Count);
+        foreach (var id in mergedIds)
+        {
+            if (reqById.TryGetValue(id, out var requested))
+                result.Add(new PropertyValueInput(id, requested));
+            else if (existingStrings.TryGetValue(id, out var kept))
+                result.Add(new PropertyValueInput(id, kept));
+        }
+
+        return result;
+    }
+
+    private static string? ValueToInputString(EntityPropertyValue pv) => pv.Property.DataType switch
+    {
+        PropertyDataType.String  => pv.ValueString,
+        PropertyDataType.Int     => pv.ValueInt?.ToString(CultureInfo.InvariantCulture),
+        PropertyDataType.Decimal => pv.ValueDecimal?.ToString(CultureInfo.InvariantCulture),
+        PropertyDataType.Bool    => pv.ValueBool?.ToString(),
+        PropertyDataType.Date    => pv.ValueDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        _                        => null
+    };
+
+    /// <summary>
     /// Validates that:
     /// - All submitted property ids belong to the entity type.
     /// - All required properties have a non-null value.
@@ -126,10 +181,10 @@ public sealed class EntityService(
         var missingRequired = requiredIds.Except(submittedIds).ToList();
         if (missingRequired.Count > 0)
         {
-            var names = typeProperties
+            var details = typeProperties
                 .Where(tp => missingRequired.Contains(tp.PropertyId))
-                .Select(tp => tp.Property.Name);
-            throw new ArgumentException($"Required properties are missing: {string.Join(", ", names)}.");
+                .Select(tp => $"{tp.Property.Name} (propertyId {tp.PropertyId})");
+            throw new ArgumentException($"Required properties are missing: {string.Join(", ", details)}.");
         }
     }
 

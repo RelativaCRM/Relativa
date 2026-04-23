@@ -48,7 +48,7 @@ public static class EntityEndpoints
             return Results.Ok(result);
         })
         .WithName("UpdateEntity")
-        .WithSummary("Replace all property values for an entity")
+        .WithSummary("Update property values; omitted properties keep their current values. Send propertyId from GET entity or entity-types. Use null value to clear an optional field.")
         .Produces<EntityDetailDto>()
         .ProducesValidationProblem();
 

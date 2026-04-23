@@ -18,11 +18,9 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
 
     public async Task<List<Entity>> GetByWorkspaceAsync(int workspaceId, CancellationToken ct = default)
     {
-        return await db.EntityWorkspaces
+        return await db.Entities
             .AsNoTracking()
-            .Where(ew => ew.WorkspaceId == workspaceId)
-            .Select(ew => ew.Entity)
-            .Where(e => !e.IsArchived)
+            .Where(e => !e.IsArchived && e.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId))
             .Include(e => e.EntityType)
             .Include(e => e.EntityPropertyValues)
                 .ThenInclude(epv => epv.Property)
