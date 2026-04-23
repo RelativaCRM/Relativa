@@ -11,6 +11,11 @@ const GraphView = () => import('@/views/GraphView.vue');
 const OnboardingView = () => import('@/views/OnboardingView.vue');
 const WorkspaceSelectorView = () =>
   import('@/views/WorkspaceSelectorView.vue');
+const MembersView = () => import('@/views/MembersView.vue');
+const WorkspacesView = () => import('@/views/WorkspacesView.vue');
+const WorkspaceMembersView = () =>
+  import('@/views/WorkspaceMembersView.vue');
+const InvitationsView = () => import('@/views/InvitationsView.vue');
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -44,6 +49,26 @@ const router = createRouter({
       component: MainLayout,
       children: [
         { path: '', name: 'home', component: HomeView, meta: { roles: [] } },
+        {
+          path: 'members',
+          name: 'members',
+          component: MembersView,
+        },
+        {
+          path: 'workspaces',
+          name: 'workspaces',
+          component: WorkspacesView,
+        },
+        {
+          path: 'workspaces/:id/members',
+          name: 'workspace-members',
+          component: WorkspaceMembersView,
+        },
+        {
+          path: 'invitations',
+          name: 'invitations',
+          component: InvitationsView,
+        },
         {
           path: 'graph',
           name: 'graph',
