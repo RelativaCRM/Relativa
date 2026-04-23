@@ -15,7 +15,7 @@ namespace Relativa.Migration.Migrations
 -- 1. Permissions (16 granular)
 -- ============================================================
 INSERT INTO permissions (id, name, is_archived) VALUES
--- Organization-scoped
+-- Organization-scoped (ids 1-7)
 (1,  'manage_org_settings',  FALSE),
 (2,  'invite_to_org',        FALSE),
 (3,  'manage_join_requests', FALSE),
@@ -23,15 +23,15 @@ INSERT INTO permissions (id, name, is_archived) VALUES
 (5,  'assign_org_roles',     FALSE),
 (6,  'manage_org_roles',     FALSE),
 (7,  'create_workspaces',    FALSE),
--- Workspace-scoped
+-- Workspace-scoped (ids 8-16)
 (8,  'manage_ws_settings',   FALSE),
 (9,  'invite_to_workspace',  FALSE),
 (10, 'add_ws_members',       FALSE),
 (11, 'remove_ws_members',    FALSE),
 (12, 'assign_ws_roles',      FALSE),
 (13, 'manage_ws_roles',      FALSE),
-(14, 'edit_deals',           FALSE),
-(15, 'view_deals',           FALSE),
+(14, 'manage_entities',      FALSE),
+(15, 'view_entities',        FALSE),
 (16, 'view_analytics',       FALSE);
 
 -- ============================================================
@@ -63,15 +63,15 @@ INSERT INTO workspace_roles (id, name, workspace_id, is_archived) VALUES
 INSERT INTO workspace_role_permissions (id, ws_role_id, permission_id) VALUES
 (1, 1, 8), (2, 1, 9), (3, 1, 10), (4, 1, 11), (5, 1, 12), (6, 1, 13), (7, 1, 14), (8, 1, 15), (9, 1, 16);
 
--- ws_manager: invite_to_workspace, add_ws_members, edit_deals, view_deals, view_analytics
+-- ws_manager: invite_to_workspace, add_ws_members, manage_entities, view_entities, view_analytics
 INSERT INTO workspace_role_permissions (id, ws_role_id, permission_id) VALUES
 (10, 2, 9), (11, 2, 10), (12, 2, 14), (13, 2, 15), (14, 2, 16);
 
--- ws_analyst: view_analytics, view_deals
+-- ws_analyst: view_analytics, view_entities
 INSERT INTO workspace_role_permissions (id, ws_role_id, permission_id) VALUES
 (15, 3, 15), (16, 3, 16);
 
--- ws_member: view_deals
+-- ws_member: view_entities
 INSERT INTO workspace_role_permissions (id, ws_role_id, permission_id) VALUES
 (17, 4, 15);
 

@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-04-23 (EAV schema migration — entity model restructured to Entity-Attribute-Value pattern)
+> **Last verified:** 2026-04-23 (entity-type listing + entity CRUD implemented; GlobalExceptionHandler extended; permissions re-seeded)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -376,7 +376,7 @@ Authorization for workspace endpoints:
 | Concern | Implementation | Where |
 |---|---|---|
 | **Logging** | Serilog (console + rolling file) | Core, Authentication, Gateway |
-| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()` | Core, Authentication, Gateway (distinct implementations per host) |
+| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. | Core, Authentication, Gateway (distinct implementations per host) |
 | **Health checks** | `/health` endpoint, EF Core DB checks on Auth and Core | All .NET services |
 | **API docs** | OpenAPI + Scalar (`/scalar/v1`, `/openapi/v1.json`) | Auth, Core, Gateway, Graph (dev) |
 | **CORS** | Gateway: named-origin allowlist with credentials (reads `Cors:Origins` from config, defaults to `http://localhost:5173` and `http://localhost:3000`). Core: `AllowAnyOrigin/Header/Method` (dev-only, Core is only reached via the gateway in deployed environments). | Gateway + Core |

@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-04-17 (gateway-only JWT validation with X-User-Id header forwarding)
+> **Last verified:** 2026-04-23 (entity-type listing + entity CRUD implemented; permissions re-seeded)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -47,6 +47,7 @@
 - `POST /auth/api/v1/auth/register`
 - `GET /auth/health`
 - `GET /core/health`
+- `GET /core/api/v1/entity-types`
 
 **JWT-required auth routes** (not anonymous):
 - `GET /auth/api/v1/auth/me`
@@ -108,7 +109,7 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 
 ## 3. Core (`relativa-core`)
 
-**Purpose:** The main business API for organization management, workspace management, member/invitation management, role/permission management (split RBAC for both orgs and workspaces), and (future) CRUD on entities, deals, and business rules.
+**Purpose:** The main business API for organization management, workspace management, member/invitation management, role/permission management (split RBAC for both orgs and workspaces), and entity CRUD (EAV-based; workspace-scoped).
 
 **Solution:** `Core/Relativa.Core.sln`
 **Project:** `Core/src/Relativa.Core/`
@@ -208,6 +209,22 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 |---|---|---|---|
 | GET | `/api/v1/permissions` | JWT | List all available permissions (org + ws) |
 
+### Endpoints -- Entity Types
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| GET | `/api/v1/entity-types` | **None** (anonymous via Gateway) | List all entity types with their property definitions. Returns `[{ id, name, properties: [{ propertyId, name, dataType, isRequired }] }]`. |
+
+### Endpoints -- Entities
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| GET | `/api/v1/workspaces/{workspaceId}/entities` | JWT + `view_entities` | List non-archived entities in the workspace with all property values. |
+| GET | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `view_entities` | Get entity detail; **404** if entity does not belong to this workspace. |
+| POST | `/api/v1/workspaces/{workspaceId}/entities` | JWT + `manage_entities` | Create entity + property values + workspace link in one atomic transaction. FluentValidation + required-property enforcement. |
+| PUT | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `manage_entities` | Replace all property values for an entity (not allowed if archived). |
+| DELETE | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `manage_entities` | Soft-delete: sets `is_archived = true`. |
+
 ### Endpoints -- Infrastructure
 
 | Method | Path | Auth | Behavior |
@@ -216,17 +233,17 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | GET | `/scalar/v1` | None | Scalar interactive API docs (dev only) |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
-### Status: Functional (organization + workspace RBAC implemented)
+### Status: Functional (organization + workspace RBAC + entity CRUD implemented)
 
-Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), and the split RBAC permission model are all functional. Entity/deal CRUD and business rules are not yet implemented.
+Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), the split RBAC permission model, and workspace-scoped entity CRUD are all functional. Business rules and domain events are not yet implemented.
 
 **Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`). It reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway; in `docker-compose.yml` only the Gateway publishes a host port.
 
 ### Key Files
 
 - `Core/src/Relativa.Core/Program.cs` -- DI wiring, endpoint mapping
-- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`
-- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`
+- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
+- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `EntityTypeService`, `EntityService`
 - `Core/src/Relativa.Core.Application/DTOs/` -- request/response DTOs organized by feature
 - `Core/src/Relativa.Core.Application/Validators/` -- FluentValidation rules
 - `Core/src/Relativa.Core.Domain/Interfaces/` -- repository interfaces

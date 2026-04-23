@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace Relativa.Core.Middleware;
@@ -11,11 +12,12 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
     {
         var (statusCode, title, detail) = exception switch
         {
-            InvalidOperationException ioe => (StatusCodes.Status409Conflict, "Conflict", ioe.Message),
-            ArgumentException ae => (StatusCodes.Status400BadRequest, "Bad Request", ae.Message),
-            UnauthorizedAccessException ue => (StatusCodes.Status401Unauthorized, "Unauthorized", ue.Message),
-            _ => (StatusCodes.Status500InternalServerError, "Internal Server Error",
-                "An unexpected error occurred.")
+            ValidationException ve        => (StatusCodes.Status400BadRequest,  "Validation Failed",    BuildValidationDetail(ve)),
+            ArgumentException ae          => (StatusCodes.Status400BadRequest,  "Bad Request",          ae.Message),
+            KeyNotFoundException ke       => (StatusCodes.Status404NotFound,    "Not Found",            ke.Message),
+            UnauthorizedAccessException ue => (StatusCodes.Status401Unauthorized, "Unauthorized",       ue.Message),
+            InvalidOperationException ioe => (StatusCodes.Status409Conflict,    "Conflict",             ioe.Message),
+            _                             => (StatusCodes.Status500InternalServerError, "Internal Server Error", "An unexpected error occurred.")
         };
 
         if (statusCode == StatusCodes.Status500InternalServerError)
@@ -32,5 +34,13 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
         }, cancellationToken);
 
         return true;
+    }
+
+    private static string BuildValidationDetail(ValidationException ve)
+    {
+        var errors = ve.Errors
+            .Select(e => $"{e.PropertyName}: {e.ErrorMessage}")
+            .ToList();
+        return string.Join("; ", errors);
     }
 }
