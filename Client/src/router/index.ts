@@ -1,12 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { useOrganizationStore } from '@/stores/organization';
+import { useWorkspaceStore } from '@/stores/workspace';
 
 const MainLayout = () => import('@/layouts/MainLayout.vue');
 const LoginView = () => import('@/views/LoginView.vue');
 const RegisterView = () => import('@/views/RegisterView.vue');
 const HomeView = () => import('@/views/HomeView.vue');
 const GraphView = () => import('@/views/GraphView.vue');
-const WorkspaceSelectView = () => import('@/views/WorkspaceSelectView.vue');
+const OnboardingView = () => import('@/views/OnboardingView.vue');
+const WorkspaceSelectorView = () =>
+  import('@/views/WorkspaceSelectorView.vue');
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -24,9 +28,15 @@ const router = createRouter({
       meta: { public: true, guestOnly: true },
     },
     {
-      path: '/select-workspace',
-      name: 'select-workspace',
-      component: WorkspaceSelectView,
+      path: '/onboarding',
+      name: 'onboarding',
+      component: OnboardingView,
+      meta: { skipOrgCheck: true, skipWorkspaceCheck: true },
+    },
+    {
+      path: '/workspace-select',
+      name: 'workspace-select',
+      component: WorkspaceSelectorView,
       meta: { skipWorkspaceCheck: true },
     },
     {
@@ -45,8 +55,10 @@ const router = createRouter({
   ],
 });
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore();
+  const orgStore = useOrganizationStore();
+  const wsStore = useWorkspaceStore();
 
   if (to.meta.guestOnly && auth.isAuthenticated) {
     return { name: 'home' };
@@ -56,13 +68,29 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } };
   }
 
+  if (auth.isAuthenticated && !to.meta.public && !to.meta.skipOrgCheck) {
+    if (!orgStore.organizations.length) {
+      await orgStore.fetchOrganizations();
+    }
+    if (!orgStore.hasOrganization) {
+      return { name: 'onboarding' };
+    }
+  }
+
   if (
     auth.isAuthenticated &&
-    !auth.workspaceId &&
     !to.meta.public &&
-    !to.meta.skipWorkspaceCheck
+    !to.meta.skipWorkspaceCheck &&
+    !wsStore.currentWorkspaceId
   ) {
-    return { name: 'select-workspace', query: { redirect: to.fullPath } };
+    await wsStore.fetchWorkspaces();
+    const only =
+      wsStore.workspaces.length === 1 ? wsStore.workspaces[0] : null;
+    if (only) {
+      wsStore.setCurrentWorkspace(only.id);
+    } else {
+      return { name: 'workspace-select' };
+    }
   }
 
   const required = (to.meta.roles as string[] | undefined) ?? [];

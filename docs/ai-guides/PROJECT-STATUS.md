@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-04-17 (gateway-only JWT validation with X-User-Id header forwarding)
+> **Last verified:** 2026-04-23 (workspace-select gate uses workspace store; CR-133 WorkspaceSelectorView)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -96,14 +96,16 @@
 
 - Vue 3 + Vite scaffold with TypeScript, Pinia, Vue Router.
 - **UI stack:** PrimeVue 4 (Aura preset) + Tailwind CSS 3 (`tailwindcss-primeui` bridge) + Inter font.
-- **Typed API client** (`src/api/http.ts`): `gatewayFetch` with JWT + `X-Workspace-ID` headers, `ApiError` class, JSON helpers (`api.get/post/put/del`), auto session clear on `401`.
+- **Typed API client** (`src/api/http.ts`): `gatewayFetch` with JWT + `X-Workspace-ID` headers (workspace id read from the workspace store), `ApiError` class, JSON helpers (`api.get/post/put/del`), auto session clear on `401`.
 - **Auth service** (`src/api/auth.ts`): `authApi.register`, `authApi.login`, `authApi.me` (via Gateway, CR-96).
 - **Organization service** (`src/api/organizations.ts`): org CRUD, members, invitations, join requests, roles, combined invitations (`/invitations/mine`).
+- **Workspace service** (`src/api/workspaces.ts`): workspace CRUD, members, roles, invitations.
 - **Auth store** (Pinia) persists `accessToken` + `expiresAt` in `localStorage`; stores `user` profile from `/me`; exposes `login`, `register`, `logout`, `fetchProfile`; `isAuthenticated` respects token expiry.
-- **Organization store** (Pinia) manages current org selection (persisted in `localStorage`), members, roles, invitations; exposes `createOrganization`, `inviteMember`, `changeMemberRole`, `removeMember`, `fetchOrganizations`.
-- **Layouts:** `AuthLayout.vue` (centered card, brand mark) and `MainLayout.vue` (top bar with user name + org name + logout, sidebar nav with Home/Members/Graph).
-- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype), `OnboardingView.vue` (create org or search & join), `MembersView.vue` (member table with role change + invite dialog + pending invitations), `HomeView.vue` (session + org info cards).
-- **Router guards:** `meta.public` and `meta.guestOnly` flags; unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users without an organization are redirected to `/onboarding`; profile and org list loaded lazily on navigation.
+- **Organization store** (Pinia) manages current org selection (persisted in `localStorage`), members, roles, invitations; exposes `createOrganization`, `inviteMember`, `changeMemberRole`, `removeMember`, `fetchOrganizations`, `hasOrganization`.
+- **Workspace store** (Pinia) manages current workspace selection (persisted in `localStorage` under `relativa_ws_id`), workspaces list, members, roles, invitations; exposes `setCurrentWorkspace`, `fetchWorkspaces`, `createWorkspace`, `updateWorkspace`, `archiveWorkspace`, member/role/invitation actions, `clear`.
+- **Layouts:** `AuthLayout.vue` (centered card, brand mark) and `MainLayout.vue` (top bar with user name + org name + logout, sidebar nav with Home/Members/Workspaces/Invitations/Graph).
+- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype), `OnboardingView.vue` (create org, search & join, pending org invitations), `WorkspaceSelectorView.vue` (post-login workspace gate: lists workspaces as cards, auto-selects when exactly one exists, offers inline workspace creation when the user has none), `MembersView.vue`, `WorkspacesView.vue`, `WorkspaceMembersView.vue`, `InvitationsView.vue`, `HomeView.vue` (session + org info cards), `GraphView.vue` (vis-network placeholder, unchanged).
+- **Router guards:** `meta.public`, `meta.guestOnly`, `meta.skipOrgCheck`, and `meta.skipWorkspaceCheck` flags. Unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users cannot visit `/login` or `/register`; authenticated users without an organization are sent to `/onboarding`; authenticated users with an organization but no current workspace are sent to `/workspace-select` (which auto-selects when only one workspace is available, preventing a needless extra screen).
 - `GraphView.vue` with vis-network placeholder (unchanged).
 - Reads `VITE_GATEWAY_URL` from environment; all traffic goes through the gateway.
 
@@ -137,8 +139,8 @@
 
 ### Client
 
-**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) + org onboarding (create/join) + member management (invite, role change, remove) wired to Gateway. Typed API client for auth + org endpoints. Router guards with org check.
-**What is missing:** No workspace selection / management UI. No join request review UI (admin can approve/reject). No custom role creation UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
+**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) + org onboarding (create/join) + post-login workspace selection (`/workspace-select`, auto-select for single-workspace users, inline create when user has none) + member management (invite, role change, remove) + workspace CRUD wired to Gateway. Typed API client for auth + org + workspace endpoints. Router guards with org and workspace checks.
+**What is missing:** No join request review UI (admin can approve/reject). No custom role creation UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
 
 ---
 
@@ -206,7 +208,8 @@
 - ~~Login and register forms wired to Gateway auth endpoints.~~ *(done in CR-96)*
 - ~~Organization onboarding (create / search & join).~~ *(done in CR-96)*
 - ~~Organization member management (list, invite, role change, remove).~~ *(done in CR-96)*
-- Workspace selection / management UI.
+- ~~Workspace selection (post-login gate with auto-select-when-one).~~ *(done in CR-133)*
+- Workspace management UI (rename, archive from list).
 - Join request review UI (approve/reject pending requests).
 - Role and permission management UI.
 - Deal/client management pages.
