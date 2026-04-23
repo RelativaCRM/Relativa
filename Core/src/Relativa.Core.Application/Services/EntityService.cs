@@ -32,12 +32,12 @@ public sealed class EntityService(
 
     public async Task<EntityDetailDto> CreateAsync(int workspaceId, int userId, CreateEntityRequest request, CancellationToken ct = default)
     {
-        await createValidator.ValidateAndThrowAsync(request, ct);
         await RequirePermission(userId, workspaceId, "manage_entities", ct);
+        await createValidator.ValidateAndThrowAsync(request, ct);
 
         var typeProperties = await entityRepository.GetTypePropertiesAsync(request.EntityTypeId, ct);
         if (typeProperties.Count == 0)
-            throw new ArgumentException($"Entity type {request.EntityTypeId} does not exist or has no properties defined.");
+            throw new KeyNotFoundException($"Entity type {request.EntityTypeId} does not exist or has no properties defined.");
 
         ValidatePropertyPayload(request.Properties, typeProperties);
 
