@@ -39,10 +39,12 @@ public static class PersistenceModelBuilderExtensions
         modelBuilder.ApplyConfiguration(new EntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new EntityConfiguration());
         modelBuilder.ApplyConfiguration(new EntityWorkspaceConfiguration());
-        modelBuilder.ApplyConfiguration(new PersonalDataPropertyValueConfiguration());
-        modelBuilder.ApplyConfiguration(new LocationPropertyValueConfiguration());
-        modelBuilder.ApplyConfiguration(new DealPropertyValueConfiguration());
-        modelBuilder.ApplyConfiguration(new EntityPropertyConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyConfiguration());
+        modelBuilder.ApplyConfiguration(new EntityTypePropertyConfiguration());
+        modelBuilder.ApplyConfiguration(new EntityPropertyValueConfiguration());
+        modelBuilder.ApplyConfiguration(new EntityRelationshipTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new EntityRelationshipConfiguration());
+
         return modelBuilder;
     }
 }

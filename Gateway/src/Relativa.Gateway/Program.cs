@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Relativa.Gateway.Middleware;
+using Relativa.Gateway.OpenApi;
 using Scalar.AspNetCore;
 using Serilog;
 using Yarp.ReverseProxy.Transforms;
@@ -58,6 +59,9 @@ try
         });
     });
 
+    builder.Services.AddHttpClient("openapi")
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+
     builder.Services.AddAuthorization();
     builder.Services.AddReverseProxy()
         .LoadFromConfig(config.GetSection("ReverseProxy"))
@@ -110,7 +114,12 @@ try
     app.UseCors();
 
     app.MapOpenApi();
-    app.MapScalarApiReference();
+    app.MapAggregatedOpenApi();
+    app.MapScalarApiReference(options =>
+    {
+        options.Title = "Relativa API";
+        options.OpenApiRoutePattern = "/openapi/aggregated.json";
+    });
 
     app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "relativa-gateway" }))
         .AllowAnonymous();

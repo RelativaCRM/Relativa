@@ -25,10 +25,11 @@ public sealed class RelativaDbContext(DbContextOptions<RelativaDbContext> option
     public DbSet<EntityType> EntityTypes => Set<EntityType>();
     public DbSet<Entity> Entities => Set<Entity>();
     public DbSet<EntityWorkspace> EntityWorkspaces => Set<EntityWorkspace>();
-    public DbSet<PersonalDataPropertyValue> PersonalDataPropertyValues => Set<PersonalDataPropertyValue>();
-    public DbSet<LocationPropertyValue> LocationPropertyValues => Set<LocationPropertyValue>();
-    public DbSet<DealPropertyValue> DealPropertyValues => Set<DealPropertyValue>();
-    public DbSet<EntityProperty> EntityProperties => Set<EntityProperty>();
+    public DbSet<Property> Properties => Set<Property>();
+    public DbSet<EntityTypeProperty> EntityTypeProperties => Set<EntityTypeProperty>();
+    public DbSet<EntityPropertyValue> EntityPropertyValues => Set<EntityPropertyValue>();
+    public DbSet<EntityRelationshipType> EntityRelationshipTypes => Set<EntityRelationshipType>();
+    public DbSet<EntityRelationship> EntityRelationships => Set<EntityRelationship>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

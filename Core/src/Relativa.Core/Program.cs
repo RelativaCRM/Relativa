@@ -49,6 +49,11 @@ try
     builder.Services.AddScoped<IOrganizationRoleRepository, OrganizationRoleRepository>();
     builder.Services.AddScoped<IJoinRequestRepository, JoinRequestRepository>();
     builder.Services.AddScoped<IOrgInvitationRepository, OrgInvitationRepository>();
+    builder.Services.AddScoped<IEntityTypeRepository, EntityTypeRepository>();
+    builder.Services.AddScoped<IEntityRepository, EntityRepository>();
+
+    builder.Services.AddScoped<IEntityTypeService, EntityTypeService>();
+    builder.Services.AddScoped<IEntityService, EntityService>();
 
     builder.Services.AddScoped<IWorkspaceService, WorkspaceService>();
     builder.Services.AddScoped<IWorkspaceMemberService, WorkspaceMemberService>();
@@ -72,6 +77,8 @@ try
     app.MapScalarApiReference();
 
     app.MapHealthChecks("/health");
+    app.MapEntityTypeEndpoints();
+    app.MapEntityEndpoints();
     app.MapWorkspaceEndpoints();
     app.MapMemberEndpoints();
     app.MapInvitationEndpoints();

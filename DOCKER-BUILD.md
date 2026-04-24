@@ -106,6 +106,15 @@ Ensure `.env` includes the JWT and default-role variables from `.env.example` (`
 
 If you change database credentials, update `.env` and recreate containers: `docker compose up --build -d`.
 
+**Schema changes and the Postgres volume.** Data lives in the named volume `postgres_data` (see `docker-compose.yaml`). `docker compose up --build` rebuilds images and re-runs the `migration` job, which calls `Database.MigrateAsync()` and applies **only migrations that are not yet recorded** in `__EFMigrationsHistory`. If you need a completely fresh database (for example after a breaking schema change during development), remove the volume and start again:
+
+```bash
+docker compose down -v
+docker compose up --build -d
+```
+
+Warning: `-v` deletes all Postgres data in that compose project, including users and orgs.
+
 ## 7) Troubleshooting
 
 - If Docker command fails with daemon/pipe errors, start Docker Desktop first.
