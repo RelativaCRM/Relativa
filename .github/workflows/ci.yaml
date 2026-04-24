@@ -6,13 +6,19 @@ on:
       - 'release/**'
       - 'feature/**'
   pull_request:
+    types: [opened, synchronize, ready_for_review]
     branches:
       - 'release/**'
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test-authentication:
-    name: Authentication Tests
+
+  authentication-unit-tests:
+    name: Authentication — Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,8 +32,9 @@ jobs:
       - name: Test
         run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --no-restore --configuration Release --verbosity normal
 
-  test-core:
-    name: Core Tests
+
+  core-unit-tests:
+    name: Core — Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,3 +47,77 @@ jobs:
 
       - name: Test
         run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --no-restore --configuration Release --verbosity normal
+
+
+  core-integration-tests:
+    name: Core — Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore
+        run: dotnet restore Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj
+
+      - name: Build
+        run: dotnet build Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal
+
+
+  e2e-tests:
+    name: E2E — Playwright
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env
+        run: |
+          cat > .env <<'EOF'
+          DB_NAME=relativa
+          DB_USER=relativa
+          DB_PASS=relativa_pass
+          DB_PORT=5432
+          PGADMIN_DEFAULT_EMAIL=admin@relativa.com
+          PGADMIN_DEFAULT_PASSWORD=admin
+          PGADMIN_PORT=5050
+          JWT_SECRET=super-secret-key-that-should-be-at-least-32-chars!
+          JWT_ISSUER=relativa-auth
+          JWT_AUDIENCE=relativa
+          VITE_GATEWAY_URL=http://localhost:8080
+          CLIENT_PORT=3000
+          EOF
+
+      - name: Start services
+        run: docker compose up -d --build --wait
+        timeout-minutes: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        working-directory: tests/e2e
+        run: npx playwright test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: tests/e2e/results.json
+          retention-days: 14
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

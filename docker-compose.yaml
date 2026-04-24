@@ -52,6 +52,12 @@ services:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8081' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     networks:
       - relativa_net
 
@@ -71,6 +77,12 @@ services:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8082' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     networks:
       - relativa_net
 
@@ -132,15 +144,21 @@ services:
       - "8080:8080"
     depends_on:
       auth:
-        condition: service_started
+        condition: service_healthy
       core:
-        condition: service_started
+        condition: service_healthy
       graph:
         condition: service_started
       ml:
         condition: service_started
       audit:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     networks:
       - relativa_net
 
@@ -155,7 +173,13 @@ services:
       - "${CLIENT_PORT}:3000"
     depends_on:
       gateway:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     networks:
       - relativa_net
 
@@ -182,4 +206,3 @@ networks:
 
 volumes:
   postgres_data:
-
