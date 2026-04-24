@@ -41,7 +41,7 @@ public static class EntityEndpoints
         .Produces<EntityDetailDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
-        group.MapPut("/{entityId:int}", async (int workspaceId, int entityId, UpdateEntityRequest request, IEntityService service, HttpContext httpContext, CancellationToken ct) =>
+        group.MapPatch("/{entityId:int}", async (int workspaceId, int entityId, UpdateEntityRequest request, IEntityService service, HttpContext httpContext, CancellationToken ct) =>
         {
             var userId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.UpdateAsync(entityId, workspaceId, userId, request, ct);
