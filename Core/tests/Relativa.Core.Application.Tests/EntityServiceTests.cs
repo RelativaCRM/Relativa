@@ -29,15 +29,17 @@ public sealed class EntityServiceTests
         _createValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<CreateEntityRequest>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
+        _createValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<CreateEntityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
 
         _updateValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateEntityRequest>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
+        _updateValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<UpdateEntityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
     }
-
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
 
     private static UserRoleWorkspace Member(int userId, int workspaceId, params string[] permissions) =>
         new()
@@ -77,10 +79,6 @@ public sealed class EntityServiceTests
             }).ToList()
         };
 
-    // ------------------------------------------------------------------
-    // GetByWorkspaceAsync
-    // ------------------------------------------------------------------
-
     [Fact]
     public async Task GetByWorkspaceAsync_UserLacksViewPermission_ThrowsUnauthorized()
     {
@@ -107,10 +105,6 @@ public sealed class EntityServiceTests
         result[0].Id.Should().Be(1);
         result[0].EntityTypeName.Should().Be("client");
     }
-
-    // ------------------------------------------------------------------
-    // GetByIdAsync
-    // ------------------------------------------------------------------
 
     [Fact]
     public async Task GetByIdAsync_EntityFoundInWorkspace_ReturnsAllFields()
@@ -158,9 +152,6 @@ public sealed class EntityServiceTests
             .WithMessage("*not a member*");
     }
 
-    // ------------------------------------------------------------------
-    // CreateAsync
-    // ------------------------------------------------------------------
 
     [Fact]
     public async Task CreateAsync_UserLacksPermission_InvalidRequest_ThrowsUnauthorized_DoesNotValidate()
@@ -335,9 +326,6 @@ public sealed class EntityServiceTests
             .WithMessage("*Duplicate*");
     }
 
-    // ------------------------------------------------------------------
-    // UpdateAsync
-    // ------------------------------------------------------------------
 
     [Fact]
     public async Task UpdateAsync_UserLacksPermission_InvalidPayload_ThrowsUnauthorized_NotValidation()
@@ -438,9 +426,6 @@ public sealed class EntityServiceTests
             .WithMessage("*99*");
     }
 
-    // ------------------------------------------------------------------
-    // ArchiveAsync
-    // ------------------------------------------------------------------
 
     [Fact]
     public async Task ArchiveAsync_EntityNotFound_ThrowsKeyNotFound()

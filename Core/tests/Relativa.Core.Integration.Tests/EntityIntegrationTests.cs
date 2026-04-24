@@ -44,10 +44,6 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
         await _postgres.DisposeAsync();
     }
 
-    // ------------------------------------------------------------------
-    // Seed minimal data required by FK constraints
-    // ------------------------------------------------------------------
-
     private async Task SeedAsync()
     {
         var org = new Organization { Name = "Test Org", IsArchived = false };
@@ -90,10 +86,6 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
 
         await _db.SaveChangesAsync();
     }
-
-    // ------------------------------------------------------------------
-    // Tests
-    // ------------------------------------------------------------------
 
     [Fact]
     public async Task CreateAsync_ClientEntity_CreatesEntityWorkspaceRow()
@@ -186,7 +178,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
         var clientTypeId = _db.EntityTypes.Single(t => t.Name == "client").Id;
         var typeProps    = await _repo.GetTypePropertiesAsync(clientTypeId);
 
-        var entityCountBefore = await _db.Entities.CountAsync();
+        var entityCountBefore = await _db.Entities.CountAsync(e => e.EntityTypeId == clientTypeId);
 
         var pvWithInvalidPropertyId = new List<EntityPropertyValue>
         {

@@ -5,7 +5,7 @@
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed",
-    "report": "python generate_ui_report.py"
+    "report": "playwright show-report"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.0",
