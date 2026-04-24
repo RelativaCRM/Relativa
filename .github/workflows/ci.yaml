@@ -89,6 +89,19 @@ jobs:
           CLIENT_PORT=3000
           EOF
 
+      - name: Pull base images
+        run: |
+          for img in \
+            mcr.microsoft.com/dotnet/sdk:10.0 \
+            mcr.microsoft.com/dotnet/aspnet:10.0 \
+            node:20-alpine \
+            python:3.11-slim \
+            postgres:16-alpine; do
+            for i in 1 2 3; do
+              docker pull "$img" && break || sleep 15
+            done
+          done
+
       - name: Start services
         run: docker compose up -d --build --wait
         timeout-minutes: 10
