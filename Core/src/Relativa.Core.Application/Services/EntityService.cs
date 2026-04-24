@@ -47,15 +47,14 @@ public sealed class EntityService(
 
         var created = await entityRepository.CreateAsync(entity, propertyValues, workspaceId, ct);
 
-        // Reload with navigation properties for response
         var detail = await entityRepository.GetByIdInWorkspaceAsync(created.Id, workspaceId, ct);
         return MapToDetail(detail!);
     }
 
     public async Task<EntityDetailDto> UpdateAsync(int entityId, int workspaceId, int userId, UpdateEntityRequest request, CancellationToken ct = default)
     {
-        await updateValidator.ValidateAndThrowAsync(request, ct);
         await RequirePermission(userId, workspaceId, "manage_entities", ct);
+        await updateValidator.ValidateAndThrowAsync(request, ct);
 
         var entity = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct)
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
