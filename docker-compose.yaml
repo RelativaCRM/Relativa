@@ -106,8 +106,16 @@ services:
     container_name: relativa-ml
     environment:
       DJANGO_SETTINGS_MODULE: relativa_ml.settings
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
     ports:
       - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - relativa_net
 
