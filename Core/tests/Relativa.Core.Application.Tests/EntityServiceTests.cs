@@ -25,9 +25,23 @@ public sealed class EntityServiceTests
             _memberRepo.Object,
             _createValidator.Object,
             _updateValidator.Object);
+
+        _createValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<CreateEntityRequest>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+        _createValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<CreateEntityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+
+        _updateValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateEntityRequest>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+        _updateValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<UpdateEntityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
     }
 
-    private static UserRoleWorkspace MemberWithPermission(int userId, int workspaceId, string permission) =>
+    private static UserRoleWorkspace Member(int userId, int workspaceId, params string[] permissions) =>
         new()
         {
             UserId = userId,
@@ -35,25 +49,120 @@ public sealed class EntityServiceTests
             Role = new WorkspaceRole
             {
                 Name = "test",
-                RolePermissions =
-                [
-                    new WorkspaceRolePermission { Permission = new Permission { Name = permission } }
-                ]
+                RolePermissions = permissions
+                    .Select(p => new WorkspaceRolePermission { Permission = new Permission { Name = p } })
+                    .ToList()
             }
         };
+
+    private static Property Prop(int id, string name, PropertyDataType type = PropertyDataType.String) =>
+        new() { Id = id, Name = name, DataType = type };
+
+    private static EntityTypeProperty TypeProp(int propertyId, string name, bool required = false,
+        PropertyDataType type = PropertyDataType.String) =>
+        new() { PropertyId = propertyId, IsRequired = required, Property = Prop(propertyId, name, type) };
+
+    private static Entity BuildEntity(int id, int typeId, string typeName,
+        IEnumerable<(int propId, string name, string value)> values, bool archived = false) =>
+        new()
+        {
+            Id = id,
+            EntityTypeId = typeId,
+            IsArchived = archived,
+            EntityType = new EntityType { Id = typeId, Name = typeName },
+            EntityPropertyValues = values.Select(v => new EntityPropertyValue
+            {
+                EntityId = id,
+                PropertyId = v.propId,
+                ValueString = v.value,
+                Property = Prop(v.propId, v.name)
+            }).ToList()
+        };
+
+    [Fact]
+    public async Task GetByWorkspaceAsync_UserLacksViewPermission_ThrowsUnauthorized()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+
+        await _sut.Invoking(s => s.GetByWorkspaceAsync(1, 1))
+            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*view_entities*");
+    }
+
+    [Fact]
+    public async Task GetByWorkspaceAsync_ReturnsOnlyNonArchivedEntities()
+    {
+        var active = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "view_entities"));
+        _entityRepo.Setup(r => r.GetByWorkspaceAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([active]);
+
+        var result = await _sut.GetByWorkspaceAsync(1, 1);
+
+        result.Should().HaveCount(1);
+        result[0].Id.Should().Be(1);
+        result[0].EntityTypeName.Should().Be("client");
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_EntityFoundInWorkspace_ReturnsAllFields()
+    {
+        var entity = BuildEntity(5, 1, "client",
+        [
+            (1, "first_name", "Olena"),
+            (3, "last_name", "Koval")
+        ]);
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "view_entities"));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(5, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+
+        var result = await _sut.GetByIdAsync(5, 1, 1);
+
+        result.Id.Should().Be(5);
+        result.EntityTypeName.Should().Be("client");
+        result.PropertyValues.Should().HaveCount(2);
+        result.PropertyValues.Should().Contain(p => p.PropertyName == "first_name" && (string?)p.Value == "Olena");
+        result.PropertyValues.Should().Contain(p => p.PropertyName == "last_name" && (string?)p.Value == "Koval");
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_EntityNotInWorkspace_ThrowsKeyNotFound()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "view_entities"));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(99, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Entity?)null);
+
+        await _sut.Invoking(s => s.GetByIdAsync(99, 1, 1))
+            .Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("*99*");
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_UserNotMemberOfWorkspace_ThrowsUnauthorized()
+    {
+        _memberRepo.Setup(r => r.GetAsync(2, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleWorkspace?)null);
+
+        await _sut.Invoking(s => s.GetByIdAsync(5, 1, 2))
+            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*not a member*");
+    }
+
 
     [Fact]
     public async Task CreateAsync_UserLacksPermission_InvalidRequest_ThrowsUnauthorized_DoesNotValidate()
     {
-        var request = new CreateEntityRequest(0, []);
-        _memberRepo
-            .Setup(r => r.GetAsync(5, 2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MemberWithPermission(5, 2, "view_entities"));
+        _memberRepo.Setup(r => r.GetAsync(5, 2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(5, 2, "view_entities"));
 
-        var act = () => _sut.CreateAsync(2, 5, request);
+        await _sut.Invoking(s => s.CreateAsync(2, 5, new CreateEntityRequest(0, [])))
+            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*manage_entities*");
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
-            .WithMessage("You do not have the 'manage_entities' permission in this workspace.");
         _createValidator.Verify(
             v => v.ValidateAsync(It.IsAny<CreateEntityRequest>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -62,85 +171,297 @@ public sealed class EntityServiceTests
     [Fact]
     public async Task CreateAsync_UnknownEntityType_ThrowsKeyNotFoundException()
     {
-        const int entityTypeId = 99;
-        var request = new CreateEntityRequest(entityTypeId, []);
-        _memberRepo
-            .Setup(r => r.GetAsync(1, 3, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MemberWithPermission(1, 3, "manage_entities"));
-        _createValidator
-            .Setup(v => v.ValidateAsync(It.IsAny<CreateEntityRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult());
-        _entityRepo
-            .Setup(r => r.GetTypePropertiesAsync(entityTypeId, It.IsAny<CancellationToken>()))
+        _memberRepo.Setup(r => r.GetAsync(1, 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 3, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(99, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var act = () => _sut.CreateAsync(3, 1, request);
+        await _sut.Invoking(s => s.CreateAsync(3, 1, new CreateEntityRequest(99, [])))
+            .Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("*99*");
+    }
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
-            .WithMessage($"Entity type {entityTypeId} does not exist or has no properties defined.");
+    [Fact]
+    public async Task CreateAsync_ClientEntity_CallsRepoWithWorkspaceId()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
+        };
+        var created = BuildEntity(10, 1, "client", [(1, "first_name", "Ivan"), (3, "last_name", "Shevchenko")]);
+
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+        _entityRepo.Setup(r => r.CreateAsync(It.IsAny<Entity>(), It.IsAny<List<EntityPropertyValue>>(), 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(10, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+
+        var request = new CreateEntityRequest(1,
+        [
+            new PropertyValueInput(1, "Ivan"),
+            new PropertyValueInput(3, "Shevchenko")
+        ]);
+        await _sut.CreateAsync(1, 1, request);
+
+        _entityRepo.Verify(r =>
+            r.CreateAsync(It.IsAny<Entity>(), It.IsAny<List<EntityPropertyValue>>(), 1, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DealEntity_DecimalAndDateProperties_BuildsCorrectTypedValues()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(9,  "deal_value",     required: false, type: PropertyDataType.Decimal),
+            TypeProp(10, "expected_close", required: false, type: PropertyDataType.Date)
+        };
+        Entity? capturedEntity = null;
+        List<EntityPropertyValue>? capturedValues = null;
+        var created = new Entity
+        {
+            Id = 20, EntityTypeId = 2, IsArchived = false,
+            EntityType = new EntityType { Id = 2, Name = "deal" },
+            EntityPropertyValues = []
+        };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+        _entityRepo.Setup(r => r.CreateAsync(It.IsAny<Entity>(), It.IsAny<List<EntityPropertyValue>>(), 1, It.IsAny<CancellationToken>()))
+            .Callback<Entity, List<EntityPropertyValue>, int, CancellationToken>((e, pvs, _, _) =>
+            {
+                capturedEntity = e;
+                capturedValues = pvs;
+            })
+            .ReturnsAsync(created);
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(20, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+
+        var request = new CreateEntityRequest(2,
+        [
+            new PropertyValueInput(9,  "15000.50"),
+            new PropertyValueInput(10, "2026-12-31")
+        ]);
+        await _sut.CreateAsync(1, 1, request);
+
+        capturedValues.Should().NotBeNull();
+        capturedValues!.Should().HaveCount(2);
+        capturedValues.Single(v => v.PropertyId == 9).ValueDecimal.Should().Be(15000.50m);
+        capturedValues.Single(v => v.PropertyId == 10).ValueDate.Should().Be(new DateOnly(2026, 12, 31));
+    }
+
+    [Fact]
+    public async Task CreateAsync_MissingRequiredProperty_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
+        };
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new CreateEntityRequest(1, [new PropertyValueInput(1, "Ivan")]);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*last_name*");
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnknownPropertyId_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
+        };
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new CreateEntityRequest(1,
+        [
+            new PropertyValueInput(1,  "Ivan"),
+            new PropertyValueInput(3,  "Koval"),
+            new PropertyValueInput(99, "unknown")
+        ]);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*99*");
+    }
+
+    [Fact]
+    public async Task CreateAsync_DuplicatePropertyIds_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
+        };
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new CreateEntityRequest(1,
+        [
+            new PropertyValueInput(1, "Ivan"),
+            new PropertyValueInput(1, "Duplicate"),
+            new PropertyValueInput(3, "Koval")
+        ]);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Duplicate*");
+    }
+
+
+    [Fact]
+    public async Task UpdateAsync_UserLacksPermission_InvalidPayload_ThrowsUnauthorized_NotValidation()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "view_entities"));
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest(null!)))
+            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*manage_entities*");
+
+        _updateValidator.Verify(
+            v => v.ValidateAsync(It.IsAny<UpdateEntityRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
     public async Task UpdateAsync_OnlySendsChangedFields_MergesExistingRequiredValues()
     {
-        static Property P(int id, string name) =>
-            new() { Id = id, Name = name, DataType = PropertyDataType.String };
-
-        var storedEntity = new Entity
-        {
-            Id = 1,
-            EntityTypeId = 1,
-            IsArchived = false,
-            EntityType = new EntityType { Id = 1, Name = "client" },
-            EntityPropertyValues =
-            [
-                new EntityPropertyValue { EntityId = 1, PropertyId = 1, ValueString = "Oleksiy", Property = P(1, "first_name") },
-                new EntityPropertyValue { EntityId = 1, PropertyId = 3, ValueString = "Ivanenko", Property = P(3, "last_name") }
-            ]
-        };
+        var storedEntity = BuildEntity(1, 1, "client",
+        [
+            (1, "first_name", "Oleksiy"),
+            (3, "last_name",  "Ivanenko")
+        ]);
         var typeProps = new List<EntityTypeProperty>
         {
-            new() { EntityTypeId = 1, PropertyId = 1, IsRequired = true, Property = P(1, "first_name") },
-            new() { EntityTypeId = 1, PropertyId = 3, IsRequired = true, Property = P(3, "last_name") }
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
         };
-        var reloaded = new Entity
-        {
-            Id = 1,
-            EntityTypeId = 1,
-            IsArchived = false,
-            EntityType = new EntityType { Id = 1, Name = "client" },
-            EntityPropertyValues =
-            [
-                new EntityPropertyValue { EntityId = 1, PropertyId = 1, ValueString = "Jane", Property = P(1, "first_name") },
-                new EntityPropertyValue { EntityId = 1, PropertyId = 3, ValueString = "Ivanenko", Property = P(3, "last_name") }
-            ]
-        };
+        var reloaded = BuildEntity(1, 1, "client",
+        [
+            (1, "first_name", "Jane"),
+            (3, "last_name",  "Ivanenko")
+        ]);
 
-        _updateValidator
-            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateEntityRequest>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult());
-        _memberRepo
-            .Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MemberWithPermission(1, 1, "manage_entities"));
-        _entityRepo
-            .SetupSequence(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.SetupSequence(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(storedEntity)
             .ReturnsAsync(reloaded);
-        _entityRepo
-            .Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(typeProps);
 
-        var request = new UpdateEntityRequest([new PropertyValueInput(1, "Jane")]);
-        await _sut.UpdateAsync(1, 1, 1, request);
+        await _sut.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "Jane")]));
 
-        _entityRepo.Verify(
-            r => r.UpdateAsync(
-                storedEntity,
-                It.Is<List<EntityPropertyValue>>(l =>
-                    l.Count == 2
-                    && l.Single(x => x.PropertyId == 1).ValueString == "Jane"
-                    && l.Single(x => x.PropertyId == 3).ValueString == "Ivanenko"),
-                It.IsAny<CancellationToken>()),
+        _entityRepo.Verify(r => r.UpdateAsync(
+            storedEntity,
+            It.Is<List<EntityPropertyValue>>(l =>
+                l.Count == 2
+                && l.Single(x => x.PropertyId == 1).ValueString == "Jane"
+                && l.Single(x => x.PropertyId == 3).ValueString == "Ivanenko"),
+            It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EntityNotFound_ThrowsKeyNotFound()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(99, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Entity?)null);
+
+        await _sut.Invoking(s => s.UpdateAsync(99, 1, 1, new UpdateEntityRequest([])))
+            .Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("*99*");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ArchivedEntity_ThrowsArgumentException()
+    {
+        var archived = BuildEntity(1, 1, "client", [(1, "first_name", "Old")], archived: true);
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(archived);
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "New")])))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*archived*");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UnknownPropertyId_ThrowsArgumentException()
+    {
+        var entity = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(99, "bad")])))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*99*");
+    }
+
+
+    [Fact]
+    public async Task ArchiveAsync_EntityNotFound_ThrowsKeyNotFound()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(99, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Entity?)null);
+
+        await _sut.Invoking(s => s.ArchiveAsync(99, 1, 1))
+            .Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("*99*");
+    }
+
+    [Fact]
+    public async Task ArchiveAsync_UserLacksPermission_ThrowsUnauthorized()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "view_entities"));
+
+        await _sut.Invoking(s => s.ArchiveAsync(1, 1, 1))
+            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*manage_entities*");
+    }
+
+    [Fact]
+    public async Task ArchiveAsync_ValidRequest_CallsRepositoryArchive()
+    {
+        var entity = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+
+        await _sut.ArchiveAsync(1, 1, 1);
+
+        _entityRepo.Verify(r => r.ArchiveAsync(entity, It.IsAny<CancellationToken>()), Times.Once);
     }
 }
