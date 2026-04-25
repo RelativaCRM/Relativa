@@ -93,6 +93,10 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: { redirect: to.fullPath } };
   }
 
+  if (auth.isAuthenticated && !auth.user) {
+    try { await auth.fetchProfile(); } catch { /* token invalid */ }
+  }
+
   if (auth.isAuthenticated && !to.meta.public && !to.meta.skipOrgCheck) {
     if (!orgStore.organizations.length) {
       await orgStore.fetchOrganizations();

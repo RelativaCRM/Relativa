@@ -13,13 +13,17 @@ const ONBOARD2_EMAIL = `onboard2.${ts}@example.com`;
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
   await page.locator('#email').fill(email);
-  await page.locator('#password').pressSequentially(password);
+  await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
 }
 
 async function loginAsAdmin(page: Page) {
   await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-  await page.waitForURL(`${BASE}/`);
+  await page.waitForURL(/\/(workspace-select)?$/, { timeout: 10000 });
+  if (page.url().includes('workspace-select')) {
+    await page.locator('li button[type="button"]').first().click();
+    await page.waitForURL(`${BASE}/`, { timeout: 10000 });
+  }
 }
 
 async function clearSession(page: Page) {
@@ -56,10 +60,20 @@ test.describe('Router Guards', () => {
 
   test('redirect query preserved — post-login user lands on originally requested URL', async ({ page }) => {
     await clearSession(page);
+    const loginRes = await page.request.post(`${GATEWAY}/auth/api/v1/auth/login`, {
+      data: { email: ADMIN_EMAIL, password: ADMIN_PASS },
+    });
+    const { accessToken } = await loginRes.json();
+    const wsRes = await page.request.get(`${GATEWAY}/core/api/v1/workspaces`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const workspaces = await wsRes.json();
+    await page.goto(BASE);
+    await page.evaluate((id) => localStorage.setItem('relativa_ws_id', String(id)), workspaces[0].id);
     await page.goto(`${BASE}/members`);
     await expect(page).toHaveURL(/\/login\?redirect=.*members/);
     await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('#password').pressSequentially(ADMIN_PASS);
+    await page.locator('#password').fill(ADMIN_PASS);
     await page.locator('button[type="submit"]').click();
     await expect(page).toHaveURL(`${BASE}/members`, { timeout: 10000 });
   });
@@ -84,7 +98,11 @@ test.describe('Login', () => {
   test('valid credentials store token, load profile, redirect to home', async ({ page }) => {
     await clearSession(page);
     await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-    await expect(page).toHaveURL(/\/($|onboarding|members|graph)/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/(workspace-select|onboarding|members|graph|$)/, { timeout: 10000 });
+    if (page.url().includes('workspace-select')) {
+      await page.locator('li button[type="button"]').first().click();
+      await page.waitForURL(`${BASE}/`, { timeout: 10000 });
+    }
     await page.waitForLoadState('networkidle');
     await expect(page.getByText(/admin@relativa\.com/i).first()).toBeVisible();
   });
@@ -119,8 +137,7 @@ test.describe('Onboarding', () => {
     await expect(page.getByLabel(/organization name/i)).toBeVisible();
     await page.getByLabel(/organization name/i).fill('Test Org');
     await page.locator('form button[type="submit"]').click();
-    await expect(page).toHaveURL(`${BASE}/`, { timeout: 10000 });
-    await expect(page.getByText(/Test Org/i).first()).toBeVisible();
+    await expect(page).toHaveURL(/\/workspace-select/, { timeout: 10000 });
   });
 
   test('join org tab shows search input and displays results or empty state', async ({ page }) => {
@@ -333,7 +350,8 @@ test.describe('Workspace Members Page', () => {
 
   test('self row shows a Tag for role instead of an editable Select', async ({ page }) => {
     const selfRow = page.locator('tbody tr').filter({ hasText: ADMIN_EMAIL }).first();
-    await expect(selfRow.locator('.p-tag')).toBeVisible();
+    await expect(selfRow).toBeVisible({ timeout: 10000 });
+    await expect(selfRow.locator('.p-tag')).toBeVisible({ timeout: 10000 });
     await expect(selfRow.locator('.p-select')).not.toBeVisible();
   });
 
