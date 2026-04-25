@@ -22,48 +22,6 @@ namespace Relativa.Migration.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Relativa.Persistence.Entities.DealPropertyValue", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("ClientId")
-                        .HasColumnType("integer")
-                        .HasColumnName("client_id");
-
-                    b.Property<decimal?>("ClosureScore")
-                        .HasColumnType("numeric")
-                        .HasColumnName("closure_score");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<DateTime?>("ExpectedClose")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expected_close");
-
-                    b.Property<int?>("OwnerId")
-                        .HasColumnType("integer")
-                        .HasColumnName("owner_id");
-
-                    b.Property<decimal?>("Value")
-                        .HasColumnType("numeric")
-                        .HasColumnName("value");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClientId");
-
-                    b.HasIndex("OwnerId");
-
-                    b.ToTable("deal_property_values", (string)null);
-                });
-
             modelBuilder.Entity("Relativa.Persistence.Entities.Entity", b =>
                 {
                     b.Property<int>("Id")
@@ -73,24 +31,66 @@ namespace Relativa.Migration.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("EntityTypeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("entity_type_id");
+
                     b.Property<bool>("IsArchived")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("is_archived");
 
-                    b.Property<int>("Type")
-                        .HasColumnType("integer")
-                        .HasColumnName("type");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("Type");
+                    b.HasIndex("EntityTypeId")
+                        .HasDatabaseName("IX_entity_entity_type_id");
 
-                    b.ToTable("entities", (string)null);
+                    b.ToTable("entity", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Persistence.Entities.EntityProperty", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityPropertyValue", b =>
+                {
+                    b.Property<int>("EntityId")
+                        .HasColumnType("integer")
+                        .HasColumnName("entity_id");
+
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("integer")
+                        .HasColumnName("property_id");
+
+                    b.Property<bool?>("ValueBool")
+                        .HasColumnType("boolean")
+                        .HasColumnName("value_bool");
+
+                    b.Property<DateOnly?>("ValueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("value_date");
+
+                    b.Property<decimal?>("ValueDecimal")
+                        .HasColumnType("numeric")
+                        .HasColumnName("value_decimal");
+
+                    b.Property<int?>("ValueInt")
+                        .HasColumnType("integer")
+                        .HasColumnName("value_int");
+
+                    b.Property<string>("ValueString")
+                        .HasColumnType("text")
+                        .HasColumnName("value_string");
+
+                    b.HasKey("EntityId", "PropertyId");
+
+                    b.HasIndex("EntityId")
+                        .HasDatabaseName("ix_epv_entity_id");
+
+                    b.HasIndex("PropertyId")
+                        .HasDatabaseName("ix_epv_property_id");
+
+                    b.ToTable("entity_property_value", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityRelationship", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -99,34 +99,67 @@ namespace Relativa.Migration.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int?>("DealPropertyId")
+                    b.Property<int>("RelationshipTypeId")
                         .HasColumnType("integer")
-                        .HasColumnName("deal_property_id");
+                        .HasColumnName("relationship_type_id");
 
-                    b.Property<int>("EntityId")
+                    b.Property<int>("SourceEntityId")
                         .HasColumnType("integer")
-                        .HasColumnName("entity_id");
+                        .HasColumnName("source_entity_id");
 
-                    b.Property<int?>("LocationPropertyId")
+                    b.Property<int>("TargetEntityId")
                         .HasColumnType("integer")
-                        .HasColumnName("location_property_id");
-
-                    b.Property<int?>("PersonalDataPropertyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("personal_data_property_id");
+                        .HasColumnName("target_entity_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DealPropertyId");
+                    b.HasIndex("RelationshipTypeId")
+                        .HasDatabaseName("ix_er_relationship_type_id");
 
-                    b.HasIndex("EntityId")
-                        .IsUnique();
+                    b.HasIndex("SourceEntityId")
+                        .HasDatabaseName("ix_er_source_entity_id");
 
-                    b.HasIndex("LocationPropertyId");
+                    b.HasIndex("TargetEntityId")
+                        .HasDatabaseName("IX_entity_relationship_target_entity_id");
 
-                    b.HasIndex("PersonalDataPropertyId");
+                    b.ToTable("entity_relationship", (string)null);
+                });
 
-                    b.ToTable("entity_properties", (string)null);
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityRelationshipType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SourceEntityTypeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("source_entity_type_id");
+
+                    b.Property<int>("TargetEntityTypeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_entity_type_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_entity_relationship_type_name");
+
+                    b.HasIndex("SourceEntityTypeId")
+                        .HasDatabaseName("IX_entity_relationship_type_source_entity_type_id");
+
+                    b.HasIndex("TargetEntityTypeId")
+                        .HasDatabaseName("IX_entity_relationship_type_target_entity_type_id");
+
+                    b.ToTable("entity_relationship_type", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.EntityType", b =>
@@ -138,23 +171,42 @@ namespace Relativa.Migration.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<bool>("IsArchived")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("is_archived");
-
-                    b.Property<string>("TypeId")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("type_id");
+                        .HasColumnName("name");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TypeId")
-                        .IsUnique();
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_entity_type_name");
 
-                    b.ToTable("entity_types", (string)null);
+                    b.ToTable("entity_type", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityTypeProperty", b =>
+                {
+                    b.Property<int>("EntityTypeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("entity_type_id");
+
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("integer")
+                        .HasColumnName("property_id");
+
+                    b.Property<bool>("IsRequired")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_required");
+
+                    b.HasKey("EntityTypeId", "PropertyId");
+
+                    b.HasIndex("PropertyId")
+                        .HasDatabaseName("IX_entity_type_property_property_id");
+
+                    b.ToTable("entity_type_property", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.EntityWorkspace", b =>
@@ -176,57 +228,13 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("EntityId");
+                    b.HasIndex("EntityId")
+                        .HasDatabaseName("IX_entity_workspace_entity_id");
 
-                    b.HasIndex("WorkspaceId");
+                    b.HasIndex("WorkspaceId")
+                        .HasDatabaseName("IX_entity_workspace_workspace_id");
 
-                    b.ToTable("entity_workspaces", (string)null);
-                });
-
-            modelBuilder.Entity("Relativa.Persistence.Entities.LocationPropertyValue", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Address")
-                        .HasColumnType("text")
-                        .HasColumnName("address");
-
-                    b.Property<string>("City")
-                        .HasColumnType("text")
-                        .HasColumnName("city");
-
-                    b.Property<string>("Country")
-                        .HasColumnType("text")
-                        .HasColumnName("country");
-
-                    b.Property<string>("Locale")
-                        .HasColumnType("text")
-                        .HasColumnName("locale");
-
-                    b.Property<string>("PostalCode")
-                        .HasColumnType("text")
-                        .HasColumnName("postal_code");
-
-                    b.Property<string>("Region")
-                        .HasColumnType("text")
-                        .HasColumnName("region");
-
-                    b.Property<string>("State")
-                        .HasColumnType("text")
-                        .HasColumnName("state");
-
-                    b.Property<string>("Timezone")
-                        .HasColumnType("text")
-                        .HasColumnName("timezone");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("location_property_values", (string)null);
+                    b.ToTable("entity_workspace", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.Organization", b =>
@@ -445,7 +453,7 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("permissions", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Persistence.Entities.PersonalDataPropertyValue", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.Property", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -454,35 +462,26 @@ namespace Relativa.Migration.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<DateOnly?>("BirthDate")
-                        .HasColumnType("date")
-                        .HasColumnName("birth_date");
-
-                    b.Property<string>("Email")
-                        .HasColumnType("text")
-                        .HasColumnName("email");
-
-                    b.Property<string>("FirstName")
+                    b.Property<string>("DataType")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("first_name");
+                        .HasColumnName("data_type");
 
-                    b.Property<string>("LastName")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("last_name");
+                        .HasColumnName("name");
 
-                    b.Property<string>("PassportNumber")
-                        .HasColumnType("text")
-                        .HasColumnName("passport_number");
-
-                    b.Property<string>("PhoneNumber")
-                        .HasColumnType("text")
-                        .HasColumnName("phone_number");
+                    b.Property<int?>("OrganizationId")
+                        .HasColumnType("integer")
+                        .HasColumnName("organization_id");
 
                     b.HasKey("Id");
 
-                    b.ToTable("personal_data_property_values", (string)null);
+                    b.HasIndex("OrganizationId")
+                        .HasDatabaseName("ix_property_organization_id");
+
+                    b.ToTable("property", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>
@@ -777,72 +776,113 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("workspace_role_permissions", (string)null);
                 });
 
-            modelBuilder.Entity("Relativa.Persistence.Entities.DealPropertyValue", b =>
-                {
-                    b.HasOne("Relativa.Persistence.Entities.Entity", "Client")
-                        .WithMany("DealPropertyValues")
-                        .HasForeignKey("ClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_deal_client");
-
-                    b.HasOne("Relativa.Persistence.Entities.User", "Owner")
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_deal_owner");
-
-                    b.Navigation("Client");
-
-                    b.Navigation("Owner");
-                });
+            // ----------------------------------------------------------------
+            // Relationships
+            // ----------------------------------------------------------------
 
             modelBuilder.Entity("Relativa.Persistence.Entities.Entity", b =>
                 {
                     b.HasOne("Relativa.Persistence.Entities.EntityType", "EntityType")
                         .WithMany("Entities")
-                        .HasForeignKey("Type")
+                        .HasForeignKey("EntityTypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_entities_type");
+                        .HasConstraintName("fk_entity_entity_type");
 
                     b.Navigation("EntityType");
                 });
 
-            modelBuilder.Entity("Relativa.Persistence.Entities.EntityProperty", b =>
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityPropertyValue", b =>
                 {
-                    b.HasOne("Relativa.Persistence.Entities.DealPropertyValue", "DealProperty")
-                        .WithMany()
-                        .HasForeignKey("DealPropertyId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_ep_deal");
-
                     b.HasOne("Relativa.Persistence.Entities.Entity", "Entity")
-                        .WithOne("EntityProperty")
-                        .HasForeignKey("Relativa.Persistence.Entities.EntityProperty", "EntityId")
+                        .WithMany("EntityPropertyValues")
+                        .HasForeignKey("EntityId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_ep_entity");
+                        .HasConstraintName("fk_epv_entity");
 
-                    b.HasOne("Relativa.Persistence.Entities.LocationPropertyValue", "LocationProperty")
-                        .WithMany()
-                        .HasForeignKey("LocationPropertyId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_ep_location");
-
-                    b.HasOne("Relativa.Persistence.Entities.PersonalDataPropertyValue", "PersonalDataProperty")
-                        .WithMany()
-                        .HasForeignKey("PersonalDataPropertyId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_ep_personal");
-
-                    b.Navigation("DealProperty");
+                    b.HasOne("Relativa.Persistence.Entities.Property", "Property")
+                        .WithMany("EntityPropertyValues")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_epv_property");
 
                     b.Navigation("Entity");
 
-                    b.Navigation("LocationProperty");
+                    b.Navigation("Property");
+                });
 
-                    b.Navigation("PersonalDataProperty");
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityRelationship", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.Entity", "SourceEntity")
+                        .WithMany("SourceRelationships")
+                        .HasForeignKey("SourceEntityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_er_source_entity");
+
+                    b.HasOne("Relativa.Persistence.Entities.Entity", "TargetEntity")
+                        .WithMany("TargetRelationships")
+                        .HasForeignKey("TargetEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_er_target_entity");
+
+                    b.HasOne("Relativa.Persistence.Entities.EntityRelationshipType", "RelationshipType")
+                        .WithMany("EntityRelationships")
+                        .HasForeignKey("RelationshipTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_er_relationship_type");
+
+                    b.Navigation("RelationshipType");
+
+                    b.Navigation("SourceEntity");
+
+                    b.Navigation("TargetEntity");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityRelationshipType", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.EntityType", "SourceEntityType")
+                        .WithMany("SourceRelationshipTypes")
+                        .HasForeignKey("SourceEntityTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ert_source_entity_type");
+
+                    b.HasOne("Relativa.Persistence.Entities.EntityType", "TargetEntityType")
+                        .WithMany("TargetRelationshipTypes")
+                        .HasForeignKey("TargetEntityTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ert_target_entity_type");
+
+                    b.Navigation("SourceEntityType");
+
+                    b.Navigation("TargetEntityType");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityTypeProperty", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.EntityType", "EntityType")
+                        .WithMany("EntityTypeProperties")
+                        .HasForeignKey("EntityTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_etp_entity_type");
+
+                    b.HasOne("Relativa.Persistence.Entities.Property", "Property")
+                        .WithMany("EntityTypeProperties")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_etp_property");
+
+                    b.Navigation("EntityType");
+
+                    b.Navigation("Property");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.EntityWorkspace", b =>
@@ -946,6 +986,17 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Permission");
 
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.Property", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_property_organization");
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.UserRoleOrganization", b =>
@@ -1091,18 +1142,35 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Role");
                 });
 
+            // ----------------------------------------------------------------
+            // Navigation collections
+            // ----------------------------------------------------------------
+
             modelBuilder.Entity("Relativa.Persistence.Entities.Entity", b =>
                 {
-                    b.Navigation("DealPropertyValues");
-
-                    b.Navigation("EntityProperty");
+                    b.Navigation("EntityPropertyValues");
 
                     b.Navigation("EntityWorkspaces");
+
+                    b.Navigation("SourceRelationships");
+
+                    b.Navigation("TargetRelationships");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.EntityRelationshipType", b =>
+                {
+                    b.Navigation("EntityRelationships");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.EntityType", b =>
                 {
                     b.Navigation("Entities");
+
+                    b.Navigation("EntityTypeProperties");
+
+                    b.Navigation("SourceRelationshipTypes");
+
+                    b.Navigation("TargetRelationshipTypes");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.Organization", b =>
@@ -1130,6 +1198,13 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("OrganizationRolePermissions");
 
                     b.Navigation("WorkspaceRolePermissions");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.Property", b =>
+                {
+                    b.Navigation("EntityPropertyValues");
+
+                    b.Navigation("EntityTypeProperties");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>

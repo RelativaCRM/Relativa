@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-04-23 (workspace-select gate uses workspace store; CR-133 WorkspaceSelectorView)
+> **Last verified:** 2026-04-23 (entity-type listing + entity CRUD implemented; permissions re-seeded with manage_entities/view_entities)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -12,13 +12,13 @@
 |---|---|---|
 | Gateway | **Functional** | YARP routing, JWT validation, split anonymous/auth routes, health, Scalar -- all working |
 | Authentication | **Functional** | Login, register, `/me` profile endpoint, JWT (sub + email only), FluentValidation -- all working |
-| Core | **Functional** (org + ws RBAC) | Organization management, workspace management, split RBAC (org roles + ws roles), members, invitations, join requests, role/permission management all implemented; entity/deal CRUD not yet |
+| Core | **Functional** (org + ws RBAC + entity CRUD) | Organization management, workspace management, split RBAC, members, invitations, join requests, permissions, entity-type listing (public), and workspace-scoped entity CRUD all implemented |
 | Graph | **Stub** | SignalR hub exists but has no logic |
 | Audit | **Stub** | Returns empty array; JWT validation disabled |
-| Migration | **Functional** | Applies EF migrations on startup; schema + seed data work |
+| Migration | **Functional** | Applies EF migrations on startup; schema + seed data work. Four migrations: `InitialCreate`, `SeedData`, `EavSchemaReplace`, `ReseedPermissions`. |
 | ML | **Stub** | Single endpoint returns hardcoded stub |
 | Client | **Partial** | Vue 3 + PrimeVue + Tailwind. Auth flow + org onboarding + members/invitations wired to Gateway; base layouts in place; typed API client for auth + org endpoints |
-| Persistence | **Functional** | Full entity model (20 entities), fluent configs, ModelBuilderExtensions |
+| Persistence | **Functional** | Full EAV entity model (21 entities), fluent configs, ModelBuilderExtensions |
 
 ---
 
@@ -49,9 +49,20 @@
 - **Invitation system:** `POST .../invitations` (invite by email, requires `invite_to_workspace`, returns token in response), `GET .../invitations` (list pending), `DELETE .../invitations/{id}` (cancel), `POST /api/v1/invitations/accept` (accept by token).
 - **Role management:** `GET .../roles` (list system + custom), `POST .../roles` (create custom, requires `manage_ws_roles`), `PUT .../roles/{id}` (update), `DELETE .../roles/{id}` (archive). System roles cannot be modified.
 - **Combined invitations:** `GET /api/v1/invitations/mine` -- lists all pending invitations (both workspace + org) for the authenticated user.
-- **Permission listing:** `GET /api/v1/permissions` -- lists all 16 permissions (both org-scoped and ws-scoped).
-- Full clean-architecture layers: Domain (repository interfaces), Application (9 services, DTOs, validators), Infrastructure (repositories, WorkspaceContext).
+- **Permission listing:** `GET /api/v1/permissions` -- lists all 16 permissions (both org-scoped and ws-scoped). **Workspace permissions 14 and 15 are `manage_entities` / `view_entities`** (previously `edit_deals` / `view_deals`; re-seeded via `ReseedPermissions` migration).
+- Full clean-architecture layers: Domain (repository interfaces), Application (11 services, DTOs, validators), Infrastructure (repositories, WorkspaceContext).
 - Authorization checked per-request via `UserRoleOrganization` or `UserRoleWorkspace` DB lookup. **Core does not parse JWTs**; it reads the caller identity from the `X-User-Id` header that the Gateway injects after JWT validation (see Gateway entry below). `X-User-Email` is read on invitation-accept flows. Missing headers are treated as a 401.
+
+### Core service -- Entity CRUD
+
+- **Entity types (public):** `GET /api/v1/entity-types` — anonymous (no JWT required via Gateway); returns all entity types with their EAV property definitions (`id`, `name`, `properties: [{ propertyId, name, dataType, isRequired }]`).
+- **Entity CRUD (workspace-scoped):** all endpoints under `/api/v1/workspaces/{workspaceId}/entities`:
+  - `GET /` — list non-archived entities with full property values; requires `view_entities`.
+  - `GET /{entityId}` — entity detail; **404** if entity not linked to this workspace; requires `view_entities`.
+  - `POST /` — atomic transaction: insert `entity` row, insert `entity_property_value` rows, insert `entity_workspace` link; requires `manage_entities`. FluentValidation (structural) + service-level EAV validation (required properties, allowed property ids, typed value parsing).
+  - `PUT /{entityId}` — replace all property values; requires `manage_entities`.
+  - `DELETE /{entityId}` — soft-delete (`is_archived = true`); requires `manage_entities`.
+- **GlobalExceptionHandler extended:** `KeyNotFoundException` → 404, `ValidationException` → 400 with error detail.
 
 ### Gateway
 
@@ -71,17 +82,22 @@
 
 ### Migration
 
-- `MigrationDbContext` mirrors full Persistence model (20 entities).
+- `MigrationDbContext` mirrors full Persistence model (21 entities).
 - `Program.cs` runs `Database.MigrateAsync()` as a generic host console app.
-- Migrations in `Migration/src/Relativa.Migration/Migrations/` (`20260416224419_InitialCreate.cs` + `20260416224514_SeedData.cs`) cover the full schema including the split RBAC tables, org management tables, and seed data for 7 default roles, 16 permissions, and demo data.
+- Four migrations in `Migration/src/Relativa.Migration/Migrations/`:
+  - `20260416224419_InitialCreate.cs` — full initial schema (RBAC, org management, old polymorphic entity tables).
+  - `20260416224514_SeedData.cs` — seeds all reference data. Permission ids 14/15 are `manage_entities`/`view_entities`.
+  - `20260423000000_EavSchemaReplace.cs` — EAV schema migration: drops old property tables, renames entity tables to singular, creates new EAV tables.
+  - `20260423100000_ReseedPermissions.cs` — FK-safe wipe and full re-insert of `permissions`, `organization_role_permissions`, `workspace_role_permissions`; replaces `edit_deals`/`view_deals` with `manage_entities`/`view_entities` for existing databases.
 - Docker Compose runs this before auth and core start.
 
 ### Persistence library
 
-- 20 entity classes with EF Fluent API configurations.
+- 21 entity classes with EF Fluent API configurations.
 - Split RBAC model: separate `OrganizationRole`/`OrganizationRolePermission` and `WorkspaceRole`/`WorkspaceRolePermission` hierarchies sharing a common `Permission` table.
+- **EAV entity model:** `Property`, `EntityTypeProperty`, `EntityPropertyValue`, `EntityRelationshipType`, `EntityRelationship` replace the old hard-coded `EntityProperty` / `PersonalDataPropertyValue` / `LocationPropertyValue` / `DealPropertyValue` tables.
 - `ModelBuilderExtensions.ApplyAuthEntityConfigurations()` for auth-only subset (User).
-- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 20 entities).
+- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 21 entities).
 - Referenced by Core, Authentication, and Migration via ProjectReference.
 
 ### Docker Compose
@@ -116,11 +132,11 @@
 ### Core service -- remaining gaps
 
 **What is missing:**
-- No CRUD for entities, deals, or clients.
-- No workspace isolation for entity queries (multi-tenant data scoping).
 - No business rules (BP-01 through BP-06).
 - No domain events.
 - No email notifications for invitations or join request outcomes.
+- No property management endpoints (list/create/update org-scoped custom properties).
+- Relationship management endpoints (`entity_relationship`) deferred — the table and seed data exist but no API surface yet.
 
 ### Graph service
 
@@ -165,8 +181,11 @@
 
 ### Core service -- business API
 
-- CRUD endpoints for entities, clients, deals.
-- Workspace isolation for entity queries (multi-tenant data scoping via `EntityWorkspace`).
+- ~~CRUD endpoints for entities (EAV-based).~~ *(done — entity-type listing + full CRUD under workspaces)*
+- ~~EAV validation service (required properties, typed value parsing).~~ *(done — enforced in EntityService)*
+- ~~Workspace isolation for entity queries.~~ *(done — EntityWorkspace join enforced on every read)*
+- Property management endpoints: list/create/update org-scoped custom properties.
+- Entity relationship management endpoints (`entity_relationship` table exists; API surface deferred).
 - Business rules BP-01 through BP-06 (referenced in `Core/README.md`, not defined in code).
 - Domain events published to Audit after entity mutations.
 - Email notifications for invitation sends, join request approvals/rejections.
@@ -183,10 +202,10 @@
 
 ### Graph service
 
-- Recursive CTE queries for entity-relationship traversal.
-- Dynamic RBAC-based filtering of graph data.
+- Recursive CTE queries for entity-relationship traversal using `entity_relationship` and `entity_relationship_type`.
+- Dynamic RBAC-based filtering of graph data (workspace-scoped via `entity_workspace`).
 - Live SignalR push updates when entities change.
-- ML score integration (display closure_score on graph nodes).
+- ML score integration (display `closure_score` property values on graph nodes — stored as `entity_property_value` rows).
 
 ### Audit service
 

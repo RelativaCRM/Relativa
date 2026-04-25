@@ -8,7 +8,7 @@ public class EntityWorkspaceConfiguration : IEntityTypeConfiguration<EntityWorks
 {
     public void Configure(EntityTypeBuilder<EntityWorkspace> builder)
     {
-        builder.ToTable("entity_workspaces");
+        builder.ToTable("entity_workspace");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.EntityId).HasColumnName("entity_id").IsRequired();

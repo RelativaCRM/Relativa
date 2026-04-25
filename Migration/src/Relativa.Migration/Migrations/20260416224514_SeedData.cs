@@ -15,7 +15,7 @@ namespace Relativa.Migration.Migrations
 -- 1. Permissions (16 granular)
 -- ============================================================
 INSERT INTO permissions (id, name, is_archived) VALUES
--- Organization-scoped
+-- Organization-scoped (ids 1-7)
 (1,  'manage_org_settings',  FALSE),
 (2,  'invite_to_org',        FALSE),
 (3,  'manage_join_requests', FALSE),
@@ -23,15 +23,15 @@ INSERT INTO permissions (id, name, is_archived) VALUES
 (5,  'assign_org_roles',     FALSE),
 (6,  'manage_org_roles',     FALSE),
 (7,  'create_workspaces',    FALSE),
--- Workspace-scoped
+-- Workspace-scoped (ids 8-16)
 (8,  'manage_ws_settings',   FALSE),
 (9,  'invite_to_workspace',  FALSE),
 (10, 'add_ws_members',       FALSE),
 (11, 'remove_ws_members',    FALSE),
 (12, 'assign_ws_roles',      FALSE),
 (13, 'manage_ws_roles',      FALSE),
-(14, 'edit_deals',           FALSE),
-(15, 'view_deals',           FALSE),
+(14, 'manage_entities',      FALSE),
+(15, 'view_entities',        FALSE),
 (16, 'view_analytics',       FALSE);
 
 -- ============================================================
@@ -50,8 +50,6 @@ INSERT INTO organization_role_permissions (id, org_role_id, permission_id) VALUE
 INSERT INTO organization_role_permissions (id, org_role_id, permission_id) VALUES
 (8, 2, 1), (9, 2, 2), (10, 2, 3), (11, 2, 4), (12, 2, 5), (13, 2, 7);
 
--- org_member: no org permissions
-
 -- ============================================================
 -- 3. Workspace Roles (system, workspace_id = NULL)
 -- ============================================================
@@ -65,15 +63,15 @@ INSERT INTO workspace_roles (id, name, workspace_id, is_archived) VALUES
 INSERT INTO workspace_role_permissions (id, ws_role_id, permission_id) VALUES
 (1, 1, 8), (2, 1, 9), (3, 1, 10), (4, 1, 11), (5, 1, 12), (6, 1, 13), (7, 1, 14), (8, 1, 15), (9, 1, 16);
 
--- ws_manager: invite_to_workspace, add_ws_members, edit_deals, view_deals, view_analytics
+-- ws_manager: invite_to_workspace, add_ws_members, manage_entities, view_entities, view_analytics
 INSERT INTO workspace_role_permissions (id, ws_role_id, permission_id) VALUES
 (10, 2, 9), (11, 2, 10), (12, 2, 14), (13, 2, 15), (14, 2, 16);
 
--- ws_analyst: view_analytics, view_deals
+-- ws_analyst: view_analytics, view_entities
 INSERT INTO workspace_role_permissions (id, ws_role_id, permission_id) VALUES
 (15, 3, 15), (16, 3, 16);
 
--- ws_member: view_deals
+-- ws_member: view_entities
 INSERT INTO workspace_role_permissions (id, ws_role_id, permission_id) VALUES
 (17, 4, 15);
 
@@ -88,9 +86,9 @@ INSERT INTO organizations (id, name, is_archived) VALUES
 -- 5. Users (placeholder bcrypt hashes)
 -- ============================================================
 INSERT INTO users (id, first_name, last_name, email, password, created_at, is_archived) VALUES
-(1, 'Dorian',  'Gray',    'admin@relativa.com',    '$2a$11$placeholder00000000000000000000000000000000000000000', CURRENT_TIMESTAMP, FALSE),
-(2, 'Ivan',    'Franko',  'ivan.f@relativa.com',   '$2a$11$placeholder00000000000000000000000000000000000000000', CURRENT_TIMESTAMP, FALSE),
-(3, 'Lesya',   'Ukrainka', 'lesya.u@relativa.com', '$2a$11$placeholder00000000000000000000000000000000000000000', CURRENT_TIMESTAMP, FALSE);
+(1, 'Dorian',  'Gray',     'admin@relativa.com',    '$2a$11$U0L3412xLEeQjOfrj5VGb.kPt.RAHBaV/lSNIbHesBuQc90DmFHfC', CURRENT_TIMESTAMP, FALSE),
+(2, 'Ivan',    'Franko',  'ivan.f@relativa.com',   '$2a$11$4J7luzuGBbWMQhuGnebPnu34QyUe867wkeBqahTtrVfjV0YMHNhqu',  CURRENT_TIMESTAMP, FALSE),
+(3, 'Lesya',   'Ukrainka', 'lesya.u@relativa.com', '$2a$11$whaqAlWKw6kwO5K4hh2c5.DsjWOsSxIIP5QOLQK0/yZFWFZVDQMW2', CURRENT_TIMESTAMP, FALSE);
 
 -- ============================================================
 -- 6. Organization Memberships
@@ -101,7 +99,7 @@ INSERT INTO user_role_organization (id, user_id, organization_id, org_role_id, j
 (3, 3, 1, 3, CURRENT_TIMESTAMP, FALSE);  -- Lesya  = org_member @ Relativa Global
 
 -- ============================================================
--- 7. Workspaces (now with organization_id)
+-- 7. Workspaces
 -- ============================================================
 INSERT INTO workspaces (id, name, organization_id, created_by_user_id, is_archived) VALUES
 (1, 'EU Sales Workspace', 1, 1, FALSE),
@@ -116,7 +114,7 @@ INSERT INTO user_role_workspace (id, user_id, workspace_id, ws_role_id, joined_a
 (3, 3, 1, 3, CURRENT_TIMESTAMP, FALSE);  -- Lesya  = ws_analyst @ EU Sales
 
 -- ============================================================
--- 9. Entity Types
+-- 9. Entity Types (InitialCreate schema — EAV applied in later migration)
 -- ============================================================
 INSERT INTO entity_types (id, type_id, is_archived) VALUES
 (1, 'client', FALSE),
@@ -135,9 +133,6 @@ INSERT INTO entities (id, type, is_archived) VALUES
 INSERT INTO entity_workspaces (id, entity_id, workspace_id) VALUES
 (1, 1, 1), (2, 2, 1), (3, 3, 1), (4, 4, 1), (5, 5, 1);
 
--- ============================================================
--- 11. Property Values
--- ============================================================
 INSERT INTO personal_data_property_values (id, first_name, last_name, phone_number, email, passport_number, birth_date) VALUES
 (1, 'Oleksiy', 'Ivanenko',    '+380671234567', 'o.ivanenko@tech.ua', NULL, '1985-05-20'),
 (2, 'Maria',   'Zankovetska', '+380501234567', 'm.zan@corp.ua',      NULL, '1990-11-15');
@@ -151,9 +146,6 @@ INSERT INTO deal_property_values (id, value, owner_id, client_id, expected_close
 (2, 15000.00, 3, 2, '2026-05-15 00:00:00+00', 0.85, CURRENT_TIMESTAMP),
 (3, 50000.00, 2, 1, '2026-08-01 00:00:00+00', 0.45, CURRENT_TIMESTAMP);
 
--- ============================================================
--- 12. Entity Properties (polymorphic hub)
--- ============================================================
 INSERT INTO entity_properties (id, entity_id, personal_data_property_id, location_property_id, deal_property_id) VALUES
 (1, 1, 1, 1, NULL),
 (2, 2, 2, 2, NULL),
@@ -162,7 +154,7 @@ INSERT INTO entity_properties (id, entity_id, personal_data_property_id, locatio
 (5, 5, NULL, NULL, 3);
 
 -- ============================================================
--- 13. Reset sequences
+-- 11. Reset sequences (InitialCreate tables only)
 -- ============================================================
 SELECT setval(pg_get_serial_sequence('permissions', 'id'), (SELECT COALESCE(MAX(id),1) FROM permissions));
 SELECT setval(pg_get_serial_sequence('organization_roles', 'id'), (SELECT COALESCE(MAX(id),1) FROM organization_roles));

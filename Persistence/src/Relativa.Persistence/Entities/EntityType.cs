@@ -3,7 +3,9 @@ namespace Relativa.Persistence.Entities;
 public class EntityType
 {
     public int Id { get; set; }
-    public string TypeId { get; set; } = null!;
-    public bool IsArchived { get; set; }
+    public string Name { get; set; } = null!;
     public ICollection<Entity> Entities { get; set; } = new List<Entity>();
+    public ICollection<EntityTypeProperty> EntityTypeProperties { get; set; } = new List<EntityTypeProperty>();
+    public ICollection<EntityRelationshipType> SourceRelationshipTypes { get; set; } = new List<EntityRelationshipType>();
+    public ICollection<EntityRelationshipType> TargetRelationshipTypes { get; set; } = new List<EntityRelationshipType>();
 }
