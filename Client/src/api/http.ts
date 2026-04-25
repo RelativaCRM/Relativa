@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/stores/auth';
+import { useWorkspaceStore } from '@/stores/workspace';
 
 function gatewayBase(): string {
   return (import.meta.env.VITE_GATEWAY_URL ?? 'http://localhost:8080').replace(
@@ -25,12 +26,13 @@ export async function gatewayFetch(
   init: RequestInit = {},
 ): Promise<Response> {
   const auth = useAuthStore();
+  const wsStore = useWorkspaceStore();
   const headers = new Headers(init.headers);
   if (auth.accessToken) {
     headers.set('Authorization', `Bearer ${auth.accessToken}`);
   }
-  if (auth.workspaceId) {
-    headers.set('X-Workspace-ID', auth.workspaceId);
+  if (wsStore.currentWorkspaceId) {
+    headers.set('X-Workspace-ID', String(wsStore.currentWorkspaceId));
   }
   const url = path.startsWith('http') ? path : `${gatewayBase()}${path}`;
   return fetch(url, { ...init, headers });

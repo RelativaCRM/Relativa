@@ -35,8 +35,9 @@ export const useOrganizationStore = defineStore('organization', () => {
 
   async function fetchOrganizations() {
     organizations.value = await orgApi.list();
-    if (organizations.value.length > 0 && !currentOrgId.value) {
-      setCurrentOrg(organizations.value[0].id);
+    const first = organizations.value[0];
+    if (first && !currentOrgId.value) {
+      setCurrentOrg(first.id);
     }
     return organizations.value;
   }

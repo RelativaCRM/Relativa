@@ -9,6 +9,7 @@ import {
 
 const STORAGE_KEY = 'relativa_jwt';
 const EXPIRY_KEY = 'relativa_jwt_expires_at';
+const WORKSPACE_KEY = 'relativa_workspace_id';
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref<string | null>(
@@ -17,8 +18,11 @@ export const useAuthStore = defineStore('auth', () => {
   const expiresAt = ref<string | null>(
     typeof localStorage !== 'undefined' ? localStorage.getItem(EXPIRY_KEY) : null,
   );
+  const workspaceId = ref<string>(
+    typeof localStorage !== 'undefined' ? localStorage.getItem(WORKSPACE_KEY) ?? '' : '',
+  );
+  const roles = ref<string[]>(['User']);
   const user = ref<UserProfile | null>(null);
-  const workspaceId = ref('');
 
   const isAuthenticated = computed(() => {
     if (!accessToken.value) return false;
@@ -43,11 +47,20 @@ export const useAuthStore = defineStore('auth', () => {
 
   function setWorkspace(id: string) {
     workspaceId.value = id;
+    if (typeof localStorage !== 'undefined') {
+      if (id) localStorage.setItem(WORKSPACE_KEY, id);
+      else localStorage.removeItem(WORKSPACE_KEY);
+    }
+  }
+
+  function setRoles(next: string[]) {
+    roles.value = next;
   }
 
   function clearSession() {
     setToken(null);
-    workspaceId.value = '';
+    setWorkspace('');
+    roles.value = ['User'];
     user.value = null;
   }
 
@@ -59,7 +72,12 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(payload: LoginRequest) {
     const res = await authApi.login(payload);
     setToken(res.accessToken, res.expiresAt);
-    await fetchProfile();
+    setWorkspace('');
+    try {
+      await fetchProfile();
+    } catch {
+      user.value = null;
+    }
     return res;
   }
 
@@ -74,11 +92,13 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     accessToken,
     expiresAt,
-    user,
     workspaceId,
+    roles,
+    user,
     isAuthenticated,
     setToken,
     setWorkspace,
+    setRoles,
     clearSession,
     fetchProfile,
     login,

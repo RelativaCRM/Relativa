@@ -1,8 +1,6 @@
 import { api } from '@/api/http';
 import type { MyWorkspaceInvitationDto } from '@/api/organizations';
 
-/* ── DTOs ───────────────────────────────────────────────── */
-
 export interface WorkspaceDto {
   id: number;
   name: string;
@@ -33,12 +31,9 @@ export interface WorkspaceRoleDto {
 
 export type WorkspaceInvitationDto = MyWorkspaceInvitationDto;
 
-/* ── API ────────────────────────────────────────────────── */
-
 const CORE = '/core/api/v1';
 
 export const workspaceApi = {
-  /* Workspaces */
   list(): Promise<WorkspaceDto[]> {
     return api.get<WorkspaceDto[]>(`${CORE}/workspaces`);
   },
@@ -58,7 +53,6 @@ export const workspaceApi = {
     return api.del(`${CORE}/workspaces/${id}`);
   },
 
-  /* Members */
   listMembers(wsId: number): Promise<WorkspaceMemberDto[]> {
     return api.get<WorkspaceMemberDto[]>(
       `${CORE}/workspaces/${wsId}/members`,
@@ -87,12 +81,10 @@ export const workspaceApi = {
     return api.del(`${CORE}/workspaces/${wsId}/members/${userId}`);
   },
 
-  /* Roles */
   listRoles(wsId: number): Promise<WorkspaceRoleDto[]> {
     return api.get<WorkspaceRoleDto[]>(`${CORE}/workspaces/${wsId}/roles`);
   },
 
-  /* Invitations */
   listInvitations(wsId: number): Promise<WorkspaceInvitationDto[]> {
     return api.get<WorkspaceInvitationDto[]>(
       `${CORE}/workspaces/${wsId}/invitations`,
@@ -112,3 +104,5 @@ export const workspaceApi = {
     return api.del(`${CORE}/workspaces/${wsId}/invitations/${invId}`);
   },
 };
+
+export const workspacesApi = workspaceApi;

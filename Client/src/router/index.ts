@@ -1,17 +1,21 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
+import { useWorkspaceStore } from '@/stores/workspace';
 
 const MainLayout = () => import('@/layouts/MainLayout.vue');
 const LoginView = () => import('@/views/LoginView.vue');
 const RegisterView = () => import('@/views/RegisterView.vue');
-const OnboardingView = () => import('@/views/OnboardingView.vue');
 const HomeView = () => import('@/views/HomeView.vue');
-const MembersView = () => import('@/views/MembersView.vue');
 const GraphView = () => import('@/views/GraphView.vue');
-const InvitationsView = () => import('@/views/InvitationsView.vue');
+const OnboardingView = () => import('@/views/OnboardingView.vue');
+const WorkspaceSelectorView = () =>
+  import('@/views/WorkspaceSelectorView.vue');
+const MembersView = () => import('@/views/MembersView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
-const WorkspaceMembersView = () => import('@/views/WorkspaceMembersView.vue');
+const WorkspaceMembersView = () =>
+  import('@/views/WorkspaceMembersView.vue');
+const InvitationsView = () => import('@/views/InvitationsView.vue');
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,20 +36,23 @@ const router = createRouter({
       path: '/onboarding',
       name: 'onboarding',
       component: OnboardingView,
-      meta: { requiresAuth: true, skipOrgCheck: true },
+      meta: { skipOrgCheck: true, skipWorkspaceCheck: true },
+    },
+    {
+      path: '/workspace-select',
+      name: 'workspace-select',
+      component: WorkspaceSelectorView,
+      meta: { skipWorkspaceCheck: true },
     },
     {
       path: '/',
       component: MainLayout,
-      meta: { requiresAuth: true },
       children: [
-        { path: '', name: 'home', component: HomeView },
-        { path: 'members', name: 'members', component: MembersView },
-        { path: 'graph', name: 'graph', component: GraphView },
+        { path: '', name: 'home', component: HomeView, meta: { roles: [] } },
         {
-          path: 'invitations',
-          name: 'invitations',
-          component: InvitationsView,
+          path: 'members',
+          name: 'members',
+          component: MembersView,
         },
         {
           path: 'workspaces',
@@ -56,7 +63,17 @@ const router = createRouter({
           path: 'workspaces/:id/members',
           name: 'workspace-members',
           component: WorkspaceMembersView,
-          props: true,
+        },
+        {
+          path: 'invitations',
+          name: 'invitations',
+          component: InvitationsView,
+        },
+        {
+          path: 'graph',
+          name: 'graph',
+          component: GraphView,
+          meta: { roles: ['User', 'Admin', 'Analyst'] },
         },
       ],
     },
@@ -66,44 +83,45 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const orgStore = useOrganizationStore();
+  const wsStore = useWorkspaceStore();
 
-  /* Guest-only pages (login / register) */
   if (to.meta.guestOnly && auth.isAuthenticated) {
     return { name: 'home' };
   }
 
-  /* Public pages need no further checks */
-  if (to.meta.public) return true;
-
-  /* Not authenticated → redirect to login */
-  if (!auth.isAuthenticated) {
+  if (!to.meta.public && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } };
   }
 
-  /* Load profile if missing (page reload) */
-  if (!auth.user) {
-    try {
-      await auth.fetchProfile();
-    } catch {
-      auth.logout();
-      return { name: 'login' };
-    }
-  }
-
-  /* Load organizations if empty */
-  if (orgStore.organizations.length === 0) {
-    try {
+  if (auth.isAuthenticated && !to.meta.public && !to.meta.skipOrgCheck) {
+    if (!orgStore.organizations.length) {
       await orgStore.fetchOrganizations();
-    } catch {
-      /* ignore — will have empty list */
+    }
+    if (!orgStore.hasOrganization) {
+      return { name: 'onboarding' };
     }
   }
 
-  /* No organization → force onboarding (unless already there) */
-  if (!to.meta.skipOrgCheck && !orgStore.hasOrganization) {
-    return { name: 'onboarding' };
+  if (
+    auth.isAuthenticated &&
+    !to.meta.public &&
+    !to.meta.skipWorkspaceCheck &&
+    !wsStore.currentWorkspaceId
+  ) {
+    await wsStore.fetchWorkspaces();
+    const only =
+      wsStore.workspaces.length === 1 ? wsStore.workspaces[0] : null;
+    if (only) {
+      wsStore.setCurrentWorkspace(only.id);
+    } else {
+      return { name: 'workspace-select' };
+    }
   }
 
+  const required = (to.meta.roles as string[] | undefined) ?? [];
+  if (required.length === 0) return true;
+  const allowed = required.some((r) => auth.roles.includes(r));
+  if (!allowed) return { name: 'home' };
   return true;
 });
 
