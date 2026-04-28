@@ -1,4 +1,4 @@
-import { api, gatewayFetch, ApiError } from '@/api/http';
+import { api } from '@/api/http';
 
 export type EntityPropertyDataType =
   | 'String'
@@ -55,37 +55,6 @@ export interface UpdateEntityRequest {
 
 const CORE = '/core/api/v1';
 
-async function patchJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await gatewayFetch(path, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  const payload = text ? safeJson(text) : undefined;
-  if (!res.ok) {
-    const message =
-      (payload && typeof payload === 'object' && 'title' in payload
-        ? String((payload as { title: unknown }).title)
-        : undefined) ??
-      (payload && typeof payload === 'object' && 'message' in payload
-        ? String((payload as { message: unknown }).message)
-        : undefined) ??
-      res.statusText ??
-      `Request failed (${res.status})`;
-    throw new ApiError(res.status, message, payload);
-  }
-  return payload as T;
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
 export const entityApi = {
   listTypes(): Promise<EntityTypeDto[]> {
     return api.get<EntityTypeDto[]>(`${CORE}/entity-types`);
@@ -114,9 +83,9 @@ export const entityApi = {
     entityId: number,
     body: UpdateEntityRequest,
   ): Promise<EntityDetailDto> {
-    return patchJson<EntityDetailDto>(
+    return api.patch<EntityDetailDto>(
       `${CORE}/workspaces/${workspaceId}/entities/${entityId}`,
-      body,
+      body as unknown as Record<string, unknown>,
     );
   },
   archive(workspaceId: number, entityId: number): Promise<void> {

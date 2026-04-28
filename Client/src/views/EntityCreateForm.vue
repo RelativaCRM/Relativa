@@ -10,6 +10,7 @@ import DatePicker from 'primevue/datepicker';
 import ToggleSwitch from 'primevue/toggleswitch';
 import Message from 'primevue/message';
 import { ApiError } from '@/api/http';
+import { useWorkspaceStore } from '@/stores/workspace';
 import {
   entityApi,
   type EntityTypeDto,
@@ -21,6 +22,7 @@ type FieldValue = string | number | boolean | Date | null;
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const wsStore = useWorkspaceStore();
 
 const workspaceId = computed(() => Number(route.params.id));
 
@@ -30,6 +32,7 @@ const values = ref<Record<number, FieldValue>>({});
 const loadingTypes = ref(true);
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
+const accessDenied = ref(false);
 
 const selectedType = computed(
   () => types.value.find((t) => t.id === selectedTypeId.value) ?? null,
@@ -93,9 +96,41 @@ function resetTypeFields() {
   errorMessage.value = null;
 }
 
+function gotoList() {
+  router.push({
+    name: 'workspace-entities',
+    params: { id: String(workspaceId.value) },
+  });
+}
+
+function gotoWorkspaces() {
+  router.push({ name: 'workspaces' });
+}
+
+async function ensureWorkspaceAccess(): Promise<boolean> {
+  if (!workspaceId.value) {
+    accessDenied.value = true;
+    errorMessage.value = 'Workspace id is missing.';
+    return false;
+  }
+  if (!wsStore.workspaces.length) {
+    await wsStore.fetchWorkspaces();
+  }
+  const belongs = wsStore.workspaces.some((w) => w.id === workspaceId.value);
+  if (!belongs) {
+    accessDenied.value = true;
+    errorMessage.value = 'You do not have access to this workspace.';
+    return false;
+  }
+  wsStore.setCurrentWorkspace(workspaceId.value);
+  return true;
+}
+
 async function loadTypes() {
   loadingTypes.value = true;
   try {
+    const ok = await ensureWorkspaceAccess();
+    if (!ok) return;
     types.value = await entityApi.listTypes();
   } catch (err) {
     errorMessage.value =
@@ -118,12 +153,13 @@ async function handleSubmit() {
       })),
     };
     await entityApi.create(workspaceId.value, payload);
+    const typeLabel = selectedType.value?.name ?? 'Entity';
     toast.add({
       severity: 'success',
-      summary: 'Сутність створена',
+      summary: `${typeLabel} created`,
       life: 3000,
     });
-    router.push({ name: 'home' });
+    gotoList();
   } catch (err) {
     errorMessage.value =
       err instanceof ApiError ? err.message : 'Failed to create entity.';
@@ -133,7 +169,7 @@ async function handleSubmit() {
 }
 
 function handleCancel() {
-  router.back();
+  gotoList();
 }
 
 onMounted(loadTypes);
@@ -145,11 +181,11 @@ onMounted(loadTypes);
       <Button
         text
         icon="pi pi-arrow-left"
-        label="Back"
+        :label="accessDenied ? 'Workspaces' : 'Back to entities'"
         severity="secondary"
         size="small"
         class="!px-1 !mb-1"
-        @click="handleCancel"
+        @click="accessDenied ? gotoWorkspaces() : gotoList()"
       />
       <h1 class="text-2xl font-bold text-ink-900">Create entity</h1>
       <p class="mt-1 text-sm text-ink-500">
@@ -157,8 +193,27 @@ onMounted(loadTypes);
       </p>
     </div>
 
-    <div v-if="loadingTypes" class="text-center py-12 text-ink-500">
+    <Message
+      v-if="accessDenied"
+      severity="error"
+      :closable="false"
+      class="!my-0"
+    >
+      {{ errorMessage }}
+    </Message>
+
+    <div v-else-if="loadingTypes" class="text-center py-12 text-ink-500">
       Loading...
+    </div>
+
+    <div
+      v-else-if="!types.length"
+      class="rounded-xl border border-line bg-white p-10 text-center"
+    >
+      <i class="pi pi-info-circle text-3xl text-ink-400" />
+      <p class="mt-3 text-sm text-ink-500">
+        No record types available. Contact your administrator.
+      </p>
     </div>
 
     <form
@@ -204,6 +259,7 @@ onMounted(loadTypes);
             v-else-if="prop.dataType === 'Int'"
             :input-id="`p-${prop.propertyId}`"
             v-model="values[prop.propertyId] as number"
+            :min="0"
             :max-fraction-digits="0"
           />
 
@@ -211,6 +267,7 @@ onMounted(loadTypes);
             v-else-if="prop.dataType === 'Decimal'"
             :input-id="`p-${prop.propertyId}`"
             v-model="values[prop.propertyId] as number"
+            :min="0"
             :min-fraction-digits="0"
             :max-fraction-digits="2"
           />
