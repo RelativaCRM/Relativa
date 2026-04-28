@@ -15,6 +15,7 @@ const MembersView = () => import('@/views/MembersView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
 const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
+const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
 const InvitationsView = () => import('@/views/InvitationsView.vue');
 
 const router = createRouter({
@@ -63,6 +64,11 @@ const router = createRouter({
           path: 'workspaces/:id/members',
           name: 'workspace-members',
           component: WorkspaceMembersView,
+        },
+        {
+          path: 'workspaces/:id/entities/new',
+          name: 'workspace-entity-create',
+          component: EntityCreateForm,
         },
         {
           path: 'invitations',
