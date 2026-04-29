@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
@@ -13,8 +14,11 @@ import { ApiError } from '@/api/http';
 
 const route = useRoute();
 const router = useRouter();
+const toast = useToast();
 const auth = useAuthStore();
 const wsStore = useWorkspaceStore();
+
+const ROLE_ORDER = ['ws_admin', 'ws_manager', 'ws_analyst', 'ws_member'];
 
 const workspaceId = computed(() => Number(route.params.id));
 const loading = ref(true);
@@ -36,22 +40,23 @@ const canInvite = computed(
 );
 
 const roleOptions = computed(() =>
-  wsStore.roles.map((r) => ({
-    label: displayRole(r.name),
-    value: r.id,
-  })),
+  ROLE_ORDER.map((name) => wsStore.roles.find((r) => r.name === name))
+    .filter((r): r is NonNullable<typeof r> => !!r)
+    .map((r) => ({ label: displayRole(r.name), value: r.id })),
 );
 
 function displayRole(roleName: string): string {
   if (roleName === 'ws_admin') return 'Admin';
+  if (roleName === 'ws_manager') return 'Manager';
+  if (roleName === 'ws_analyst') return 'Analyst';
   if (roleName === 'ws_member') return 'Member';
-  if (roleName === 'ws_viewer') return 'Viewer';
   return roleName;
 }
 
 function roleSeverity(roleName: string): string {
   if (roleName === 'ws_admin') return 'info';
-  if (roleName === 'ws_viewer') return 'warn';
+  if (roleName === 'ws_manager') return 'warn';
+  if (roleName === 'ws_analyst') return 'success';
   return 'secondary';
 }
 
@@ -94,8 +99,19 @@ async function handleRoleChange(userId: number, newRoleId: number) {
   changingRole.value = userId;
   try {
     await wsStore.changeMemberRole(workspaceId.value, userId, newRoleId);
-  } catch {
-    /* silent - UI reloads on member fetch */
+    toast.add({
+      severity: 'success',
+      summary: 'Role updated',
+      life: 3000,
+    });
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary:
+        err instanceof ApiError ? err.message : 'Failed to update role.',
+      life: 4000,
+    });
+    await wsStore.fetchMembers(workspaceId.value);
   } finally {
     changingRole.value = null;
   }
@@ -170,11 +186,24 @@ onMounted(loadAll);
         </h1>
         <p class="mt-1 text-sm text-ink-500">Manage workspace members.</p>
       </div>
-      <Button
-        icon="pi pi-user-plus"
-        label="Invite member"
-        @click="showInvite = true"
-      />
+      <div class="flex items-center gap-2">
+        <Button
+          icon="pi pi-database"
+          label="Entities"
+          severity="secondary"
+          @click="
+            router.push({
+              name: 'workspace-entities',
+              params: { id: workspaceId },
+            })
+          "
+        />
+        <Button
+          icon="pi pi-user-plus"
+          label="Invite member"
+          @click="showInvite = true"
+        />
+      </div>
     </div>
 
     <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
@@ -204,13 +233,13 @@ onMounted(loadAll);
             <td class="px-5 py-3 text-ink-600">{{ member.email }}</td>
             <td class="px-5 py-3">
               <Select
-                v-if="member.userId !== auth.user?.id"
+                v-if="roleOptions.length"
                 :model-value="roleIdByName(member.roleName)"
                 :options="roleOptions"
                 option-label="label"
                 option-value="value"
                 :disabled="changingRole === member.userId"
-                class="!h-8 !text-xs !min-w-[110px]"
+                class="!h-8 !text-xs !min-w-[120px]"
                 @update:model-value="handleRoleChange(member.userId, $event)"
               />
               <Tag

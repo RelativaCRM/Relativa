@@ -15,6 +15,8 @@ const MembersView = () => import('@/views/MembersView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
 const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
+const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
+const EntitiesView = () => import('@/views/EntitiesView.vue');
 const InvitationsView = () => import('@/views/InvitationsView.vue');
 
 const router = createRouter({
@@ -65,6 +67,16 @@ const router = createRouter({
           component: WorkspaceMembersView,
         },
         {
+          path: 'workspaces/:id/entities',
+          name: 'workspace-entities',
+          component: EntitiesView,
+        },
+        {
+          path: 'workspaces/:id/entities/new',
+          name: 'workspace-entity-create',
+          component: EntityCreateForm,
+        },
+        {
           path: 'invitations',
           name: 'invitations',
           component: InvitationsView,
@@ -91,6 +103,15 @@ router.beforeEach(async (to) => {
 
   if (!to.meta.public && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } };
+  }
+
+  if (auth.isAuthenticated && !auth.user) {
+    try {
+      await auth.fetchProfile();
+    } catch {
+      auth.logout();
+      return { name: 'login', query: { redirect: to.fullPath } };
+    }
   }
 
   if (auth.isAuthenticated && !to.meta.public && !to.meta.skipOrgCheck) {

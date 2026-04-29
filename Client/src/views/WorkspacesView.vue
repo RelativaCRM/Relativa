@@ -54,11 +54,17 @@ function openWorkspace(id: number) {
   router.push({ name: 'workspace-members', params: { id } });
 }
 
+function openEntities(id: number) {
+  wsStore.setCurrentWorkspace(id);
+  router.push({ name: 'workspace-entities', params: { id } });
+}
+
 function displayRole(roleName: string | null): string {
   if (!roleName) return 'Member';
   if (roleName === 'ws_admin') return 'Admin';
+  if (roleName === 'ws_manager') return 'Manager';
+  if (roleName === 'ws_analyst') return 'Analyst';
   if (roleName === 'ws_member') return 'Member';
-  if (roleName === 'ws_viewer') return 'Viewer';
   return roleName;
 }
 
@@ -109,34 +115,47 @@ onMounted(async () => {
     </div>
 
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <button
+      <div
         v-for="ws in wsStore.workspaces"
         :key="ws.id"
-        class="text-left rounded-xl border border-line bg-white p-5 hover:border-brand-300 hover:shadow-sm transition"
-        @click="openWorkspace(ws.id)"
+        class="rounded-xl border border-line bg-white p-5 hover:border-brand-300 hover:shadow-sm transition flex flex-col"
       >
-        <div class="flex items-start justify-between">
-          <div class="min-w-0">
-            <p class="text-base font-semibold text-ink-900 truncate">
-              {{ ws.name }}
-            </p>
-            <p class="text-xs text-ink-500 mt-1">
-              {{ ws.memberCount }}
-              {{ ws.memberCount === 1 ? 'member' : 'members' }}
-            </p>
-          </div>
-          <Tag
-            :value="displayRole(ws.userRole)"
-            severity="secondary"
-            class="shrink-0"
-          />
-        </div>
-        <div
-          class="mt-4 flex items-center text-xs text-brand-600 font-medium"
+        <button
+          class="text-left flex-1"
+          @click="openWorkspace(ws.id)"
         >
-          Manage members <i class="pi pi-arrow-right ml-1 text-[10px]" />
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-base font-semibold text-ink-900 truncate">
+                {{ ws.name }}
+              </p>
+              <p class="text-xs text-ink-500 mt-1">
+                {{ ws.memberCount }}
+                {{ ws.memberCount === 1 ? 'member' : 'members' }}
+              </p>
+            </div>
+            <Tag
+              :value="displayRole(ws.userRole)"
+              severity="secondary"
+              class="shrink-0"
+            />
+          </div>
+        </button>
+        <div class="mt-4 flex items-center justify-between text-xs">
+          <button
+            class="text-brand-600 font-medium hover:underline"
+            @click="openWorkspace(ws.id)"
+          >
+            Manage members <i class="pi pi-arrow-right ml-1 text-[10px]" />
+          </button>
+          <button
+            class="text-brand-600 font-medium hover:underline"
+            @click="openEntities(ws.id)"
+          >
+            <i class="pi pi-database mr-1 text-[10px]" />Entities
+          </button>
         </div>
-      </button>
+      </div>
     </div>
 
     <Dialog
