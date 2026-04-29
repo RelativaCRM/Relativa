@@ -35,8 +35,9 @@ const canCreate = computed(
 function displayRole(roleName: string | null): string {
   if (!roleName) return 'Member';
   if (roleName === 'ws_admin') return 'Admin';
+  if (roleName === 'ws_manager') return 'Manager';
+  if (roleName === 'ws_analyst') return 'Analyst';
   if (roleName === 'ws_member') return 'Member';
-  if (roleName === 'ws_viewer') return 'Viewer';
   return roleName;
 }
 

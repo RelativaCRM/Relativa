@@ -71,16 +71,10 @@ onMounted(refreshInvitationCount);
           <RouterLink
             to="/"
             class="px-3 py-2 rounded-lg hover:bg-surface"
-            active-class="bg-brand-50 text-brand-700 font-medium"
+            active-class=""
+            exact-active-class="bg-brand-50 text-brand-700 font-medium"
           >
             <i class="pi pi-home mr-2" />Home
-          </RouterLink>
-          <RouterLink
-            to="/members"
-            class="px-3 py-2 rounded-lg hover:bg-surface"
-            active-class="bg-brand-50 text-brand-700 font-medium"
-          >
-            <i class="pi pi-users mr-2" />Members
           </RouterLink>
           <RouterLink
             to="/workspaces"

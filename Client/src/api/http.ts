@@ -38,6 +38,12 @@ export async function gatewayFetch(
   return fetch(url, { ...init, headers });
 }
 
+const AUTH_PATHS = ['/auth/me', '/auth/refresh'];
+
+function isAuthEndpoint(url: string): boolean {
+  return AUTH_PATHS.some((p) => url.includes(p));
+}
+
 async function parseResponse<T>(res: Response): Promise<T> {
   const text = await res.text();
   const body = text ? safeJson(text) : undefined;
@@ -53,7 +59,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
       res.statusText ??
       `Request failed (${res.status})`;
 
-    if (res.status === 401) {
+    if (res.status === 401 && isAuthEndpoint(res.url)) {
       const auth = useAuthStore();
       auth.clearSession();
     }
@@ -64,7 +70,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-function safeJson(text: string): unknown {
+export function safeJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
@@ -92,6 +98,14 @@ export const api = {
     return gatewayFetch(path, {
       ...init,
       method: 'PUT',
+      headers: jsonHeaders(init?.headers),
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }).then(parseResponse<T>);
+  },
+  patch<T>(path: string, body?: Json | undefined, init?: RequestInit): Promise<T> {
+    return gatewayFetch(path, {
+      ...init,
+      method: 'PATCH',
       headers: jsonHeaders(init?.headers),
       body: body === undefined ? undefined : JSON.stringify(body),
     }).then(parseResponse<T>);
