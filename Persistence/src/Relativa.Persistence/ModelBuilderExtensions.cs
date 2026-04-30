@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Relativa.Persistence.Configurations;
+using Relativa.Persistence.Configurations.AuditLogs;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Persistence;
@@ -9,6 +10,7 @@ public static class PersistenceModelBuilderExtensions
     public static ModelBuilder ApplyAuthEntityConfigurations(this ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new UserConfiguration());
+        modelBuilder.ApplyConfiguration(new UserAuditLogConfiguration());
 
         // EF Core convention follows User's navigation properties into the full RBAC
         // graph. Cut both chains at the root so the Auth context stays User-only.
@@ -44,6 +46,11 @@ public static class PersistenceModelBuilderExtensions
         modelBuilder.ApplyConfiguration(new EntityPropertyValueConfiguration());
         modelBuilder.ApplyConfiguration(new EntityRelationshipTypeConfiguration());
         modelBuilder.ApplyConfiguration(new EntityRelationshipConfiguration());
+
+        modelBuilder.ApplyConfiguration(new EntityAuditLogConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkspaceAuditLogConfiguration());
+        modelBuilder.ApplyConfiguration(new UserAuditLogConfiguration());
+        modelBuilder.ApplyConfiguration(new OrganizationAuditLogConfiguration());
 
         return modelBuilder;
     }

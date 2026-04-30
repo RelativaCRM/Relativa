@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-04-23 (entity-type listing + entity CRUD implemented; GlobalExceptionHandler extended; permissions re-seeded)
+> **Last verified:** 2026-04-30 (Added Audit Logs schemas)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -101,7 +101,7 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 | `Configurations/` | EF Fluent API `IEntityTypeConfiguration<T>` classes for each entity |
 | `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full 21-entity model) |
 
-### Entity list (21 entities)
+### Entity list (25 entities)
 
 | Entity | Table name | Notes |
 |---|---|---|
@@ -126,6 +126,10 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 | `EntityPropertyValue` | `entity_property_value` | **EAV data layer.** Stores a concrete attribute value for an entity. Composite PK `(entity_id, property_id)`. Five typed value columns: `value_string`, `value_int`, `value_decimal`, `value_bool`, `value_date`. Only one is populated per row. |
 | `EntityRelationshipType` | `entity_relationship_type` | **EAV schema layer.** Defines valid entity-type-to-entity-type link schemas (e.g. `deal_client`: deal → client). |
 | `EntityRelationship` | `entity_relationship` | **EAV data layer.** A concrete directed link between two entity instances, typed by `EntityRelationshipType`. |
+| `EntityAuditLog` | `entity_audit_log` | Polymorphic audit log base class specialized for entities. Has `entity_id` and `changed_by` JSONB properties. |
+| `WorkspaceAuditLog` | `workspace_audit_log` | Polymorphic audit log base class specialized for workspaces. |
+| `UserAuditLog` | `user_audit_log` | Polymorphic audit log base class specialized for users. |
+| `OrganizationAuditLog` | `organization_audit_log` | Polymorphic audit log base class specialized for organizations. |
 
 **Dropped in EAV migration:** `EntityProperty` (polymorphic hub), `PersonalDataPropertyValue`, `LocationPropertyValue`, `DealPropertyValue`. Their data is now stored as `EntityPropertyValue` rows. The deal→client association previously held as a FK in `DealPropertyValue.client_id` is now an `EntityRelationship` row of type `deal_client`.
 
