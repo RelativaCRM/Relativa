@@ -2,6 +2,7 @@ using FluentValidation;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
@@ -11,7 +12,8 @@ public sealed class OrganizationService(
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
     IValidator<CreateOrganizationRequest> createValidator,
-    IValidator<UpdateOrganizationRequest> updateValidator) : IOrganizationService
+    IValidator<UpdateOrganizationRequest> updateValidator,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IOrganizationService
 {
     public async Task<OrganizationDto> CreateAsync(int userId, CreateOrganizationRequest request, CancellationToken ct = default)
     {
@@ -38,6 +40,25 @@ public sealed class OrganizationService(
         };
 
         await orgMemberRepository.AddAsync(membership, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: userId,
+                AuditScope: AuditRouting.ScopeOrganization,
+                TargetId: organization.Id,
+                Action: "organization_created",
+                FieldName: null,
+                EntityType: null,
+                OldValueJson: null,
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { organization.Id, organization.Name })),
+            ct);
+        }
 
         return new OrganizationDto(organization.Id, organization.Name, 1, ownerRole.Name);
     }
@@ -78,8 +99,28 @@ public sealed class OrganizationService(
         var organization = await organizationRepository.GetByIdAsync(organizationId, ct)
             ?? throw new KeyNotFoundException("Organization not found.");
 
+        var previousName = organization.Name;
         organization.Name = request.Name;
         await organizationRepository.UpdateAsync(organization, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: userId,
+                AuditScope: AuditRouting.ScopeOrganization,
+                TargetId: organizationId,
+                Action: "organization_updated",
+                FieldName: "name",
+                EntityType: null,
+                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Name = previousName }),
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Name = request.Name })),
+            ct);
+        }
     }
 
     public async Task<List<OrganizationSearchResultDto>> SearchAsync(string query, CancellationToken ct = default)
@@ -116,6 +157,25 @@ public sealed class OrganizationService(
             ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
 
         await orgMemberRepository.RemoveAsync(member, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: callerUserId,
+                AuditScope: AuditRouting.ScopeOrganization,
+                TargetId: organizationId,
+                Action: "organization_member_removed",
+                FieldName: "member",
+                EntityType: null,
+                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { UserId = targetUserId }),
+                NewValueJson: null),
+            ct);
+        }
     }
 
     public async Task ChangeMemberRoleAsync(int organizationId, int targetUserId, int callerUserId, ChangeOrgMemberRoleRequest request, CancellationToken ct = default)
@@ -133,6 +193,25 @@ public sealed class OrganizationService(
 
         targetMember.OrgRoleId = role.Id;
         await orgMemberRepository.UpdateAsync(targetMember, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: callerUserId,
+                AuditScope: AuditRouting.ScopeOrganization,
+                TargetId: organizationId,
+                Action: "organization_member_role_changed",
+                FieldName: "org_role_id",
+                EntityType: null,
+                OldValueJson: null,
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { UserId = targetUserId, RoleId = role.Id })),
+            ct);
+        }
     }
 
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)

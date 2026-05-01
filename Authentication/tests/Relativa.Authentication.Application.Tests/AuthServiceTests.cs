@@ -3,6 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using Relativa.Authentication.Application.DTOs;
+using Relativa.Authentication.Application.Interfaces;
 using Relativa.Authentication.Application.Services;
 using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Persistence.Entities;
@@ -15,6 +16,7 @@ public sealed class AuthServiceTests
     private readonly Mock<IUserRepository> _userRepo = new();
     private readonly Mock<ITokenService> _tokenService = new();
     private readonly Mock<IPasswordHasher> _passwordHasher = new();
+    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
     private readonly Mock<IValidator<LoginRequestDto>> _loginValidator = new();
     private readonly Mock<IValidator<RegisterRequestDto>> _registerValidator = new();
     private readonly AuthService _sut;
@@ -26,7 +28,8 @@ public sealed class AuthServiceTests
             _tokenService.Object,
             _passwordHasher.Object,
             _loginValidator.Object,
-            _registerValidator.Object
+            _registerValidator.Object,
+            _auditOutboxWriter.Object
         );
     }
 
@@ -155,6 +158,7 @@ public sealed class AuthServiceTests
         result.LastName.Should().Be(request.LastName);
         captured!.Password.Should().Be("bcrypt-result");
         _userRepo.Verify(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Once);
+        _auditOutboxWriter.Verify(x => x.EnqueueAsync(It.IsAny<Relativa.Persistence.Contracts.AuditEventContract>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

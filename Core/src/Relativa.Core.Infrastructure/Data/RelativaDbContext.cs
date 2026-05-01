@@ -35,6 +35,8 @@ public sealed class RelativaDbContext(DbContextOptions<RelativaDbContext> option
     public DbSet<WorkspaceAuditLog> WorkspaceAuditLogs => Set<WorkspaceAuditLog>();
     public DbSet<UserAuditLog> UserAuditLogs => Set<UserAuditLog>();
     public DbSet<OrganizationAuditLog> OrganizationAuditLogs => Set<OrganizationAuditLog>();
+    public DbSet<AuditOutboxMessage> AuditOutboxMessages => Set<AuditOutboxMessage>();
+    public DbSet<AuditProcessedEvent> AuditProcessedEvents => Set<AuditProcessedEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

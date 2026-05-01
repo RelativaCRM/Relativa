@@ -2,6 +2,7 @@ using FluentValidation;
 using Relativa.Core.Application.DTOs.Workspace;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
@@ -12,7 +13,8 @@ public sealed class WorkspaceService(
     IWorkspaceRoleRepository roleRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IValidator<CreateWorkspaceRequest> createValidator,
-    IValidator<UpdateWorkspaceRequest> updateValidator) : IWorkspaceService
+    IValidator<UpdateWorkspaceRequest> updateValidator,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IWorkspaceService
 {
     public async Task<WorkspaceDto> CreateAsync(int userId, CreateWorkspaceRequest request, CancellationToken ct = default)
     {
@@ -49,6 +51,25 @@ public sealed class WorkspaceService(
         };
 
         await memberRepository.AddAsync(member, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: userId,
+                AuditScope: AuditRouting.ScopeWorkspace,
+                TargetId: workspace.Id,
+                Action: "workspace_created",
+                FieldName: null,
+                EntityType: null,
+                OldValueJson: null,
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { workspace.Id, workspace.Name, workspace.OrganizationId })),
+            ct);
+        }
 
         return new WorkspaceDto(workspace.Id, workspace.Name, 1, adminRole.Name);
     }
@@ -90,8 +111,28 @@ public sealed class WorkspaceService(
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
             ?? throw new KeyNotFoundException("Workspace not found.");
 
+        var previousName = workspace.Name;
         workspace.Name = request.Name;
         await workspaceRepository.UpdateAsync(workspace, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: userId,
+                AuditScope: AuditRouting.ScopeWorkspace,
+                TargetId: workspaceId,
+                Action: "workspace_updated",
+                FieldName: "name",
+                EntityType: null,
+                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Name = previousName }),
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Name = request.Name })),
+            ct);
+        }
     }
 
     public async Task ArchiveAsync(int workspaceId, int userId, CancellationToken ct = default)
@@ -105,6 +146,25 @@ public sealed class WorkspaceService(
 
         workspace.IsArchived = true;
         await workspaceRepository.UpdateAsync(workspace, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: userId,
+                AuditScope: AuditRouting.ScopeWorkspace,
+                TargetId: workspaceId,
+                Action: "workspace_archived",
+                FieldName: "is_archived",
+                EntityType: null,
+                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = false }),
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = true })),
+            ct);
+        }
     }
 
     private async Task<UserRoleWorkspace> RequireMembership(int userId, int workspaceId, CancellationToken ct)
