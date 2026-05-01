@@ -1,6 +1,6 @@
 # Docker Setup -- Infrastructure and Deployment
 
-> **Last verified:** 2026-04-13
+> **Last verified:** 2026-05-01
 
 > **Maintenance obligation:** If you change Docker Compose, Dockerfiles, networking, volumes, or environment variables, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -151,6 +151,9 @@ Template for Docker Compose variable substitution. Users copy to `.env` (gitigno
 | `PGADMIN_PORT` | pgadmin | Host-exposed port |
 | `CLIENT_PORT` | client | Host-exposed port |
 | `VITE_GATEWAY_URL` | client | Gateway URL the SPA calls |
+| `CORS_ORIGIN_1` | gateway | First allowed browser origin for gateway CORS allowlist |
+| `CORS_ORIGIN_2` | gateway | Second allowed browser origin for gateway CORS allowlist |
+| `CORS_ALLOW_ANY_ORIGIN_FOR_DEV` | gateway | Local dev-only wildcard CORS override (`true`/`false`) |
 | `JWT_SECRET` | auth, gateway | Shared symmetric signing key |
 | `JWT_ISSUER` | auth, gateway | Token issuer claim |
 | `JWT_AUDIENCE` | auth, gateway | Token audience claim |
@@ -161,6 +164,7 @@ Template for Docker Compose variable substitution. Users copy to `.env` (gitigno
 - **.NET services** read these as **configuration overrides** using the ASP.NET Core env-var convention: `ConnectionStrings__Default`, `Jwt__Secret`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__AccessTokenMinutes`.
 - **Default values** live in each service's `appsettings.json` (localhost-friendly). Docker overrides them for the container environment.
 - **Gateway YARP destinations** are overridden in compose: `ReverseProxy__Clusters__auth-cluster__Destinations__default__Address=http://auth:8081/` etc.
+- **Gateway CORS policy** is configured by compose env overrides: `Cors__Origins__0`, `Cors__Origins__1`, and `Cors__AllowAnyOriginForDev`.
 - **Client** reads `VITE_GATEWAY_URL` at build/dev time (Vite env prefix).
 
 ### Critical: JWT settings must match
