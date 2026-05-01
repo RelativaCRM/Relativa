@@ -153,8 +153,8 @@ services:
 
   audit:
     build:
-      context: ./Audit
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Audit/Dockerfile
     container_name: relativa-audit
     environment:
       ASPNETCORE_ENVIRONMENT: Development

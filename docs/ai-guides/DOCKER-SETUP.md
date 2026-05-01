@@ -128,7 +128,7 @@ Services that reference the shared `Persistence` library need the **repo root** 
 | `Migration/Dockerfile` | `.` (repo root) | Yes |
 | `Gateway/Dockerfile` | `./Gateway` | No |
 | `Graph/Dockerfile` | `./Graph` | No |
-| `Audit/Dockerfile` | `./Audit` | No |
+| `Audit/Dockerfile` | `.` (repo root) | Yes |
 
 ### Non-.NET services
 
