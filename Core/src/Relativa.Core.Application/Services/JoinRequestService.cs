@@ -1,6 +1,7 @@
 using Relativa.Core.Application.DTOs.JoinRequest;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
@@ -9,7 +10,8 @@ public sealed class JoinRequestService(
     IJoinRequestRepository joinRequestRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
-    IOrganizationRepository organizationRepository) : IJoinRequestService
+    IOrganizationRepository organizationRepository,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IJoinRequestService
 {
     public async Task<JoinRequestDto> SubmitAsync(int organizationId, int userId, CreateJoinRequestRequest request, CancellationToken ct = default)
     {
@@ -37,6 +39,24 @@ public sealed class JoinRequestService(
         };
 
         await joinRequestRepository.AddAsync(joinRequest, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_join_request_submitted",
+                    FieldName: "organization_join_requests",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { joinRequest.Id, joinRequest.Message })),
+                ct);
+        }
 
         return new JoinRequestDto(
             joinRequest.Id,
@@ -98,6 +118,24 @@ public sealed class JoinRequestService(
             };
 
             await orgMemberRepository.AddAsync(membership, ct);
+            if (auditOutboxWriter is not null)
+            {
+                await auditOutboxWriter.EnqueueAsync(
+                    new AuditEventContract(
+                        EventId: Guid.NewGuid(),
+                        SchemaVersion: 1,
+                        OccurredAtUtc: DateTimeOffset.UtcNow,
+                        SourceService: "core",
+                        ActorUserId: callerUserId,
+                        AuditScope: AuditRouting.ScopeOrganization,
+                        TargetId: organizationId,
+                        Action: "organization_member_added_via_join_request",
+                        FieldName: "user_role_organization",
+                        EntityType: null,
+                        OldValueJson: null,
+                        NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { joinRequest.UserId, RoleId = memberRole.Id })),
+                    ct);
+            }
         }
         else if (request.Decision != "Rejected")
         {
@@ -108,6 +146,24 @@ public sealed class JoinRequestService(
         joinRequest.ReviewedByUserId = callerUserId;
         joinRequest.ReviewedAt = DateTime.UtcNow;
         await joinRequestRepository.UpdateAsync(joinRequest, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_join_request_reviewed",
+                    FieldName: "organization_join_requests.status",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending" }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = request.Decision, joinRequest.UserId })),
+                ct);
+        }
     }
 
     public async Task<List<JoinRequestDto>> GetMyRequestsAsync(int userId, CancellationToken ct = default)

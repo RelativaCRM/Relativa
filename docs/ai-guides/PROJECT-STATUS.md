@@ -64,7 +64,7 @@
   - `PUT /{entityId}` — replace all property values; requires `manage_entities`.
   - `DELETE /{entityId}` — soft-delete (`is_archived = true`); requires `manage_entities`.
 - **GlobalExceptionHandler extended:** `KeyNotFoundException` → 404, `ValidationException` → 400 with error detail.
-- Fire-and-forget audit publishing for core write flows (organization/workspace/entity) via `audit_outbox` + RabbitMQ dispatcher.
+- Fire-and-forget audit publishing for core write flows via `audit_outbox` + RabbitMQ dispatcher, including organizations/workspaces/entities, join requests, invitations, membership updates, and role lifecycle changes.
 
 ### Gateway
 
