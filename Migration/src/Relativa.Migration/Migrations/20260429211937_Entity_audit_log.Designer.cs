@@ -3,6 +3,7 @@ using System;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Relativa.Migration.Data;
@@ -11,10 +12,12 @@ using Relativa.Migration.Data;
 
 namespace Relativa.Migration.Migrations
 {
-    [DbContext(typeof(MigrationDbContext))]
-    partial class MigrationDbContextModelSnapshot : ModelSnapshot
+    [Microsoft.EntityFrameworkCore.Infrastructure.DbContext(typeof(MigrationDbContext))]
+    [Microsoft.EntityFrameworkCore.Migrations.Migration("20260429211937_Entity_audit_log")]
+    partial class Entity_audit_log
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

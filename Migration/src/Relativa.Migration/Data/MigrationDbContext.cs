@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Relativa.Persistence;
 using Relativa.Persistence.Entities;
+using Relativa.Persistence.Entities.AuditLogs;
 
 namespace Relativa.Migration.Data;
 
@@ -30,6 +31,10 @@ public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> opti
     public DbSet<EntityPropertyValue> EntityPropertyValues => Set<EntityPropertyValue>();
     public DbSet<EntityRelationshipType> EntityRelationshipTypes => Set<EntityRelationshipType>();
     public DbSet<EntityRelationship> EntityRelationships => Set<EntityRelationship>();
+    public DbSet<EntityAuditLog> EntityAuditLogs => Set<EntityAuditLog>();
+    public DbSet<WorkspaceAuditLog> WorkspaceAuditLogs => Set<WorkspaceAuditLog>();
+    public DbSet<UserAuditLog> UserAuditLogs => Set<UserAuditLog>();
+    public DbSet<OrganizationAuditLog> OrganizationAuditLogs => Set<OrganizationAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

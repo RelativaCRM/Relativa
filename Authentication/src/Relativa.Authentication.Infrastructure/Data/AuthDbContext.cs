@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Relativa.Persistence;
 using Relativa.Persistence.Entities;
+using Relativa.Persistence.Entities.AuditLogs;
 
 namespace Relativa.Authentication.Infrastructure.Data;
 
 public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<UserAuditLog> UserAuditLogs => Set<UserAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
