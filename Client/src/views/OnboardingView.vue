@@ -8,6 +8,8 @@ import Tag from 'primevue/tag';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
+import { useWorkspaceStore } from '@/stores/workspace';
+import { useEntityStore } from '@/stores/entity';
 import {
   orgApi,
   type OrganizationDto,
@@ -18,6 +20,8 @@ import { ApiError } from '@/api/http';
 const router = useRouter();
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
+const wsStore = useWorkspaceStore();
+const entityStore = useEntityStore();
 
 type Tab = 'invitations' | 'create' | 'join';
 const activeTab = ref<Tab>('create');
@@ -135,6 +139,8 @@ async function handleJoinRequest(orgId: number) {
 function handleLogout() {
   auth.logout();
   orgStore.clear();
+  wsStore.clear();
+  entityStore.clear();
   router.push({ name: 'login' });
 }
 </script>

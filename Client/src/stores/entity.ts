@@ -1,12 +1,127 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { computed, ref } from 'vue';
+import {
+  entityApi,
+  type CreateEntityRequest,
+  type EntityDetailDto,
+  type EntityListItemDto,
+  type EntityTypeDto,
+  type UpdateEntityRequest,
+} from '@/api/entities';
 
-export const useEntityStore = defineStore("entity", () => {
-  const selectedId = ref<string | null>(null);
+export const useEntityStore = defineStore('entity', () => {
+  const types = ref<EntityTypeDto[]>([]);
+  const entitiesByWorkspace = ref<Record<number, EntityListItemDto[]>>({});
+  const detailById = ref<Record<number, EntityDetailDto>>({});
+  const selectedId = ref<number | null>(null);
 
-  function select(id: string | null) {
+  const typesLoaded = computed(() => types.value.length > 0);
+
+  function entitiesFor(workspaceId: number): EntityListItemDto[] {
+    return entitiesByWorkspace.value[workspaceId] ?? [];
+  }
+
+  function select(id: number | null) {
     selectedId.value = id;
   }
 
-  return { selectedId, select };
+  async function fetchTypes(force = false): Promise<EntityTypeDto[]> {
+    if (!force && typesLoaded.value) return types.value;
+    types.value = await entityApi.listTypes();
+    return types.value;
+  }
+
+  async function fetchList(workspaceId: number): Promise<EntityListItemDto[]> {
+    const list = await entityApi.list(workspaceId);
+    entitiesByWorkspace.value = {
+      ...entitiesByWorkspace.value,
+      [workspaceId]: list,
+    };
+    return list;
+  }
+
+  async function fetchDetail(
+    workspaceId: number,
+    entityId: number,
+  ): Promise<EntityDetailDto> {
+    const detail = await entityApi.get(workspaceId, entityId);
+    detailById.value = { ...detailById.value, [entityId]: detail };
+    return detail;
+  }
+
+  async function create(
+    workspaceId: number,
+    payload: CreateEntityRequest,
+  ): Promise<EntityDetailDto> {
+    const detail = await entityApi.create(workspaceId, payload);
+    detailById.value = { ...detailById.value, [detail.id]: detail };
+    const current = entitiesByWorkspace.value[workspaceId] ?? [];
+    entitiesByWorkspace.value = {
+      ...entitiesByWorkspace.value,
+      [workspaceId]: [
+        ...current,
+        {
+          id: detail.id,
+          entityTypeId: detail.entityTypeId,
+          entityTypeName: detail.entityTypeName,
+        },
+      ],
+    };
+    return detail;
+  }
+
+  async function update(
+    workspaceId: number,
+    entityId: number,
+    payload: UpdateEntityRequest,
+  ): Promise<EntityDetailDto> {
+    const detail = await entityApi.update(workspaceId, entityId, payload);
+    detailById.value = { ...detailById.value, [entityId]: detail };
+    return detail;
+  }
+
+  async function archive(workspaceId: number, entityId: number): Promise<void> {
+    await entityApi.archive(workspaceId, entityId);
+    const list = entitiesByWorkspace.value[workspaceId];
+    if (list) {
+      entitiesByWorkspace.value = {
+        ...entitiesByWorkspace.value,
+        [workspaceId]: list.filter((e) => e.id !== entityId),
+      };
+    }
+    if (selectedId.value === entityId) selectedId.value = null;
+  }
+
+  function clearWorkspace(workspaceId: number) {
+    if (entitiesByWorkspace.value[workspaceId]) {
+      const next = { ...entitiesByWorkspace.value };
+      delete next[workspaceId];
+      entitiesByWorkspace.value = next;
+    }
+  }
+
+  function clear() {
+    types.value = [];
+    entitiesByWorkspace.value = {};
+    detailById.value = {};
+    selectedId.value = null;
+  }
+
+  return {
+    types,
+    entitiesByWorkspace,
+    detailById,
+    selectedId,
+    typesLoaded,
+    entitiesFor,
+    select,
+    fetchTypes,
+    fetchList,
+    fetchDetail,
+    create,
+    update,
+    archive,
+    clearWorkspace,
+    clear,
+  };
 });

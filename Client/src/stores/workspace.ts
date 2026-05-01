@@ -7,16 +7,13 @@ import {
   type WorkspaceRoleDto,
   type WorkspaceInvitationDto,
 } from '@/api/workspaces';
+import { loadNumber, saveNumber } from '@/api/persistence';
 
 const WS_KEY = 'relativa_ws_id';
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const workspaces = ref<WorkspaceDto[]>([]);
-  const currentWorkspaceId = ref<number | null>(
-    typeof localStorage !== 'undefined'
-      ? Number(localStorage.getItem(WS_KEY)) || null
-      : null,
-  );
+  const currentWorkspaceId = ref<number | null>(loadNumber(WS_KEY));
   const members = ref<WorkspaceMemberDto[]>([]);
   const roles = ref<WorkspaceRoleDto[]>([]);
   const invitations = ref<WorkspaceInvitationDto[]>([]);
@@ -28,13 +25,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function setCurrentWorkspace(id: number | null) {
     currentWorkspaceId.value = id;
-    if (typeof localStorage !== 'undefined') {
-      if (id === null) {
-        localStorage.removeItem(WS_KEY);
-      } else {
-        localStorage.setItem(WS_KEY, String(id));
-      }
-    }
+    saveNumber(WS_KEY, id);
   }
 
   async function fetchWorkspaces() {
@@ -112,9 +103,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     members.value = [];
     roles.value = [];
     invitations.value = [];
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(WS_KEY);
-    }
+    saveNumber(WS_KEY, null);
   }
 
   return {

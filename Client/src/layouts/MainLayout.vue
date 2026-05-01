@@ -7,11 +7,13 @@ import BrandMark from '@/components/layout/BrandMark.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
+import { useEntityStore } from '@/stores/entity';
 import { orgApi } from '@/api/organizations';
 
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
+const entityStore = useEntityStore();
 const router = useRouter();
 
 const pendingInvitationsCount = ref(0);
@@ -31,6 +33,7 @@ function handleLogout() {
   auth.logout();
   orgStore.clear();
   wsStore.clear();
+  entityStore.clear();
   router.push({ name: 'login' });
 }
 
