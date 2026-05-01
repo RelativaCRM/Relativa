@@ -31,12 +31,6 @@ try
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<RelativaDbContext>();
 
-    builder.Services.AddCors(options =>
-    {
-        options.AddDefaultPolicy(policy =>
-            policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
-    });
-
     builder.Services.AddValidatorsFromAssemblyContaining<IWorkspaceService>();
 
     builder.Services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
@@ -71,7 +65,6 @@ try
 
     app.UseExceptionHandler();
     app.UseSerilogRequestLogging();
-    app.UseCors();
 
     app.MapOpenApi();
     app.MapScalarApiReference();

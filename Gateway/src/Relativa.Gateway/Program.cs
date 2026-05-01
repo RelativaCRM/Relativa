@@ -50,8 +50,26 @@ try
     {
         options.AddDefaultPolicy(policy =>
         {
+            var allowAnyOriginForDev = config.GetValue<bool>("Cors:AllowAnyOriginForDev");
             var origins = config.GetSection("Cors:Origins").Get<string[]>()
-                ?? ["http://localhost:5173", "http://localhost:3000"];
+                ?? [];
+
+            if (allowAnyOriginForDev)
+            {
+                policy.AllowAnyOrigin()
+                    .AllowAnyHeader()
+                    .AllowAnyMethod();
+                return;
+            }
+
+            if (origins.Length == 0)
+            {
+                Log.Warning(
+                    "CORS is enabled at gateway but Cors:Origins is empty and Cors:AllowAnyOriginForDev is false. " +
+                    "Cross-origin browser requests will be blocked.");
+                return;
+            }
+
             policy.WithOrigins(origins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
