@@ -11,8 +11,8 @@ import ToggleSwitch from 'primevue/toggleswitch';
 import Message from 'primevue/message';
 import { ApiError } from '@/api/http';
 import { useWorkspaceStore } from '@/stores/workspace';
+import { useEntityStore } from '@/stores/entity';
 import {
-  entityApi,
   type EntityTypeDto,
   type EntityTypePropertyDto,
 } from '@/api/entities';
@@ -23,10 +23,11 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const wsStore = useWorkspaceStore();
+const entityStore = useEntityStore();
 
 const workspaceId = computed(() => Number(route.params.id));
 
-const types = ref<EntityTypeDto[]>([]);
+const types = computed<EntityTypeDto[]>(() => entityStore.types);
 const selectedTypeId = ref<number | null>(null);
 const values = ref<Record<number, FieldValue>>({});
 const loadingTypes = ref(true);
@@ -131,7 +132,7 @@ async function loadTypes() {
   try {
     const ok = await ensureWorkspaceAccess();
     if (!ok) return;
-    types.value = await entityApi.listTypes();
+    await entityStore.fetchTypes();
   } catch (err) {
     errorMessage.value =
       err instanceof ApiError ? err.message : 'Failed to load entity types.';
@@ -152,7 +153,7 @@ async function handleSubmit() {
         value: serializeValue(p, values.value[p.propertyId] ?? null),
       })),
     };
-    await entityApi.create(workspaceId.value, payload);
+    await entityStore.create(workspaceId.value, payload);
     const typeLabel = selectedType.value?.name ?? 'Entity';
     toast.add({
       severity: 'success',

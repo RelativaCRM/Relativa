@@ -7,16 +7,13 @@ import {
   type OrgRoleDto,
   type OrgInvitationDto,
 } from '@/api/organizations';
+import { loadNumber, saveNumber } from '@/api/persistence';
 
 const ORG_KEY = 'relativa_org_id';
 
 export const useOrganizationStore = defineStore('organization', () => {
   const organizations = ref<OrganizationDto[]>([]);
-  const currentOrgId = ref<number | null>(
-    typeof localStorage !== 'undefined'
-      ? Number(localStorage.getItem(ORG_KEY)) || null
-      : null,
-  );
+  const currentOrgId = ref<number | null>(loadNumber(ORG_KEY));
   const members = ref<OrgMemberDto[]>([]);
   const roles = ref<OrgRoleDto[]>([]);
   const invitations = ref<OrgInvitationDto[]>([]);
@@ -28,9 +25,7 @@ export const useOrganizationStore = defineStore('organization', () => {
 
   function setCurrentOrg(id: number) {
     currentOrgId.value = id;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(ORG_KEY, String(id));
-    }
+    saveNumber(ORG_KEY, id);
   }
 
   async function fetchOrganizations() {
@@ -95,9 +90,7 @@ export const useOrganizationStore = defineStore('organization', () => {
     members.value = [];
     roles.value = [];
     invitations.value = [];
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(ORG_KEY);
-    }
+    saveNumber(ORG_KEY, null);
   }
 
   return {

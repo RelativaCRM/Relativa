@@ -10,6 +10,7 @@ import AuthLayout from '@/layouts/AuthLayout.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
+import { useEntityStore } from '@/stores/entity';
 import { ApiError } from '@/api/http';
 import type { WorkspaceDto } from '@/api/workspaces';
 
@@ -17,6 +18,7 @@ const router = useRouter();
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
+const entityStore = useEntityStore();
 
 const loading = ref(true);
 const loadError = ref<string | null>(null);
@@ -68,6 +70,7 @@ function handleLogout() {
   auth.logout();
   orgStore.clear();
   wsStore.clear();
+  entityStore.clear();
   router.push({ name: 'login' });
 }
 

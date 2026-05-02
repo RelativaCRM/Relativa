@@ -5,15 +5,16 @@ import Button from 'primevue/button';
 import Tag from 'primevue/tag';
 import Message from 'primevue/message';
 import { useWorkspaceStore } from '@/stores/workspace';
-import { entityApi, type EntityListItemDto } from '@/api/entities';
+import { useEntityStore } from '@/stores/entity';
 import { ApiError } from '@/api/http';
 
 const route = useRoute();
 const router = useRouter();
 const wsStore = useWorkspaceStore();
+const entityStore = useEntityStore();
 
 const workspaceId = computed(() => Number(route.params.id));
-const entities = ref<EntityListItemDto[]>([]);
+const entities = computed(() => entityStore.entitiesFor(workspaceId.value));
 const loading = ref(true);
 const errorMessage = ref<string | null>(null);
 
@@ -29,11 +30,11 @@ async function load() {
     if (!belongs) {
       errorMessage.value =
         'You do not have access to this workspace.';
-      entities.value = [];
+      entityStore.clearWorkspace(workspaceId.value);
       return;
     }
     wsStore.setCurrentWorkspace(workspaceId.value);
-    entities.value = await entityApi.list(workspaceId.value);
+    await entityStore.fetchList(workspaceId.value);
   } catch (err) {
     errorMessage.value =
       err instanceof ApiError ? err.message : 'Failed to load entities.';
@@ -92,7 +93,7 @@ onMounted(load);
       {{ errorMessage }}
     </Message>
 
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <div v-if="loading && !entities.length" class="text-center py-12 text-ink-500">Loading...</div>
 
     <div
       v-else-if="!entities.length && !errorMessage"

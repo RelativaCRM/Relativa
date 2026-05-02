@@ -17,7 +17,7 @@
 | Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
 | ML | **Stub** | Single endpoint returns hardcoded stub |
-| Client | **Partial** | Vue 3 + PrimeVue + Tailwind. Auth flow + org onboarding + members/invitations wired to Gateway; base layouts in place; typed API client for auth + org endpoints |
+| Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + members/invitations + entity CRUD UI + dynamic entity-graph rendering, all driven by typed API clients (auth, org, workspace, entity, audit). Persisted state (token, profile, roles, current org/workspace ids) via a shared `localStorage` helper |
 | Persistence | **Functional** | Full EAV entity model (21 entities), fluent configs, ModelBuilderExtensions |
 
 ---
