@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline implemented)
+> **Last verified:** 2026-05-02 (RabbitMQ audit pipeline implemented)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -56,7 +56,7 @@
 
 YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issuer, audience, signing key, lifetime), and gateway-owned CORS all working. Gateway CORS is configured via `Cors:Origins` (allowlist + credentials by default) with optional local dev override `Cors:AllowAnyOriginForDev=true` (wildcard origin without credentials). Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
 
-**Identity forwarding:** a YARP request transform runs on every proxied request. It unconditionally removes any incoming `X-User-Id` / `X-User-Email` (so clients cannot spoof identity), then, if the request is authenticated, re-adds them from the validated `ClaimsPrincipal` (`sub` → `X-User-Id`, `email` → `X-User-Email`). Downstream services (Core today; Graph/ML/Audit in the future) trust these headers and do **not** re-validate JWTs. This keeps JWT handling centralized in the Gateway (single-responsibility) and avoids duplicating JWT config across every service.
+**Identity forwarding:** a YARP request transform runs on every proxied request. It unconditionally removes any incoming `X-User-Id` / `X-User-Email` (so clients cannot spoof identity), then, if the request is authenticated, re-adds them from the validated `ClaimsPrincipal` (`sub` → `X-User-Id`, `email` → `X-User-Email`). **Core** trusts these headers and does **not** parse JWTs. The **Audit** service validates JWTs independently (same issuer/audience/key as Gateway) and resolves the caller from `sub` or `X-User-Id`. Graph/ML may follow either pattern.
 
 ### Key Files
 
@@ -294,17 +294,20 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/` | None | Returns `{"service":"relativa-audit"}` |
-| GET | `/audit-log` | Policy `AuditReaders` (role = Admin or Analyst) | Returns empty array `[]` |
+| GET | `/audit-log` | JWT + policy `AuditReaders` | Paginated audit rows + `filterContext`; workspace/org RBAC (see [AUDIT-LOG-API.md](AUDIT-LOG-API.md)) |
+| GET | `/entities/{entityId}/audit-log` | JWT + policy `AuditReaders` | Same as `entity_type=entity` with fixed `entity_id`; **`workspace_id`** query required |
 
 ### Status: Functional
 
-JWT Bearer is registered (stub validation settings retained for now), Audit now consumes RabbitMQ audit events (`audit.#`) and persists them into `entity_audit_log`, `workspace_audit_log`, `organization_audit_log`, and `user_audit_log` with idempotency tracking (`audit_processed_event`). `/audit-log` now supports filtered reads by `scope`, `targetId`, `actorUserId`, and date range.
+JWT Bearer uses full validation (issuer, audience, signing key, lifetime) aligned with the Gateway. The service also consumes RabbitMQ audit events (`audit.#`) and persists to `entity_audit_log`, `workspace_audit_log`, `organization_audit_log`, and `user_audit_log` with idempotency (`audit_processed_event`). Reads use EF-only queries, FluentValidation, and `GlobalExceptionHandler` (same error shape as Core).
 
 ### Key Files
 
-- `Audit/src/Relativa.Audit/Program.cs` -- JWT config, authorization policy, endpoints
-- `Audit/src/Relativa.Audit/Services/AuditEventConsumer.cs` -- RabbitMQ consumer + persistence mapping
-- `Audit/src/Relativa.Audit/Data/AuditDbContext.cs` -- audit persistence context
+- `Audit/src/Relativa.Audit/Program.cs` -- JWT, DI, exception handler, endpoint mapping
+- `Audit/src/Relativa.Audit/Endpoints/AuditEndpoints.cs` -- `/audit-log` + entity-scoped route
+- `Audit/src/Relativa.Audit/Services/AuditLogReadService.cs` -- list + RBAC + enriched DTOs
+- `Audit/src/Relativa.Audit/Services/AuditEventConsumer.cs` -- RabbitMQ consumer + persistence
+- `Audit/src/Relativa.Audit/Data/AuditDbContext.cs` -- shared persistence model
 
 ---
 
