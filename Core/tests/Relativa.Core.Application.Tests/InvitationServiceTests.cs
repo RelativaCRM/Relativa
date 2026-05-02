@@ -3,8 +3,10 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using Relativa.Core.Application.DTOs.Invitation;
+using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 using Xunit;
 
@@ -18,6 +20,7 @@ public sealed class InvitationServiceTests
     private readonly Mock<IOrgInvitationRepository> _orgInvitationRepo = new();
     private readonly Mock<IValidator<InviteMemberRequest>> _inviteValidator = new();
     private readonly Mock<IValidator<AcceptInvitationRequest>> _acceptValidator = new();
+    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
     private readonly InvitationService _sut;
 
     public InvitationServiceTests()
@@ -28,7 +31,8 @@ public sealed class InvitationServiceTests
             _roleRepo.Object,
             _orgInvitationRepo.Object,
             _inviteValidator.Object,
-            _acceptValidator.Object
+            _acceptValidator.Object,
+            _auditOutboxWriter.Object
         );
     }
 
@@ -300,5 +304,132 @@ public sealed class InvitationServiceTests
 
         await act.Should().ThrowAsync<KeyNotFoundException>()
             .WithMessage("Invitation not found.");
+    }
+
+    [Fact]
+    public async Task CancelAsync_ValidRequest_SetsStatusToCancelledAndEnqueuesAuditEvent()
+    {
+        var caller = MemberWithPermission(1, 5, "invite_to_workspace");
+        var invitation = new WorkspaceInvitation { Id = 10, WorkspaceId = 5, Email = "x@r.io", Status = "Pending" };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+        _invitationRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
+
+        await _sut.CancelAsync(5, 10, 1);
+
+        invitation.Status.Should().Be("Cancelled");
+        _invitationRepo.Verify(r => r.UpdateAsync(invitation, It.IsAny<CancellationToken>()), Times.Once);
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAsync(
+                It.Is<AuditEventContract>(e =>
+                    e.AuditScope == AuditRouting.ScopeWorkspace &&
+                    e.Action == "workspace_invitation_cancelled" &&
+                    e.TargetId == 5 &&
+                    e.ActorUserId == 1),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task InviteAsync_ValidRequest_EnqueuesWorkspaceInvitationCreatedAuditEvent()
+    {
+        var request = new InviteMemberRequest("audit@relativa.io", 2);
+        var caller = MemberWithPermission(1, 5, "invite_to_workspace");
+        var role = new WorkspaceRole { Id = 2, Name = "analyst", WorkspaceId = null };
+        var savedInvitation = new WorkspaceInvitation
+        {
+            Id = 1, WorkspaceId = 5, Email = request.Email,
+            WsRoleId = 2, Status = "Pending",
+            Role = role, ExpiresAt = DateTime.UtcNow.AddDays(7)
+        };
+
+        SetupValidInvite();
+        _memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+        _roleRepo.Setup(r => r.GetByIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync(role);
+        _invitationRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(savedInvitation);
+
+        await _sut.InviteAsync(5, 1, request);
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAsync(
+                It.Is<AuditEventContract>(e =>
+                    e.AuditScope == AuditRouting.ScopeWorkspace &&
+                    e.Action == "workspace_invitation_created" &&
+                    e.TargetId == 5 &&
+                    e.ActorUserId == 1),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task AcceptAsync_ValidToken_EnqueuesTwoAuditEvents()
+    {
+        var request = new AcceptInvitationRequest("tok");
+        var invitation = new WorkspaceInvitation
+        {
+            Id = 1, WorkspaceId = 3,
+            Email = "u@r.io", WsRoleId = 2,
+            Token = "tok", Status = "Pending",
+            ExpiresAt = DateTime.UtcNow.AddDays(5)
+        };
+
+        SetupValidAccept();
+        _invitationRepo.Setup(r => r.GetByTokenAsync("tok", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
+        _memberRepo.Setup(r => r.GetAsync(10, 3, It.IsAny<CancellationToken>())).ReturnsAsync((UserRoleWorkspace?)null);
+
+        await _sut.AcceptAsync(10, "u@r.io", request);
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAsync(
+                It.Is<AuditEventContract>(e => e.Action == "workspace_member_added_via_invitation"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAsync(
+                It.Is<AuditEventContract>(e => e.Action == "workspace_invitation_accepted"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPendingAsync_UserLacksPermission_ThrowsUnauthorizedAccessException()
+    {
+        _memberRepo
+            .Setup(r => r.GetAsync(2, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleWorkspace
+            {
+                UserId = 2, WorkspaceId = 5,
+                Role = new WorkspaceRole { Name = "viewer", RolePermissions = [] }
+            });
+
+        var act = () => _sut.GetPendingAsync(5, 2);
+
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*invite_to_workspace*");
+    }
+
+    [Fact]
+    public async Task GetPendingAsync_ValidCaller_ReturnsOnlyPendingInvitations()
+    {
+        var caller = MemberWithPermission(1, 5, "invite_to_workspace");
+        var invitations = new List<WorkspaceInvitation>
+        {
+            new() { Id = 1, Email = "a@r.io", Status = "Pending",
+                Workspace = new Workspace { Name = "WS" },
+                Role = new WorkspaceRole { Name = "analyst" },
+                ExpiresAt = DateTime.UtcNow.AddDays(5) },
+            new() { Id = 2, Email = "b@r.io", Status = "Accepted",
+                Workspace = new Workspace { Name = "WS" },
+                Role = new WorkspaceRole { Name = "analyst" },
+                ExpiresAt = DateTime.UtcNow.AddDays(1) }
+        };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+        _invitationRepo.Setup(r => r.GetByWorkspaceIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(invitations);
+
+        var result = await _sut.GetPendingAsync(5, 1);
+
+        result.Should().HaveCount(1);
+        result[0].Status.Should().Be("Pending");
     }
 }

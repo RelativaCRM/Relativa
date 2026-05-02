@@ -34,7 +34,20 @@ jobs:
         run: dotnet build Authentication/Relativa.Authentication.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --no-restore --configuration Release --verbosity normal
+        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-authentication-unit
+          path: ./CoverageReport
+          retention-days: 14
 
 
   core-unit-tests:
@@ -54,7 +67,20 @@ jobs:
         run: dotnet build Core/Relativa.Core.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --no-restore --configuration Release --verbosity normal
+        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-core-unit
+          path: ./CoverageReport
+          retention-days: 14
 
 
   core-integration-tests:
@@ -74,7 +100,53 @@ jobs:
         run: dotnet build Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal
+        run: dotnet test Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-core-integration
+          path: ./CoverageReport
+          retention-days: 14
+
+
+  audit-integration-tests:
+    name: Audit — Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj
+
+      - name: Build
+        run: dotnet build Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-audit-integration
+          path: ./CoverageReport
+          retention-days: 14
 
 
   e2e-tests:

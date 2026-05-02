@@ -202,4 +202,69 @@ public sealed class AuthServiceTests
             r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task RegisterAsync_ValidRequest_EnqueuesUserScopeRegisteredAuditEvent()
+    {
+        var request = new RegisterRequestDto("Taras", "Melnyk", "melnyk@relativa.io", "Secur3P@ss");
+
+        SetupValidRegister();
+        _userRepo.Setup(r => r.ExistsAsync(request.Email, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _passwordHasher.Setup(h => h.Hash(request.Password)).Returns("bcrypt-result");
+
+        await _sut.RegisterAsync(request);
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAsync(
+                It.Is<Relativa.Persistence.Contracts.AuditEventContract>(e =>
+                    e.AuditScope == Relativa.Persistence.Contracts.AuditRouting.ScopeUser &&
+                    e.Action == "user_registered" &&
+                    e.SourceService == "authentication"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task LoginAsync_ValidCredentials_DoesNotEnqueueAuditEvent()
+    {
+        var request = new LoginRequestDto("kovalenko@relativa.io", "Str0ngP@ss");
+        var user = new User { Id = 7, Email = request.Email, Password = "bcrypt-hash" };
+        var expiresAt = DateTime.UtcNow.AddHours(1);
+
+        SetupValidLogin();
+        _userRepo.Setup(r => r.GetByEmailAsync(request.Email, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _passwordHasher.Setup(h => h.Verify(request.Password, user.Password)).Returns(true);
+        _tokenService.Setup(t => t.GenerateAccessToken(user)).Returns(("signed-jwt", expiresAt));
+
+        await _sut.LoginAsync(request);
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAsync(It.IsAny<Relativa.Persistence.Contracts.AuditEventContract>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetProfileAsync_ValidUser_ReturnsUserProfile()
+    {
+        var user = new User { Id = 5, Email = "shevchenko@relativa.io", FirstName = "Taras", LastName = "Shevchenko" };
+        _userRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+
+        var result = await _sut.GetProfileAsync(5);
+
+        result.Id.Should().Be(5);
+        result.Email.Should().Be("shevchenko@relativa.io");
+        result.FirstName.Should().Be("Taras");
+        result.LastName.Should().Be("Shevchenko");
+    }
+
+    [Fact]
+    public async Task GetProfileAsync_UserNotFound_ThrowsKeyNotFoundException()
+    {
+        _userRepo.Setup(r => r.GetByIdAsync(99, It.IsAny<CancellationToken>())).ReturnsAsync((User?)null);
+
+        var act = () => _sut.GetProfileAsync(99);
+
+        await act.Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("User not found.");
+    }
 }
