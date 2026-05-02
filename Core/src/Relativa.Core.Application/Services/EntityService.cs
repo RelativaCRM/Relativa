@@ -3,6 +3,7 @@ using FluentValidation;
 using Relativa.Core.Application.DTOs.Entity;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
@@ -11,7 +12,8 @@ public sealed class EntityService(
     IEntityRepository entityRepository,
     IUserRoleWorkspaceRepository memberRepository,
     IValidator<CreateEntityRequest> createValidator,
-    IValidator<UpdateEntityRequest> updateValidator) : IEntityService
+    IValidator<UpdateEntityRequest> updateValidator,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IEntityService
 {
     public async Task<List<EntityListItemDto>> GetByWorkspaceAsync(int workspaceId, int userId, CancellationToken ct = default)
     {
@@ -47,6 +49,25 @@ public sealed class EntityService(
 
         var created = await entityRepository.CreateAsync(entity, propertyValues, workspaceId, ct);
 
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: userId,
+                AuditScope: AuditRouting.ScopeEntity,
+                TargetId: created.Id,
+                Action: "entity_created",
+                FieldName: null,
+                EntityType: request.EntityTypeId.ToString(CultureInfo.InvariantCulture),
+                OldValueJson: null,
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(request.Properties)),
+            ct);
+        }
+
         var detail = await entityRepository.GetByIdInWorkspaceAsync(created.Id, workspaceId, ct);
         return MapToDetail(detail!);
     }
@@ -70,6 +91,25 @@ public sealed class EntityService(
         var propertyValues = BuildPropertyValues(merged, typeProperties);
         await entityRepository.UpdateAsync(entity, propertyValues, ct);
 
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: userId,
+                AuditScope: AuditRouting.ScopeEntity,
+                TargetId: entityId,
+                Action: "entity_updated",
+                FieldName: "properties",
+                EntityType: entity.EntityTypeId.ToString(CultureInfo.InvariantCulture),
+                OldValueJson: null,
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(merged)),
+            ct);
+        }
+
         var updated = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct);
         return MapToDetail(updated!);
     }
@@ -82,6 +122,25 @@ public sealed class EntityService(
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
 
         await entityRepository.ArchiveAsync(entity, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: userId,
+                AuditScope: AuditRouting.ScopeEntity,
+                TargetId: entityId,
+                Action: "entity_archived",
+                FieldName: "is_archived",
+                EntityType: entity.EntityTypeId.ToString(CultureInfo.InvariantCulture),
+                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = false }),
+                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = true })),
+            ct);
+        }
     }
 
     // ------------------------------------------------------------------

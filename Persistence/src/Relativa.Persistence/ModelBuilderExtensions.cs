@@ -11,6 +11,7 @@ public static class PersistenceModelBuilderExtensions
     {
         modelBuilder.ApplyConfiguration(new UserConfiguration());
         modelBuilder.ApplyConfiguration(new UserAuditLogConfiguration());
+        modelBuilder.ApplyConfiguration(new AuditOutboxMessageConfiguration());
 
         // EF Core convention follows User's navigation properties into the full RBAC
         // graph. Cut both chains at the root so the Auth context stays User-only.
@@ -51,6 +52,8 @@ public static class PersistenceModelBuilderExtensions
         modelBuilder.ApplyConfiguration(new WorkspaceAuditLogConfiguration());
         modelBuilder.ApplyConfiguration(new UserAuditLogConfiguration());
         modelBuilder.ApplyConfiguration(new OrganizationAuditLogConfiguration());
+        modelBuilder.ApplyConfiguration(new AuditOutboxMessageConfiguration());
+        modelBuilder.ApplyConfiguration(new AuditProcessedEventConfiguration());
 
         return modelBuilder;
     }

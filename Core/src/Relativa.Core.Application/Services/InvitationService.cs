@@ -3,6 +3,7 @@ using Relativa.Core.Application.DTOs.Invitation;
 using Relativa.Core.Application.DTOs.OrgInvitation;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
@@ -13,7 +14,8 @@ public sealed class InvitationService(
     IWorkspaceRoleRepository roleRepository,
     IOrgInvitationRepository orgInvitationRepository,
     IValidator<InviteMemberRequest> inviteValidator,
-    IValidator<AcceptInvitationRequest> acceptValidator) : IInvitationService
+    IValidator<AcceptInvitationRequest> acceptValidator,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IInvitationService
 {
     public async Task<InvitationDto> InviteAsync(int workspaceId, int callerUserId, InviteMemberRequest request, CancellationToken ct = default)
     {
@@ -39,6 +41,24 @@ public sealed class InvitationService(
         };
 
         await invitationRepository.AddAsync(invitation, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: workspaceId,
+                    Action: "workspace_invitation_created",
+                    FieldName: "workspace_invitations",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { invitation.Id, invitation.Email, invitation.WsRoleId, invitation.Status })),
+                ct);
+        }
 
         var reloaded = await invitationRepository.GetByIdAsync(invitation.Id, ct) ?? invitation;
         return new InvitationDto(reloaded.Id, reloaded.Email, reloaded.Workspace?.Name ?? "", role.Name, reloaded.Status, reloaded.Token, reloaded.ExpiresAt);
@@ -67,6 +87,24 @@ public sealed class InvitationService(
 
         invitation.Status = "Cancelled";
         await invitationRepository.UpdateAsync(invitation, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: workspaceId,
+                    Action: "workspace_invitation_cancelled",
+                    FieldName: "workspace_invitations.status",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending", invitation.Email }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Cancelled", invitation.Email })),
+                ct);
+        }
     }
 
     public async Task AcceptAsync(int userId, string userEmail, AcceptInvitationRequest request, CancellationToken ct = default)
@@ -103,9 +141,45 @@ public sealed class InvitationService(
         };
 
         await memberRepository.AddAsync(member, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: invitation.WorkspaceId,
+                    Action: "workspace_member_added_via_invitation",
+                    FieldName: "user_role_workspace",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { member.UserId, member.WsRoleId })),
+                ct);
+        }
 
         invitation.Status = "Accepted";
         await invitationRepository.UpdateAsync(invitation, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: invitation.WorkspaceId,
+                    Action: "workspace_invitation_accepted",
+                    FieldName: "workspace_invitations.status",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending", invitation.Email }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Accepted", invitation.Email })),
+                ct);
+        }
     }
 
     public async Task<MyInvitationsDto> GetMyInvitationsAsync(int userId, string userEmail, CancellationToken ct = default)

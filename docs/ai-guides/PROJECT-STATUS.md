@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-04-23 (entity-type listing + entity CRUD implemented; permissions re-seeded with manage_entities/view_entities)
+> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline implemented with outbox + consumer)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -14,8 +14,8 @@
 | Authentication | **Functional** | Login, register, `/me` profile endpoint, JWT (sub + email only), FluentValidation -- all working |
 | Core | **Functional** (org + ws RBAC + entity CRUD) | Organization management, workspace management, split RBAC, members, invitations, join requests, permissions, entity-type listing (public), and workspace-scoped entity CRUD all implemented |
 | Graph | **Stub** | SignalR hub exists but has no logic |
-| Audit | **Stub** | Returns empty array; JWT validation disabled |
-| Migration | **Functional** | Applies EF migrations on startup; schema + seed data work. Four migrations: `InitialCreate`, `SeedData`, `EavSchemaReplace`, `ReseedPermissions`. |
+| Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
+| Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
 | ML | **Stub** | Single endpoint returns hardcoded stub |
 | Client | **Partial** | Vue 3 + PrimeVue + Tailwind. Auth flow + org onboarding + members/invitations wired to Gateway; base layouts in place; typed API client for auth + org endpoints |
 | Persistence | **Functional** | Full EAV entity model (21 entities), fluent configs, ModelBuilderExtensions |
@@ -33,6 +33,7 @@
 - GlobalExceptionHandler maps ValidationException -> 400, UnauthorizedAccessException -> 401, duplicate email -> 409.
 - EF Core health check at `/health`.
 - OpenAPI + Scalar docs.
+- Fire-and-forget audit publishing: register flow writes to `audit_outbox`, dispatcher publishes to RabbitMQ.
 
 ### Core service -- Organization management
 
@@ -63,6 +64,7 @@
   - `PUT /{entityId}` — replace all property values; requires `manage_entities`.
   - `DELETE /{entityId}` — soft-delete (`is_archived = true`); requires `manage_entities`.
 - **GlobalExceptionHandler extended:** `KeyNotFoundException` → 404, `ValidationException` → 400 with error detail.
+- Fire-and-forget audit publishing for core write flows via `audit_outbox` + RabbitMQ dispatcher, including organizations/workspaces/entities, join requests, invitations, membership updates, and role lifecycle changes.
 
 ### Gateway
 
@@ -145,8 +147,8 @@
 
 ### Audit service
 
-**What exists:** `/audit-log` endpoint with `AuditReaders` authorization policy (requires any authenticated user -- stub).
-**What is missing:** Endpoint returns empty array `[]`. JWT signature validation is deliberately disabled (all checks set to `false`). No actual audit event storage or ingestion. No domain event consumer.
+**What exists:** RabbitMQ consumer (`audit.#`) with idempotency tracking (`audit_processed_event`), persistence into all four audit tables, and filtered `/audit-log` endpoint.
+**What is missing:** JWT validation hardening (signature/issuer/audience/lifetime checks are still disabled for now).
 
 ### ML service
 
