@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 namespace Relativa.Gateway.OpenApi;
 
 /// <summary>
-/// Serves a merged OpenAPI document that aggregates specs from Auth and Core,
+/// Serves a merged OpenAPI document that aggregates specs from Auth, Core, and Audit,
 /// prefixing all paths with the gateway route prefix so Scalar sends every
 /// request through the Gateway (JWT validation + X-User-Id injection included).
 /// </summary>
@@ -24,16 +24,19 @@ public static class AggregatedOpenApiEndpoint
             // Read upstream base addresses from YARP cluster config (same values used for proxying)
             var coreAddr = (config["ReverseProxy:Clusters:core:Destinations:d1:Address"] ?? "http://127.0.0.1:8082/").TrimEnd('/');
             var authAddr = (config["ReverseProxy:Clusters:auth:Destinations:d1:Address"] ?? "http://127.0.0.1:8081/").TrimEnd('/');
+            var auditAddr = (config["ReverseProxy:Clusters:audit:Destinations:d1:Address"] ?? "http://127.0.0.1:8086/").TrimEnd('/');
             var gatewayBase = config["Gateway:PublicBaseUrl"] ?? "http://localhost:8080";
 
             var coreTask = TryFetchSpecAsync(client, $"{coreAddr}/openapi/v1.json", ct);
             var authTask = TryFetchSpecAsync(client, $"{authAddr}/openapi/v1.json", ct);
-            await Task.WhenAll(coreTask, authTask);
+            var auditTask = TryFetchSpecAsync(client, $"{auditAddr}/openapi/v1.json", ct);
+            await Task.WhenAll(coreTask, authTask, auditTask);
 
             var sources = new List<ServiceSpec>
             {
                 new("/core", "Core", await coreTask),
                 new("/auth", "Auth", await authTask),
+                new("/audit", "Audit", await auditTask),
             };
 
             var json = BuildMergedSpec(sources, gatewayBase);
@@ -204,6 +207,25 @@ public static class AggregatedOpenApiEndpoint
         ["userId"]         = JsonValue.Create(2)!,
         ["id"]             = JsonValue.Create(1)!,
         ["q"]              = JsonValue.Create("acme")!,
+
+        // Audit — GET /audit-log and GET /entities/{entityId}/audit-log (scope filters differ by entity_type)
+        ["entity_type"]       = JsonValue.Create("workspace")!,
+        ["scope"]             = JsonValue.Create("workspace")!,
+        ["date_from"]         = JsonValue.Create("2026-01-01T00:00:00Z")!,
+        ["from"]              = JsonValue.Create("2026-01-01T00:00:00Z")!,
+        ["date_to"]           = JsonValue.Create("2026-05-02T23:59:59Z")!,
+        ["to"]                = JsonValue.Create("2026-05-02T23:59:59Z")!,
+        ["action"]            = JsonValue.Create("update")!,
+        ["index"]             = JsonValue.Create(1)!,
+        ["page_size"]         = JsonValue.Create(20)!,
+        ["entity_id"]         = JsonValue.Create(1)!,
+        ["targetId"]          = JsonValue.Create(1)!,
+        ["domain_entity_type"] = JsonValue.Create("person")!,
+        ["workspace_id"]      = JsonValue.Create(1)!,
+        ["organization_id"]   = JsonValue.Create(1)!,
+        ["actor_user_id"]     = JsonValue.Create(2)!,
+        ["actorUserId"]       = JsonValue.Create(2)!,
+        ["target_user_id"]    = JsonValue.Create(3)!,
     };
 
     /// <summary>
