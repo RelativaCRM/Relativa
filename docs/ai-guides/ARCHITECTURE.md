@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-02 (RabbitMQ audit pipeline + outbox dispatchers added)
+> **Last verified:** 2026-05-02 (Transactional outbox: audit + domain exchanges; choreography consumers on Graph & ML)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -18,6 +18,7 @@ flowchart LR
     ML["ML\n(Django)"]
     Audit["Audit"]
     PG["PostgreSQL 16"]
+    RMQ["RabbitMQ"]
 
     Browser -->|"HTTP / WS"| Gateway
     Gateway -->|"/auth/*"| Auth
@@ -27,9 +28,16 @@ flowchart LR
     Gateway -->|"/audit/*"| Audit
     Auth --> PG
     Core --> PG
+    Auth -->|outbox publish| RMQ
+    Core -->|outbox publish| RMQ
+    RMQ -->|audit.topic| Audit
+    RMQ -->|domain.topic| Graph
+    RMQ -->|domain.topic| ML
 ```
 
-All client traffic flows through the **Gateway**. Backend services do not call each other directly -- there is no message bus, no gRPC, no service-to-service HTTP. The Gateway strips path prefixes and forwards requests to upstream services by internal Docker DNS.
+All **browser** traffic flows through the **Gateway**. There is **no synchronous service-to-service HTTP**: backends do not call each other directly for domain work.
+
+**Relativa.Messaging (`Messaging/src/Relativa.Messaging/`)** is a tiny shared helper library (.NET): `RabbitMqPublishingOptions`, `RabbitMqExchangeRouter`, and `OutboxRabbitMqPublisher` for declaring the audit/domain topic exchanges and opening AMQP connections. Core and Authentication **publish** audit + choreography rows from the transactional `audit_outbox` table; Audit, Graph, and ML **consume** asynchronously (see Inter-Service Communication).
 
 ---
 
@@ -51,7 +59,7 @@ The project uses a **ports-and-adapters (Clean Architecture)** pattern. Each ser
 | **Authentication** | Implemented | Implemented (AuthService, DTOs, validators) | Implemented (interfaces only) | Implemented (AuthDbContext, repos, JWT, bcrypt) |
 | **Core** | Implemented (org, workspace, member, invitation, role, join-request, permission endpoints) | Implemented (OrganizationService, OrgMemberService, OrgInvitationService, OrgRoleService, JoinRequestService, WorkspaceService, WorkspaceMemberService, InvitationService, RoleService, DTOs, validators) | Implemented (repository interfaces, IWorkspaceContext) | Implemented (RelativaDbContext, repos, WorkspaceContext) |
 | **Gateway** | Implemented | N/A (single project) | N/A | N/A |
-| **Graph** | Implemented (stub hub) | N/A (single project) | N/A | N/A |
+| **Graph** | Implemented (stub hub + RabbitMQ choreography consumer) | N/A (single project) | N/A | Uses Postgres + Persistence contracts for idempotent inbox |
 | **Audit** | Implemented (stub) | N/A (single project) | N/A | N/A |
 
 Gateway, Graph, and Audit are single-project services with no layered split. When they grow, they should follow the same four-layer convention as Authentication.
@@ -91,17 +99,19 @@ All tables must satisfy **Third Normal Form**:
 
 **Path:** `Persistence/src/Relativa.Persistence/`
 
-This is a **.NET class library** (no solution, no runnable host) that holds the EF Core entity model shared across services. It is referenced via `ProjectReference` by Core, Authentication, and Migration.
+This is a **.NET class library** (no solution, no runnable host) that holds the EF Core entity model shared across services. It is referenced via `ProjectReference` by Core, Authentication, Migration, and Graph (Graph consumes only the Contracts + entity metadata it needs alongside SignalR choreography).
+
+**Related shared library:** `Messaging/src/Relativa.Messaging/` — RabbitMQ connection helpers reused by Authentication + Core infrastructure dispatchers.
 
 ### Contents
 
 | Directory / File | What it contains |
 |---|---|
-| `Entities/` | 21 entity classes (see list below) |
+| `Entities/` | Domain entities plus audit/outbox/choreography support types (see list below). |
 | `Configurations/` | EF Fluent API `IEntityTypeConfiguration<T>` classes for each entity |
-| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full 21-entity model) |
+| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full model for Core/Migration contexts) |
 
-### Entity list (25 entities)
+### Entity list (domain + infra)
 
 | Entity | Table name | Notes |
 |---|---|---|
@@ -130,6 +140,9 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 | `WorkspaceAuditLog` | `workspace_audit_log` | Polymorphic audit log base class specialized for workspaces. |
 | `UserAuditLog` | `user_audit_log` | Polymorphic audit log base class specialized for users. |
 | `OrganizationAuditLog` | `organization_audit_log` | Polymorphic audit log base class specialized for organizations. |
+| `AuditOutboxMessage` | `audit_outbox` | Pending + published payloads for transactional outbox (audit + choreography). |
+| `AuditProcessedEvent` | `audit_processed_event` | Idempotency receipts for inbound audit payloads on the Audit consumer. |
+| `RabbitMqProcessedDelivery` | `rabbitmq_processed_delivery` | Idempotency receipts for choreography consumers keyed by Rabbit `MessageId` + `consumer_group`. |
 
 **Dropped in EAV migration:** `EntityProperty` (polymorphic hub), `PersonalDataPropertyValue`, `LocationPropertyValue`, `DealPropertyValue`. Their data is now stored as `EntityPropertyValue` rows. The deal→client association previously held as a FK in `DealPropertyValue.client_id` is now an `EntityRelationship` row of type `deal_client`.
 
@@ -142,8 +155,8 @@ Different services compose **different slices** of the entity model:
 | DbContext | Location | What it maps | Extension used |
 |---|---|---|---|
 | `AuthDbContext` | `Authentication/.../Infrastructure/Data/AuthDbContext.cs` | User only (other entities reachable via `User` navigation properties are cut with `Ignore<UserRoleWorkspace>()` + `Ignore<UserRoleOrganization>()`) | `ApplyAuthEntityConfigurations` |
-| `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | All 21 entities | `ApplyAllEntityConfigurations` |
-| `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | All 21 entities | `ApplyAllEntityConfigurations` |
+| `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | Full Persistence slice | `ApplyAllEntityConfigurations` |
+| `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | Full Persistence slice | `ApplyAllEntityConfigurations` |
 
 Migrations are owned by the **Migration** service. The migration assembly name is `Relativa.Migration`. Schema changes always go through `Migration/src/Relativa.Migration/Migrations/`.
 
@@ -368,10 +381,14 @@ Authorization for workspace endpoints:
 
 ## Inter-Service Communication
 
-- **HTTP via Gateway only** for client-facing requests.
-- **RabbitMQ event bus** for audit events (`audit.events` exchange, topic routing by scope).
-- **SignalR:** Graph service exposes a WebSocket hub at `/hubs/graph` for real-time client updates (not inter-service messaging).
-- **Outbox dispatchers:** Core and Authentication write audit events to `audit_outbox` and publish asynchronously (fire-and-forget) to RabbitMQ.
+- **HTTP via Gateway only** for client-facing SPA traffic (no alternate client entry points).
+- **Transactional outbox (`audit_outbox`)** inside Core + Authentication Postgres databases co-locates business writes with **pending RabbitMQ payloads**. Hosted dispatchers periodically publish to RabbitMQ and mark `published_at_utc`.
+- **Two durable topic exchanges (default names):**
+  - **`audit.events`** — payloads whose routing keys use the **`audit.<scope>`** pattern (serialized `AuditEventContract`). Consumers: **Audit** (`audit.#`).
+  - **`relativa.domain`** — choreography/domain payloads keyed off **`DomainRouting`** verbs (serialized `DomainMessageEnvelope` + typed `PayloadJson`). Example pilot: **`core.workspace.*`** emits when workspaces are created/updated/archived. Consumers: **Graph** (workspace queue + SignalR broadcast), **ML** (`run_domain_consumer` management command; stub logs).
+- **SignalR:** Graph pushes `domain.workspace.lifecycle.v1` to connected clients **after** idempotent ingestion from the choreography bus (`rabbitmq_processed_delivery` guards replays).
+- **Shared envelopes / contracts:** `Persistence/src/Relativa.Persistence/Contracts/` defines `AuditEventContract`, `DomainMessageEnvelope`, `IOutboxWriter`, and payload structs (e.g. `WorkspaceLifecyclePayloadV1`).
+- **Operational runbook:** DLQ queues, purge commands, and configuration keys — [RABBITMQ-CHOREOGRAPHY.md](../runbooks/RABBITMQ-CHOREOGRAPHY.md).
 
 ---
 

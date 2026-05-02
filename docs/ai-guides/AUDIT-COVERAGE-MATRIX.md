@@ -1,6 +1,6 @@
 # Audit Coverage Matrix
 
-> **Last verified:** 2026-05-01
+> **Last verified:** 2026-05-02
 
 This matrix defines which database tables are currently required to be audited, and whether both prerequisites are present:
 - audit table exists
@@ -24,3 +24,4 @@ This matrix defines which database tables are currently required to be audited, 
 
 - Required-now scope now includes principal entities plus invitations, memberships, join requests, and role lifecycle flows.
 - New entities/tables introduced in future work must be added to this matrix and evaluated before completion.
+- `rabbitmq_processed_delivery` (`RabbitMqProcessedDelivery`) is **infrastructure inbox deduplication**, not CRM user-auditable data — it is intentionally absent from this matrix.

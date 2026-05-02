@@ -11,7 +11,7 @@ public sealed class WorkspaceMemberService(
     IWorkspaceRoleRepository roleRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IWorkspaceRepository workspaceRepository,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IWorkspaceMemberService
+    IOutboxWriter? auditOutboxWriter = null) : IWorkspaceMemberService
 {
     public async Task<List<WorkspaceMemberDto>> GetMembersAsync(int workspaceId, int userId, CancellationToken ct = default)
     {
@@ -47,7 +47,7 @@ public sealed class WorkspaceMemberService(
         await memberRepository.UpdateAsync(targetMember, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -76,7 +76,7 @@ public sealed class WorkspaceMemberService(
         await memberRepository.RemoveAsync(member, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -126,7 +126,7 @@ public sealed class WorkspaceMemberService(
         await memberRepository.AddAsync(member, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,

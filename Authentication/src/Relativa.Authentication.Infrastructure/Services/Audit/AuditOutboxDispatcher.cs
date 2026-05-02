@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -5,15 +6,16 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using Relativa.Authentication.Infrastructure.Data;
+using Relativa.Messaging;
 
 namespace Relativa.Authentication.Infrastructure.Services.Audit;
 
 public sealed class AuditOutboxDispatcher(
     IServiceScopeFactory scopeFactory,
-    IOptions<RabbitMqAuditOptions> options,
+    IOptions<RabbitMqPublishingOptions> options,
     ILogger<AuditOutboxDispatcher> logger) : BackgroundService
 {
-    private readonly RabbitMqAuditOptions _options = options.Value;
+    private readonly RabbitMqPublishingOptions _options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -25,7 +27,7 @@ public sealed class AuditOutboxDispatcher(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Auth audit outbox dispatcher failed.");
+                logger.LogError(ex, "Auth audit/domain outbox dispatcher failed.");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
@@ -48,30 +50,18 @@ public sealed class AuditOutboxDispatcher(
             return;
         }
 
-        var factory = new ConnectionFactory
-        {
-            HostName = _options.Host,
-            Port = _options.Port,
-            UserName = _options.Username,
-            Password = _options.Password
-        };
-
-        await using var connection = await factory.CreateConnectionAsync(ct);
+        await using var connection = await OutboxRabbitMqPublisher.CreateConnectionAsync(_options, ct);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: ct);
-        await channel.ExchangeDeclareAsync(
-            exchange: _options.Exchange,
-            type: ExchangeType.Topic,
-            durable: true,
-            autoDelete: false,
-            cancellationToken: ct);
+        await OutboxRabbitMqPublisher.EnsureTopicExchangesOnChannelAsync(channel, _options, ct);
 
         foreach (var message in pending)
         {
             try
             {
-                var body = System.Text.Encoding.UTF8.GetBytes(message.PayloadJson);
+                var exchange = RabbitMqExchangeRouter.ResolvePublishExchange(message.RoutingKey, _options);
+                var body = Encoding.UTF8.GetBytes(message.PayloadJson);
                 await channel.BasicPublishAsync(
-                    exchange: _options.Exchange,
+                    exchange: exchange,
                     routingKey: message.RoutingKey,
                     mandatory: false,
                     body: body,
@@ -83,7 +73,7 @@ public sealed class AuditOutboxDispatcher(
             catch (Exception ex)
             {
                 message.LastError = ex.Message;
-                logger.LogWarning(ex, "Failed publishing auth audit outbox event {EventId}", message.EventId);
+                logger.LogWarning(ex, "Failed publishing auth outbox event {EventId}", message.EventId);
             }
             finally
             {

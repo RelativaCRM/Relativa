@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Relativa.Core.Application\Relativa.Core.Application.csproj" />
     <ProjectReference Include="..\Relativa.Core.Domain\Relativa.Core.Domain.csproj" />
     <ProjectReference Include="..\..\..\Persistence\src\Relativa.Persistence\Relativa.Persistence.csproj" />
+    <ProjectReference Include="..\..\..\Messaging\src\Relativa.Messaging\Relativa.Messaging.csproj" />
   </ItemGroup>
 
 </Project>

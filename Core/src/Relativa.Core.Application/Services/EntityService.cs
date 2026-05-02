@@ -13,7 +13,7 @@ public sealed class EntityService(
     IUserRoleWorkspaceRepository memberRepository,
     IValidator<CreateEntityRequest> createValidator,
     IValidator<UpdateEntityRequest> updateValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IEntityService
+    IOutboxWriter? auditOutboxWriter = null) : IEntityService
 {
     public async Task<List<EntityListItemDto>> GetByWorkspaceAsync(int workspaceId, int userId, CancellationToken ct = default)
     {
@@ -51,7 +51,7 @@ public sealed class EntityService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -93,7 +93,7 @@ public sealed class EntityService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -125,7 +125,7 @@ public sealed class EntityService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,

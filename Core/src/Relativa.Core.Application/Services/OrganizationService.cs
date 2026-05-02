@@ -13,7 +13,7 @@ public sealed class OrganizationService(
     IOrganizationRoleRepository orgRoleRepository,
     IValidator<CreateOrganizationRequest> createValidator,
     IValidator<UpdateOrganizationRequest> updateValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IOrganizationService
+    IOutboxWriter? auditOutboxWriter = null) : IOrganizationService
 {
     public async Task<OrganizationDto> CreateAsync(int userId, CreateOrganizationRequest request, CancellationToken ct = default)
     {
@@ -43,7 +43,7 @@ public sealed class OrganizationService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -105,7 +105,7 @@ public sealed class OrganizationService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -160,7 +160,7 @@ public sealed class OrganizationService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -196,7 +196,7 @@ public sealed class OrganizationService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,

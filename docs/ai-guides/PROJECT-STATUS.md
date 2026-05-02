@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-02 (Audit read API: pagination, RBAC, enriched DTOs, JWT validation)
+> **Last verified:** 2026-05-02 (Choreography bus: `relativa.domain`, workspace lifecycle pilot, Graph/ML Rabbit consumers + idempotency table)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -13,12 +13,12 @@
 | Gateway | **Functional** | YARP routing, JWT validation, split anonymous/auth routes, health, Scalar -- all working |
 | Authentication | **Functional** | Login, register, `/me` profile endpoint, JWT (sub + email only), FluentValidation -- all working |
 | Core | **Functional** (org + ws RBAC + entity CRUD) | Organization management, workspace management, split RBAC, members, invitations, join requests, permissions, entity-type listing (public), and workspace-scoped entity CRUD all implemented |
-| Graph | **Stub** | SignalR hub exists but has no logic |
+| Graph | **Stub** | SignalR hub + RabbitMQ choreography consumer broadcasts workspace lifecycle payloads; graph projection logic still absent |
 | Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
-| ML | **Stub** | Single endpoint returns hardcoded stub |
+| ML | **Stub** | REST stub unchanged; **`run_domain_consumer`** processes choreography events (stub logging path) beside `runserver` in Docker |
 | Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + members/invitations + entity CRUD UI + dynamic entity-graph rendering, all driven by typed API clients (auth, org, workspace, entity, audit). Persisted state (token, profile, roles, current org/workspace ids) via a shared `localStorage` helper |
-| Persistence | **Functional** | Full EAV entity model (21 entities), fluent configs, ModelBuilderExtensions |
+| Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions |
 
 ---
 
@@ -137,15 +137,15 @@
 
 **What is missing:**
 - No business rules (BP-01 through BP-06).
-- No domain events.
+- No generalized domain-event catalog beyond workspace choreography pilot + audit payloads.
 - No email notifications for invitations or join request outcomes.
 - No property management endpoints (list/create/update org-scoped custom properties).
 - Relationship management endpoints (`entity_relationship`) deferred — the table and seed data exist but no API surface yet.
 
 ### Graph service
 
-**What exists:** SignalR hub mapped at `/hubs/graph`, service identity endpoint.
-**What is missing:** `OnConnectedAsync` only calls `base`. No graph data queries, no recursive CTE queries, no RBAC filtering, no live update logic, no ML score integration.
+**What exists:** SignalR hub mapped at `/hubs/graph`, identity endpoint, `DomainEventConsumerHostedService` (workspace choreography), DLQ wiring, Postgres idempotency receipts, broadcast event `domain.workspace.lifecycle.v1`.
+**What is missing:** `OnConnectedAsync` only calls `base`. No graph-domain queries, recursive CTE traversal, RBAC-scoped hub groups, or ML score integration.
 
 ### Audit service
 
@@ -154,7 +154,7 @@
 
 ### ML service
 
-**What exists:** `POST /api/ml/recalculate/` endpoint.
+**What exists:** `POST /api/ml/recalculate/` endpoint; `run_domain_consumer` management command (blocking pika loop) started next to Django in Docker Compose; deduplicates via `rabbitmq_processed_delivery`.
 **What is missing:** Returns `{"status":"accepted","detail":"stub"}`. No ML models (closure_score, churn_score). No Celery tasks defined. No Redis broker in Docker Compose. Beat schedule is commented out in `settings.py`.
 
 ### Client
@@ -174,7 +174,7 @@
 | **Gateway README partially outdated** | Low | `Gateway/README.md` says JWT validation is a stub. Gateway now fully validates JWT. |
 | **Unused package reference** | Trivial | `Asp.Versioning.Http` is referenced in `Authentication/src/Relativa.Authentication/Relativa.Authentication.csproj` but never used in code. |
 | **Core CORS is `AllowAnyOrigin`** | Low | Gateway now has a proper named-origin CORS allowlist (reads `Cors:Origins` from config). Core retains `AllowAnyOrigin/Header/Method` as a dev convenience since Core is only reached via the gateway in deployed environments; tighten for production. |
-| **No test projects** | High | Zero test projects across the entire solution. No xUnit, NUnit, or MSTest references anywhere. |
+| **Sparse automated tests** | Medium | Core + Authentication both include xUnit suites; `Messaging/tests/Relativa.Messaging.Tests` validates outbox routing helpers + a Testcontainers RabbitMQ smoke test. Graph, Audit, ML, and Integration/E2E suites are still absent. |
 | **No CI/CD pipeline** | Medium | No `.github/workflows`, no `azure-pipelines.yml`, no CI configuration of any kind. |
 | **Unused Auth dependencies** | Low | `IRoleRepository`, `RoleRepository`, and `AuthOptions` remain in the Auth codebase but are no longer registered in DI or used. Can be removed in a cleanup pass. |
 
@@ -207,7 +207,7 @@
 
 - Recursive CTE queries for entity-relationship traversal using `entity_relationship` and `entity_relationship_type`.
 - Dynamic RBAC-based filtering of graph data (workspace-scoped via `entity_workspace`).
-- Live SignalR push updates when entities change.
+- ~~Live SignalR push updates when workspaces change via choreography envelope.~~ *(partial — choreography consumer broadcasts workspace lifecycle but no entity-graph projection yet)*.
 - ML score integration (display `closure_score` property values on graph nodes — stored as `entity_property_value` rows).
 
 ### Audit service

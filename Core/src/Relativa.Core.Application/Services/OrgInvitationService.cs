@@ -12,7 +12,7 @@ public sealed class OrgInvitationService(
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
     IValidator<InviteToOrgRequest> inviteValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IOrgInvitationService
+    IOutboxWriter? auditOutboxWriter = null) : IOrgInvitationService
 {
     public async Task<OrgInvitationDto> InviteAsync(int organizationId, int callerUserId, InviteToOrgRequest request, CancellationToken ct = default)
     {
@@ -33,7 +33,7 @@ public sealed class OrgInvitationService(
         await invitationRepository.AddAsync(invitation, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -90,7 +90,7 @@ public sealed class OrgInvitationService(
         await invitationRepository.UpdateAsync(invitation, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -145,7 +145,7 @@ public sealed class OrgInvitationService(
         await orgMemberRepository.AddAsync(membership, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -166,7 +166,7 @@ public sealed class OrgInvitationService(
         await invitationRepository.UpdateAsync(invitation, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
