@@ -291,6 +291,11 @@ public static class AggregatedOpenApiEndpoint
             ["email"]     = "jane.doe@example.com",
             ["password"]  = "Admin1234!"
         },
+        ["Auth_UpdateMyProfile"] = new JsonObject
+        {
+            ["firstName"] = "Jane",
+            ["lastName"]  = "Doe"
+        },
 
         // ── Organizations ───────────────────────────────────────────────────────
         ["Core_CreateOrganization"] = new JsonObject
@@ -300,6 +305,20 @@ public static class AggregatedOpenApiEndpoint
         ["Core_UpdateOrganization"] = new JsonObject
         {
             ["name"] = "ACME Corp (renamed)"
+        },
+
+        // ── Organization users (admin provisioning) ─────────────────────────────
+        ["Core_CreateOrgUser"] = new JsonObject
+        {
+            ["firstName"] = "Jane",
+            ["lastName"]  = "Doe",
+            ["email"]     = "jane.doe@example.com",
+            ["password"]  = "Admin1234!"
+        },
+        ["Core_UpdateOrgUserProfile"] = new JsonObject
+        {
+            ["firstName"] = "Jane",
+            ["lastName"]  = "Doe"
         },
 
         // ── Org invitations ─────────────────────────────────────────────────────

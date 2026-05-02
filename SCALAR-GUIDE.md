@@ -262,10 +262,13 @@ The Gateway proxies endpoints under service prefixes:
 | `POST /api/v1/auth/login` | `POST /auth/api/v1/auth/login` |
 | `POST /api/v1/auth/register` | `POST /auth/api/v1/auth/register` |
 | `GET /api/v1/auth/me` | `GET /auth/api/v1/auth/me` |
+| `PATCH /api/v1/auth/me` | `PATCH /auth/api/v1/auth/me` |
+| `DELETE /api/v1/auth/me` | `DELETE /auth/api/v1/auth/me` |
 | `POST /api/v1/organizations` | `POST /core/api/v1/organizations` |
 | `POST /api/v1/workspaces` | `POST /core/api/v1/workspaces` |
+| `POST /api/v1/organizations/{id}/users` | `POST /core/api/v1/organizations/{id}/users` |
 
-The `/auth/api/v1/auth/login` and `/auth/api/v1/auth/register` paths are marked **Anonymous** in the gateway — no JWT needed. The `/auth/api/v1/auth/me` path and all `/core/...` paths require a valid JWT.
+The `/auth/api/v1/auth/login` and `/auth/api/v1/auth/register` paths are marked **Anonymous** in the gateway — no JWT needed. **`GET` / `PATCH` / `DELETE`** `/auth/api/v1/auth/me` and all `/core/...` paths require a valid JWT.
 
 ---
 
@@ -893,6 +896,8 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | `POST` | `/api/v1/auth/register` | None | Register a new user |
 | `POST` | `/api/v1/auth/login` | None | Authenticate and receive JWT |
 | `GET` | `/api/v1/auth/me` | JWT | Get authenticated user's profile |
+| `PATCH` | `/api/v1/auth/me` | JWT | Update own first and last name |
+| `DELETE` | `/api/v1/auth/me` | JWT | Archive own account |
 | `GET` | `/health` | None | Health check (DB connectivity) |
 | `GET` | `/scalar/v1` | None | Scalar interactive docs |
 | `GET` | `/openapi/v1.json` | None | Raw OpenAPI spec |
@@ -916,6 +921,14 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | `GET` | `/api/v1/organizations/{id}/members` | JWT + org membership | List org members |
 | `DELETE` | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove member |
 | `PUT` | `/api/v1/organizations/{id}/members/{userId}/role` | JWT + `assign_org_roles` | Change member's org role |
+
+**Organization users (admin provisioning):**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `POST` | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` | Create user account and add as org member |
+| `PATCH` | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's name |
+| `DELETE` | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account |
 
 **Join requests:**
 
@@ -986,7 +999,7 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | Method | Path | Auth | Summary |
 |--------|------|------|---------|
 | `GET` | `/api/v1/invitations/mine` | JWT | List all pending invitations (ws + org) |
-| `GET` | `/api/v1/permissions` | JWT | List all 16 permissions |
+| `GET` | `/api/v1/permissions` | JWT | List all permissions (19 rows including org user-admin perms) |
 
 **Infrastructure:**
 
@@ -1003,7 +1016,12 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | `POST` | `/auth/api/v1/auth/login` | None | Auth service |
 | `POST` | `/auth/api/v1/auth/register` | None | Auth service |
 | `GET` | `/auth/api/v1/auth/me` | Bearer JWT | Auth service |
+| `PATCH` | `/auth/api/v1/auth/me` | Bearer JWT | Auth service |
+| `DELETE` | `/auth/api/v1/auth/me` | Bearer JWT | Auth service |
 | `GET` | `/auth/health` | None | Auth service |
+| `POST` | `/core/api/v1/organizations/{id}/users` | Bearer JWT | Core service |
+| `PATCH` | `/core/api/v1/organizations/{id}/users/{userId}` | Bearer JWT | Core service |
+| `DELETE` | `/core/api/v1/organizations/{id}/users/{userId}` | Bearer JWT | Core service |
 | `GET` | `/core/health` | None | Core service |
 | `GET` | `/health` | None | Gateway itself |
 | `*` | `/auth/{**rest}` | Bearer JWT | Auth service |
