@@ -1,4 +1,4 @@
-namespace Relativa.Audit.Services;
+namespace Relativa.Audit.Infrastructure.Services;
 
 public sealed class RabbitMqAuditOptions
 {

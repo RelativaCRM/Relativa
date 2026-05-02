@@ -3,68 +3,99 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Relativa.Audit.Data;
+using Relativa.Audit.Application.Interfaces;
+using Relativa.Audit.Application.Options;
+using Relativa.Audit.Application.Services;
+using Relativa.Audit.Application.Validators;
 using Relativa.Audit.Endpoints;
+using Relativa.Audit.Infrastructure.Data;
+using Relativa.Audit.Infrastructure.Services;
 using Relativa.Audit.Middleware;
-using Relativa.Audit.Services;
-using Relativa.Audit.Validation;
+using Scalar.AspNetCore;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .WriteTo.Console()
+    .WriteTo.File("logs/audit-.log", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
 
-builder.Services.AddOpenApi();
-builder.Services.AddDbContext<AuditDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-builder.Services.AddHealthChecks().AddDbContextCheck<AuditDbContext>();
-builder.Services.Configure<RabbitMqAuditOptions>(builder.Configuration.GetSection("RabbitMqAudit"));
-builder.Services.Configure<AuditLogReadOptions>(builder.Configuration.GetSection("AuditLogRead"));
-builder.Services.AddHostedService<AuditEventConsumer>();
+try
+{
+    var builder = WebApplication.CreateBuilder(args);
+    builder.Host.UseSerilog();
 
-builder.Services.AddScoped<AuditLogReadService>();
-builder.Services.AddScoped<IValidator<GetAuditLogQuery>, GetAuditLogQueryValidator>();
+    builder.Services.AddOpenApi();
 
-var jwtSection = builder.Configuration.GetSection("Jwt");
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.MapInboundClaims = false;
-        options.TokenValidationParameters = new TokenValidationParameters
+    builder.Services.AddDbContext<AuditDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    builder.Services.Configure<RabbitMqAuditOptions>(builder.Configuration.GetSection("RabbitMqAudit"));
+    builder.Services.Configure<AuditLogReadOptions>(builder.Configuration.GetSection("AuditLogRead"));
+
+    builder.Services.AddHealthChecks()
+        .AddDbContextCheck<AuditDbContext>();
+
+    builder.Services.AddHostedService<AuditEventConsumer>();
+
+    builder.Services.AddValidatorsFromAssemblyContaining<IAuditLogReadService>();
+
+    builder.Services.AddScoped<IAuditLogReadRepository, AuditLogReadRepository>();
+    builder.Services.AddScoped<IAuditLogReadService, AuditLogReadService>();
+
+    var jwtSection = builder.Configuration.GetSection("Jwt");
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
         {
-            ValidateIssuer = true,
-            ValidIssuer = jwtSection["Issuer"],
-            ValidateAudience = true,
-            ValidAudience = jwtSection["Audience"],
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtSection["SecretKey"]!)),
-            ValidateLifetime = true,
-            RequireExpirationTime = true
-        };
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = jwtSection["Issuer"],
+                ValidateAudience = true,
+                ValidAudience = jwtSection["Audience"],
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(jwtSection["SecretKey"]!)),
+                ValidateLifetime = true,
+                RequireExpirationTime = true
+            };
+        });
+
+    builder.Services.AddAuthorization(options =>
+    {
+        options.AddPolicy(
+            "AuditReaders",
+            policy => policy.RequireAuthenticatedUser());
     });
 
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy(
-        "AuditReaders",
-        policy => policy.RequireAuthenticatedUser());
-});
+    builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+    builder.Services.AddProblemDetails();
 
-builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-builder.Services.AddProblemDetails();
+    var app = builder.Build();
 
-var app = builder.Build();
+    app.UseExceptionHandler();
+    app.UseSerilogRequestLogging();
 
-if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
+    app.MapScalarApiReference();
+
+    app.UseAuthentication();
+    app.UseAuthorization();
+
+    app.MapGet("/", () => Results.Ok(new { service = "relativa-audit" }));
+    app.MapHealthChecks("/health");
+    app.MapAuditLogEndpoints();
+
+    app.Run();
 }
-
-app.UseExceptionHandler();
-app.UseAuthentication();
-app.UseAuthorization();
-
-app.MapGet("/", () => Results.Ok(new { service = "relativa-audit" }));
-app.MapHealthChecks("/health");
-app.MapAuditLogEndpoints();
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Audit service terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

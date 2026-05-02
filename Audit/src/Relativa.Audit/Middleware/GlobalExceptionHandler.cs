@@ -1,6 +1,6 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
-using Relativa.Audit.Exceptions;
+using Relativa.Audit.Application.Exceptions;
 
 namespace Relativa.Audit.Middleware;
 

@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Relativa.Audit.DTOs;
+namespace Relativa.Audit.Application.DTOs;
 
 public sealed record AuditLogListResponse(
     IReadOnlyList<AuditLogEntryDto> Data,

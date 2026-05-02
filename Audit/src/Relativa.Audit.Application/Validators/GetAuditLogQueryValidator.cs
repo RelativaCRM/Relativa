@@ -1,6 +1,6 @@
 using FluentValidation;
 
-namespace Relativa.Audit.Validation;
+namespace Relativa.Audit.Application.Validators;
 
 public sealed class GetAuditLogQueryValidator : AbstractValidator<GetAuditLogQuery>
 {

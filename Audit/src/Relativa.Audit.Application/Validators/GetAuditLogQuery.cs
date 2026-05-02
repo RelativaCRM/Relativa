@@ -1,4 +1,4 @@
-namespace Relativa.Audit.Validation;
+namespace Relativa.Audit.Application.Validators;
 
 /// <summary>
 /// Query parameters for GET /audit-log.

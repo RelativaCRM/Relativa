@@ -2,9 +2,9 @@ using System.Security.Claims;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.IdentityModel.JsonWebTokens;
-using Relativa.Audit.DTOs;
-using Relativa.Audit.Services;
-using Relativa.Audit.Validation;
+using Relativa.Audit.Application.DTOs;
+using Relativa.Audit.Application.Interfaces;
+using Relativa.Audit.Application.Validators;
 
 namespace Relativa.Audit.Endpoints;
 
@@ -39,7 +39,7 @@ public static class AuditEndpoints
 
     private static async Task<IResult> GetAuditLog(
         HttpContext httpContext,
-        AuditLogReadService service,
+        IAuditLogReadService service,
         string? entity_type,
         string? scope,
         DateTimeOffset? date_from,
@@ -86,7 +86,7 @@ public static class AuditEndpoints
 
     private static async Task<IResult> GetEntityAuditLog(
         HttpContext httpContext,
-        AuditLogReadService service,
+        IAuditLogReadService service,
         int entityId,
         DateTimeOffset? date_from,
         DateTimeOffset? from,

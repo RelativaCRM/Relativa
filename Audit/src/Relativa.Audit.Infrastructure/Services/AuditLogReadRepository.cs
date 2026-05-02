@@ -1,23 +1,18 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using FluentValidation;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using Relativa.Audit.Data;
-using Relativa.Audit.DTOs;
-using Relativa.Audit.Exceptions;
-using Relativa.Audit.Validation;
+using Relativa.Audit.Application.DTOs;
+using Relativa.Audit.Application.Exceptions;
+using Relativa.Audit.Application.Interfaces;
+using Relativa.Audit.Application.Validators;
+using Relativa.Audit.Infrastructure.Data;
 using Relativa.Persistence.Entities;
 using Relativa.Persistence.Entities.AuditLogs;
 
-namespace Relativa.Audit.Services;
+namespace Relativa.Audit.Infrastructure.Services;
 
-public sealed class AuditLogReadService(
-    AuditDbContext db,
-    IValidator<GetAuditLogQuery> queryValidator,
-    IOptions<AuditLogReadOptions> options)
+public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRepository
 {
-    private readonly AuditLogReadOptions _opt = options.Value;
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -25,64 +20,7 @@ public sealed class AuditLogReadService(
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public async Task<AuditLogListResponse> GetAsync(GetAuditLogQuery q, int callerUserId, CancellationToken ct)
-    {
-        await queryValidator.ValidateAndThrowAsync(q, ct);
-        var category = q.EntityTypeCategory.Trim().ToLowerInvariant();
-
-        var from = q.DateFrom ?? DateTimeOffset.UtcNow.AddDays(-_opt.DefaultDateRangeDays);
-        var to = q.DateTo ?? DateTimeOffset.UtcNow;
-        var index = q.Index;
-        var pageSize = q.PageSize;
-        var skip = (index - 1) * pageSize;
-
-        await EnsureResourcesExistAsync(q, category, ct);
-        await EnsureRbacAsync(callerUserId, category, q.WorkspaceId, q.OrganizationId, ct);
-
-        var filterContext = await BuildFilterContextAsync(q, category, ct);
-
-        return category switch
-        {
-            "entity" => await GetEntityScopeAsync(
-                from, to, q.Action, q.EntityId, q.DomainEntityType, q.ActorUserId, q.WorkspaceId!.Value, skip, pageSize, index, filterContext, ct),
-            "workspace" => await GetWorkspaceScopeAsync(
-                from, to, q.Action, q.ActorUserId, q.WorkspaceId!.Value, skip, pageSize, index, filterContext, ct),
-            "organization" => await GetOrganizationScopeAsync(
-                from, to, q.Action, q.ActorUserId, q.OrganizationId!.Value, skip, pageSize, index, filterContext, ct),
-            "user" => await GetUserScopeAsync(
-                from, to, q.Action, q.ActorUserId, q.TargetUserId, callerUserId, skip, pageSize, index, filterContext, ct),
-            _ => throw new ArgumentException("Invalid category.")
-        };
-    }
-
-    private async Task<AuditFilterContextDto?> BuildFilterContextAsync(GetAuditLogQuery q, string category, CancellationToken ct)
-    {
-        if (category is "entity" or "workspace" && q.WorkspaceId is { } wid)
-        {
-            var w = await db.Set<Workspace>().AsNoTracking()
-                .Where(x => x.Id == wid)
-                .Select(x => new { x.Id, x.Name, x.OrganizationId, OrgName = x.Organization.Name })
-                .FirstAsync(ct);
-            return new AuditFilterContextDto(
-                new WorkspaceContextDto(w.Id, w.Name, w.OrganizationId, w.OrgName),
-                null);
-        }
-
-        if (category == "organization" && q.OrganizationId is { } oid)
-        {
-            var o = await db.Set<Organization>().AsNoTracking()
-                .Where(x => x.Id == oid)
-                .Select(x => new { x.Id, x.Name })
-                .FirstAsync(ct);
-            return new AuditFilterContextDto(
-                null,
-                new OrganizationContextDto(o.Id, o.Name));
-        }
-
-        return null;
-    }
-
-    private async Task EnsureResourcesExistAsync(GetAuditLogQuery q, string category, CancellationToken ct)
+    public async Task EnsureResourcesExistAsync(GetAuditLogQuery q, string category, CancellationToken ct)
     {
         if (q.WorkspaceId is { } wId)
         {
@@ -117,7 +55,34 @@ public sealed class AuditLogReadService(
         }
     }
 
-    private async Task EnsureRbacAsync(
+    public async Task<AuditFilterContextDto?> BuildFilterContextAsync(GetAuditLogQuery q, string category, CancellationToken ct)
+    {
+        if (category is "entity" or "workspace" && q.WorkspaceId is { } wid)
+        {
+            var w = await db.Set<Workspace>().AsNoTracking()
+                .Where(x => x.Id == wid)
+                .Select(x => new { x.Id, x.Name, x.OrganizationId, OrgName = x.Organization.Name })
+                .FirstAsync(ct);
+            return new AuditFilterContextDto(
+                new WorkspaceContextDto(w.Id, w.Name, w.OrganizationId, w.OrgName),
+                null);
+        }
+
+        if (category == "organization" && q.OrganizationId is { } oid)
+        {
+            var o = await db.Set<Organization>().AsNoTracking()
+                .Where(x => x.Id == oid)
+                .Select(x => new { x.Id, x.Name })
+                .FirstAsync(ct);
+            return new AuditFilterContextDto(
+                null,
+                new OrganizationContextDto(o.Id, o.Name));
+        }
+
+        return null;
+    }
+
+    public async Task EnsureRbacAsync(
         int callerUserId,
         string category,
         int? workspaceId,
@@ -138,60 +103,7 @@ public sealed class AuditLogReadService(
         }
     }
 
-    private async Task RequireWsAdminOrAnalystAsync(int userId, int workspaceId, CancellationToken ct)
-    {
-        var ok = await (
-            from urw in db.Set<UserRoleWorkspace>().AsNoTracking()
-            join wr in db.Set<WorkspaceRole>().AsNoTracking() on urw.WsRoleId equals wr.Id
-            where urw.UserId == userId && urw.WorkspaceId == workspaceId && !urw.IsArchived
-                  && (wr.Name == "ws_admin" || wr.Name == "ws_analyst")
-            select urw.Id).AnyAsync(ct);
-
-        if (!ok)
-            throw new ForbiddenAccessException("Audit log requires workspace role ws_admin or ws_analyst.");
-    }
-
-    private async Task RequireOrgOwnerOrAdminAsync(int userId, int organizationId, CancellationToken ct)
-    {
-        var ok = await (
-            from uro in db.Set<UserRoleOrganization>().AsNoTracking()
-            join oro in db.Set<OrganizationRole>().AsNoTracking() on uro.OrgRoleId equals oro.Id
-            where uro.UserId == userId && uro.OrganizationId == organizationId && !uro.IsArchived
-                  && (oro.Name == "org_owner" || oro.Name == "org_admin")
-            select uro.Id).AnyAsync(ct);
-
-        if (!ok)
-            throw new ForbiddenAccessException("Audit log requires organization role org_owner or org_admin.");
-    }
-
-    private async Task<HashSet<int>> GetVisibleTargetUserIdsAsync(int callerUserId, CancellationToken ct)
-    {
-        var visible = new HashSet<int> { callerUserId };
-
-        var orgTargets = await (
-            from cu in db.Set<UserRoleOrganization>().AsNoTracking()
-            join cr in db.Set<OrganizationRole>().AsNoTracking() on cu.OrgRoleId equals cr.Id
-            join tu in db.Set<UserRoleOrganization>().AsNoTracking() on cu.OrganizationId equals tu.OrganizationId
-            where cu.UserId == callerUserId && !cu.IsArchived && !tu.IsArchived
-                  && (cr.Name == "org_owner" || cr.Name == "org_admin")
-            select tu.UserId).Distinct().ToListAsync(ct);
-        foreach (var u in orgTargets)
-            visible.Add(u);
-
-        var wsTargets = await (
-            from cw in db.Set<UserRoleWorkspace>().AsNoTracking()
-            join wr in db.Set<WorkspaceRole>().AsNoTracking() on cw.WsRoleId equals wr.Id
-            join tw in db.Set<UserRoleWorkspace>().AsNoTracking() on cw.WorkspaceId equals tw.WorkspaceId
-            where cw.UserId == callerUserId && !cw.IsArchived && !tw.IsArchived
-                  && (wr.Name == "ws_admin" || wr.Name == "ws_analyst")
-            select tw.UserId).Distinct().ToListAsync(ct);
-        foreach (var u in wsTargets)
-            visible.Add(u);
-
-        return visible;
-    }
-
-    private async Task<AuditLogListResponse> GetEntityScopeAsync(
+    public async Task<AuditLogListResponse> GetEntityScopeAsync(
         DateTimeOffset from,
         DateTimeOffset to,
         string? actionFilter,
@@ -247,14 +159,7 @@ public sealed class AuditLogReadService(
         return new AuditLogListResponse(data, total, pageIndex, pageSize, filterContext);
     }
 
-    private static int? ParseEntityTypeId(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s))
-            return null;
-        return int.TryParse(s.Trim(), out var id) ? id : null;
-    }
-
-    private async Task<AuditLogListResponse> GetWorkspaceScopeAsync(
+    public async Task<AuditLogListResponse> GetWorkspaceScopeAsync(
         DateTimeOffset from,
         DateTimeOffset to,
         string? actionFilter,
@@ -287,7 +192,7 @@ public sealed class AuditLogReadService(
         return new AuditLogListResponse(data, total, pageIndex, pageSize, filterContext);
     }
 
-    private async Task<AuditLogListResponse> GetOrganizationScopeAsync(
+    public async Task<AuditLogListResponse> GetOrganizationScopeAsync(
         DateTimeOffset from,
         DateTimeOffset to,
         string? actionFilter,
@@ -320,7 +225,7 @@ public sealed class AuditLogReadService(
         return new AuditLogListResponse(data, total, pageIndex, pageSize, filterContext);
     }
 
-    private async Task<AuditLogListResponse> GetUserScopeAsync(
+    public async Task<AuditLogListResponse> GetUserScopeAsync(
         DateTimeOffset from,
         DateTimeOffset to,
         string? actionFilter,
@@ -363,6 +268,66 @@ public sealed class AuditLogReadService(
 
         var data = rows.Select(MapUserRow).ToList();
         return new AuditLogListResponse(data, total, pageIndex, pageSize, filterContext);
+    }
+
+    private async Task RequireWsAdminOrAnalystAsync(int userId, int workspaceId, CancellationToken ct)
+    {
+        var ok = await (
+            from urw in db.Set<UserRoleWorkspace>().AsNoTracking()
+            join wr in db.Set<WorkspaceRole>().AsNoTracking() on urw.WsRoleId equals wr.Id
+            where urw.UserId == userId && urw.WorkspaceId == workspaceId && !urw.IsArchived
+                  && (wr.Name == "ws_admin" || wr.Name == "ws_analyst")
+            select urw.Id).AnyAsync(ct);
+
+        if (!ok)
+            throw new ForbiddenAccessException("Audit log requires workspace role ws_admin or ws_analyst.");
+    }
+
+    private async Task RequireOrgOwnerOrAdminAsync(int userId, int organizationId, CancellationToken ct)
+    {
+        var ok = await (
+            from uro in db.Set<UserRoleOrganization>().AsNoTracking()
+            join oro in db.Set<OrganizationRole>().AsNoTracking() on uro.OrgRoleId equals oro.Id
+            where uro.UserId == userId && uro.OrganizationId == organizationId && !uro.IsArchived
+                  && (oro.Name == "org_owner" || oro.Name == "org_admin")
+            select uro.Id).AnyAsync(ct);
+
+        if (!ok)
+            throw new ForbiddenAccessException("Audit log requires organization role org_owner or org_admin.");
+    }
+
+    private async Task<HashSet<int>> GetVisibleTargetUserIdsAsync(int callerUserId, CancellationToken ct)
+    {
+        var visible = new HashSet<int> { callerUserId };
+
+        var orgTargets = await (
+            from cu in db.Set<UserRoleOrganization>().AsNoTracking()
+            join cr in db.Set<OrganizationRole>().AsNoTracking() on cu.OrgRoleId equals cr.Id
+            join tu in db.Set<UserRoleOrganization>().AsNoTracking() on cu.OrganizationId equals tu.OrganizationId
+            where cu.UserId == callerUserId && !cu.IsArchived && !tu.IsArchived
+                  && (cr.Name == "org_owner" || cr.Name == "org_admin")
+            select tu.UserId).Distinct().ToListAsync(ct);
+        foreach (var u in orgTargets)
+            visible.Add(u);
+
+        var wsTargets = await (
+            from cw in db.Set<UserRoleWorkspace>().AsNoTracking()
+            join wr in db.Set<WorkspaceRole>().AsNoTracking() on cw.WsRoleId equals wr.Id
+            join tw in db.Set<UserRoleWorkspace>().AsNoTracking() on cw.WorkspaceId equals tw.WorkspaceId
+            where cw.UserId == callerUserId && !cw.IsArchived && !tw.IsArchived
+                  && (wr.Name == "ws_admin" || wr.Name == "ws_analyst")
+            select tw.UserId).Distinct().ToListAsync(ct);
+        foreach (var u in wsTargets)
+            visible.Add(u);
+
+        return visible;
+    }
+
+    private static int? ParseEntityTypeId(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return null;
+        return int.TryParse(s.Trim(), out var id) ? id : null;
     }
 
     private async Task<Dictionary<int, IReadOnlyList<PropertyDefinitionDto>>> LoadPropertyDefinitionsAsync(
@@ -523,7 +488,7 @@ public sealed class AuditLogReadService(
         return new ActorDto(id, null, null, null);
     }
 
-    private static object? JsonDocumentToObject(System.Text.Json.JsonDocument? doc)
+    private static object? JsonDocumentToObject(JsonDocument? doc)
     {
         if (doc is null)
             return null;
@@ -532,8 +497,8 @@ public sealed class AuditLogReadService(
 
     private (IReadOnlyList<PropertyChangeDto>? changes, IReadOnlyList<PropertyDefinitionDto>? defsUsed)
         BuildPropertyChanges(
-            System.Text.Json.JsonDocument? oldDoc,
-            System.Text.Json.JsonDocument? newDoc,
+            JsonDocument? oldDoc,
+            JsonDocument? newDoc,
             IReadOnlyList<PropertyDefinitionDto>? defs)
     {
         if (defs is null || defs.Count == 0)
@@ -559,13 +524,13 @@ public sealed class AuditLogReadService(
             return (null, defs);
 
         var ids = new HashSet<int>();
-        if (newList != null)
+        if (newList is not null)
         {
             foreach (var x in newList)
                 ids.Add(x.PropertyId);
         }
 
-        if (oldList != null)
+        if (oldList is not null)
         {
             foreach (var x in oldList)
                 ids.Add(x.PropertyId);
@@ -595,9 +560,4 @@ public sealed class AuditLogReadService(
         public int PropertyId { get; set; }
         public string? Value { get; set; }
     }
-}
-
-public sealed class AuditLogReadOptions
-{
-    public int DefaultDateRangeDays { get; set; } = 30;
 }

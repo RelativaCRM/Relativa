@@ -3,7 +3,7 @@ using Relativa.Persistence;
 using Relativa.Persistence.Entities;
 using Relativa.Persistence.Entities.AuditLogs;
 
-namespace Relativa.Audit.Data;
+namespace Relativa.Audit.Infrastructure.Data;
 
 public sealed class AuditDbContext(DbContextOptions<AuditDbContext> options) : DbContext(options)
 {
