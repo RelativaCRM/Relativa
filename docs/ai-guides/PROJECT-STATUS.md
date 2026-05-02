@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline implemented with outbox + consumer)
+> **Last verified:** 2026-05-02 (Audit read API: pagination, RBAC, enriched DTOs, JWT validation)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -70,9 +70,9 @@
 
 - YARP reverse proxy with 5 route groups: `/auth/*`, `/core/*`, `/graph/*`, `/ml/*`, `/audit/*`.
 - Path prefix stripping via `PathRemovePrefix` transforms.
-- JWT Bearer authentication with full validation (issuer, audience, signing key, lifetime). **The Gateway is the only component that validates JWTs for downstream services** (Authentication still validates its own tokens because `/me` needs the claims).
+- JWT Bearer authentication with full validation (issuer, audience, signing key, lifetime). **Core** does not re-validate tokens (uses forwarded `X-User-Id`). **Authentication** validates its own tokens for `/me`. **Audit** re-validates JWTs for its read API (configuration aligned with Gateway). **Graph/ML** are stubs.
 - **Global authorization via `MapReverseProxy().RequireAuthorization()`.** Every proxied route requires a valid JWT unless it is explicitly marked `AuthorizationPolicy: Anonymous` in `appsettings.json`.
-- **Identity forwarding via YARP request transform:** on every proxied request the Gateway unconditionally strips any incoming `X-User-Id` / `X-User-Email` headers, then re-adds them from the validated `ClaimsPrincipal` (`sub` and `email` claims). Downstream services (Core, future Graph/ML/Audit) trust these headers instead of re-validating tokens. Client-supplied values are always overwritten, so identity cannot be spoofed through the Gateway. The trust boundary assumes downstream services are not reachable from outside the Gateway's network (enforced by docker-compose today; network policy / service mesh in production).
+- **Identity forwarding via YARP request transform:** on every proxied request the Gateway unconditionally strips any incoming `X-User-Id` / `X-User-Email` headers, then re-adds them from the validated `ClaimsPrincipal` (`sub` and `email` claims). **Core** trusts these headers and does not parse JWTs. **Audit** validates JWTs (defense in depth) and still accepts forwarded headers when resolving identity. Client-supplied header values are always overwritten at the Gateway.
 - **Split anonymous/auth routes:** `/login` and `/register` are anonymous; `/me` requires JWT.
 - Anonymous exceptions for health endpoints.
 - **CORS:** named-origin allowlist with credentials, reading `Cors:Origins` from config (defaults to `http://localhost:5173` and `http://localhost:3000`).
@@ -149,8 +149,8 @@
 
 ### Audit service
 
-**What exists:** RabbitMQ consumer (`audit.#`) with idempotency tracking (`audit_processed_event`), persistence into all four audit tables, and filtered `/audit-log` endpoint.
-**What is missing:** JWT validation hardening (signature/issuer/audience/lifetime checks are still disabled for now).
+**What exists:** RabbitMQ consumer (`audit.#`) with idempotency; persistence into all four audit tables. **`GET /audit-log`** and **`GET /entities/{entityId}/audit-log`**: `date_from` / `date_to`, `action`, `index`, `page_size`, `entity_id`, `domain_entity_type`, `actor_user_id`, `target_user_id`; response `{ data, total, page, perPage, filterContext }` with actor/workspace/org/entity/target user context and optional `propertyChanges` / `propertyDefinitionsForEntityType` for entity events. **RBAC:** `ws_admin`/`ws_analyst` (entity + workspace), `org_owner`/`org_admin` (organization), user-scope visibility rules. **GlobalExceptionHandler** + **FluentValidation**; **full JWT validation** (issuer, audience, key, lifetime). See [AUDIT-LOG-API.md](AUDIT-LOG-API.md).
+**What is missing:** Scalar/OpenAPI browser for Audit (only `MapOpenApi` in dev); no automated tests.
 
 ### ML service
 
@@ -159,7 +159,7 @@
 
 ### Client
 
-**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) + org onboarding (create/join) + post-login workspace selection (`/workspace-select`, auto-select for single-workspace users, inline create when user has none) + member management (invite, role change, remove) + workspace CRUD wired to Gateway. Typed API client for auth + org + workspace endpoints. Router guards with org and workspace checks.
+**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) + org onboarding (create/join) + post-login workspace selection (`/workspace-select`, auto-select for single-workspace users, inline create when user has none) + member management (invite, role change, remove) + workspace CRUD wired to Gateway. Typed API client for auth, org, workspace, and entity endpoints. Router guards with org and workspace checks.
 **What is missing:** No join request review UI (admin can approve/reject). No custom role creation UI. The entity list view is intentionally minimal (id + type tag) — entity detail / edit / archive UIs are still pending. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
 
 ---
@@ -176,7 +176,6 @@
 | **Core CORS is `AllowAnyOrigin`** | Low | Gateway now has a proper named-origin CORS allowlist (reads `Cors:Origins` from config). Core retains `AllowAnyOrigin/Header/Method` as a dev convenience since Core is only reached via the gateway in deployed environments; tighten for production. |
 | **No test projects** | High | Zero test projects across the entire solution. No xUnit, NUnit, or MSTest references anywhere. |
 | **No CI/CD pipeline** | Medium | No `.github/workflows`, no `azure-pipelines.yml`, no CI configuration of any kind. |
-| **Audit JWT not validated** | Medium | Audit service has JWT Bearer registered but all validation parameters set to `false`. `SignatureValidator` parses tokens without cryptographic verification. Acceptable as a stub but must be fixed before real audit data flows through. |
 | **Unused Auth dependencies** | Low | `IRoleRepository`, `RoleRepository`, and `AuthOptions` remain in the Auth codebase but are no longer registered in DI or used. Can be removed in a cleanup pass. |
 
 ---
@@ -213,10 +212,9 @@
 
 ### Audit service
 
-- Real audit event ingestion (consumer for domain events from Core).
-- Persistent audit log storage (likely in PostgreSQL).
-- Proper JWT validation (re-enable all checks).
-- Query/filter capabilities on audit log.
+- ~~Query/filter + pagination on audit log.~~ *(done)*
+- ~~JWT validation aligned with Gateway.~~ *(done)*
+- Deeper report export (CSV/PDF) and dedicated UI.
 
 ### ML service
 

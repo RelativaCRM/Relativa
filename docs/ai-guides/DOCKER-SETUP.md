@@ -1,6 +1,6 @@
 # Docker Setup -- Infrastructure and Deployment
 
-> **Last verified:** 2026-05-01 (RabbitMQ added for audit event transport)
+> **Last verified:** 2026-05-02 (Audit JWT env aligned with auth/gateway)
 
 > **Maintenance obligation:** If you change Docker Compose, Dockerfiles, networking, volumes, or environment variables, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -159,9 +159,9 @@ Template for Docker Compose variable substitution. Users copy to `.env` (gitigno
 | `CORS_ORIGIN_1` | gateway | First allowed browser origin for gateway CORS allowlist |
 | `CORS_ORIGIN_2` | gateway | Second allowed browser origin for gateway CORS allowlist |
 | `CORS_ALLOW_ANY_ORIGIN_FOR_DEV` | gateway | Local dev-only wildcard CORS override (`true`/`false`) |
-| `JWT_SECRET` | auth, gateway | Shared symmetric signing key |
-| `JWT_ISSUER` | auth, gateway | Token issuer claim |
-| `JWT_AUDIENCE` | auth, gateway | Token audience claim |
+| `JWT_SECRET` | auth, gateway, audit | Shared symmetric signing key |
+| `JWT_ISSUER` | auth, gateway, audit | Token issuer claim |
+| `JWT_AUDIENCE` | auth, gateway, audit | Token audience claim |
 
 ### How env vars reach services
 
