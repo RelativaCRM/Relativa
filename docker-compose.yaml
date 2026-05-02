@@ -19,6 +19,24 @@ services:
     networks:
       - relativa_net
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: relativa-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-relativa}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-relativa}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    networks:
+      - relativa_net
+
   pgadmin:
     image: dpage/pgadmin4:8
     container_name: relativa-pgadmin
@@ -45,6 +63,11 @@ services:
       Jwt__SecretKey: "${JWT_SECRET:-super-secret-key-that-should-be-at-least-32-chars!}"
       Jwt__Issuer: "${JWT_ISSUER:-relativa-auth}"
       Jwt__Audience: "${JWT_AUDIENCE:-relativa}"
+      RabbitMqAudit__Host: rabbitmq
+      RabbitMqAudit__Port: 5672
+      RabbitMqAudit__Username: "${RABBITMQ_USER:-relativa}"
+      RabbitMqAudit__Password: "${RABBITMQ_PASS:-relativa}"
+      RabbitMqAudit__Exchange: audit.events
     ports:
       - "8081:8081"
     depends_on:
@@ -52,6 +75,8 @@ services:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8081' 2>/dev/null || exit 1"]
       interval: 10s
@@ -70,6 +95,11 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8082
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASS}
+      RabbitMqAudit__Host: rabbitmq
+      RabbitMqAudit__Port: 5672
+      RabbitMqAudit__Username: "${RABBITMQ_USER:-relativa}"
+      RabbitMqAudit__Password: "${RABBITMQ_PASS:-relativa}"
+      RabbitMqAudit__Exchange: audit.events
     ports:
       - "8082:8082"
     depends_on:
@@ -77,6 +107,8 @@ services:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8082' 2>/dev/null || exit 1"]
       interval: 10s
@@ -121,14 +153,29 @@ services:
 
   audit:
     build:
-      context: ./Audit
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Audit/Dockerfile
     container_name: relativa-audit
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8086
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASS}
+      RabbitMqAudit__Host: rabbitmq
+      RabbitMqAudit__Port: 5672
+      RabbitMqAudit__Username: "${RABBITMQ_USER:-relativa}"
+      RabbitMqAudit__Password: "${RABBITMQ_PASS:-relativa}"
+      RabbitMqAudit__Exchange: audit.events
+      RabbitMqAudit__Queue: audit.events.audit
+      RabbitMqAudit__RoutingKey: audit.#
     ports:
       - "8086:8086"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
     networks:
       - relativa_net
 

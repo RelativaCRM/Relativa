@@ -2,6 +2,7 @@ using FluentValidation;
 using Relativa.Core.Application.DTOs.OrgInvitation;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
@@ -10,7 +11,8 @@ public sealed class OrgInvitationService(
     IOrgInvitationRepository invitationRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
-    IValidator<InviteToOrgRequest> inviteValidator) : IOrgInvitationService
+    IValidator<InviteToOrgRequest> inviteValidator,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IOrgInvitationService
 {
     public async Task<OrgInvitationDto> InviteAsync(int organizationId, int callerUserId, InviteToOrgRequest request, CancellationToken ct = default)
     {
@@ -29,6 +31,24 @@ public sealed class OrgInvitationService(
         };
 
         await invitationRepository.AddAsync(invitation, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_invitation_created",
+                    FieldName: "organization_invitations",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { invitation.Id, invitation.Email, invitation.Status })),
+                ct);
+        }
 
         return new OrgInvitationDto(
             invitation.Id,
@@ -68,6 +88,24 @@ public sealed class OrgInvitationService(
 
         invitation.Status = "Cancelled";
         await invitationRepository.UpdateAsync(invitation, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_invitation_cancelled",
+                    FieldName: "organization_invitations.status",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending", invitation.Email }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Cancelled", invitation.Email })),
+                ct);
+        }
     }
 
     public async Task AcceptAsync(int userId, string userEmail, string token, CancellationToken ct = default)
@@ -105,9 +143,45 @@ public sealed class OrgInvitationService(
         };
 
         await orgMemberRepository.AddAsync(membership, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: invitation.OrganizationId,
+                    Action: "organization_member_added_via_invitation",
+                    FieldName: "user_role_organization",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { membership.UserId, membership.OrgRoleId })),
+                ct);
+        }
 
         invitation.Status = "Accepted";
         await invitationRepository.UpdateAsync(invitation, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: invitation.OrganizationId,
+                    Action: "organization_invitation_accepted",
+                    FieldName: "organization_invitations.status",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending", invitation.Email }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Accepted", invitation.Email })),
+                ct);
+        }
     }
 
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)

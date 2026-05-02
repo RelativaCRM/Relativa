@@ -1,6 +1,6 @@
 # Project Overview -- What is Relativa?
 
-> **Last verified:** 2026-04-23
+> **Last verified:** 2026-05-01
 
 > **Maintenance obligation:** If you change the general purpose, domain model, tech stack, or repo layout, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -57,6 +57,7 @@ The domain model lives entirely in the shared Persistence library (`Persistence/
 | Frontend | Vue 3 + Vite + TypeScript, Pinia, Vue Router, PrimeVue 4 (Aura), Tailwind CSS 3, vis-network (graph placeholder) |
 | Database | PostgreSQL 16 |
 | ORM | Entity Framework Core 10 + Npgsql |
+| Messaging | RabbitMQ (audit events) |
 | Auth | JWT (symmetric key), BCrypt password hashing, FluentValidation |
 | Logging | Serilog (console + rolling file) |
 | API docs | OpenAPI + Scalar |
@@ -123,7 +124,7 @@ Relativa/
 | `Core/README.md` | Core service | Partially outdated -- mentions migrations in Core; they now live in Migration. |
 | `Gateway/README.md` | Gateway | Partially outdated -- says JWT validation is a stub; it is now fully configured. |
 | `Graph/README.md` | Graph service | Accurate (describes stub state). |
-| `Audit/README.md` | Audit service | Accurate (describes stub state). |
+| `Audit/README.md` | Audit service | Outdated -- Audit is now functional with RabbitMQ consumer + persistence. |
 | `Migration/README.md` | Migration runner | **Outdated** -- describes entrypoint.sh; actual code uses `MigrateAsync`. |
 | `ML/README.md` | ML service | Accurate (describes stub state). |
 | `Client/README.md` | Vue client | Accurate (Vite scaffold docs). |

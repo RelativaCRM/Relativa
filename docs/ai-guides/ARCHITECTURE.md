@@ -1,10 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-<<<<<<< CR-142/Entity_audit_log-migration
-> **Last verified:** 2026-04-30 (Added Audit Logs schemas)
-=======
-> **Last verified:** 2026-05-01 (gateway-only CORS policy standardized; Core wildcard CORS removed)
->>>>>>> release/1.0
+> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline + outbox dispatchers added)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -365,17 +361,17 @@ Authorization for workspace endpoints:
 ### Authorization policies
 
 - **Gateway:** `MapReverseProxy().RequireAuthorization()` -- all proxied routes require a valid JWT unless explicitly marked anonymous in YARP route config. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
-- **Audit:** `AuditReaders` policy requires any authenticated user (stub -- will be refined when Audit is implemented).
+- **Audit:** `AuditReaders` policy requires any authenticated user. Audit now consumes RabbitMQ events and persists entries into `entity_audit_log`, `workspace_audit_log`, `organization_audit_log`, `user_audit_log`.
 - **Core:** No ASP.NET authentication or authorization middleware. Identity comes exclusively from `X-User-Id` / `X-User-Email` headers (see "Internal identity propagation" above). Per-endpoint authorization is then enforced via `UserRoleOrganization` / `UserRoleWorkspace` DB lookups inside the application service layer.
 
 ---
 
 ## Inter-Service Communication
 
-- **HTTP via Gateway only.** No service-to-service calls exist.
-- **No message bus.** No RabbitMQ, Kafka, MassTransit, or gRPC.
+- **HTTP via Gateway only** for client-facing requests.
+- **RabbitMQ event bus** for audit events (`audit.events` exchange, topic routing by scope).
 - **SignalR:** Graph service exposes a WebSocket hub at `/hubs/graph` for real-time client updates (not inter-service messaging).
-- **Planned:** Domain events from Core to Audit (mechanism not yet decided -- could be direct HTTP, a message bus, or outbox pattern).
+- **Outbox dispatchers:** Core and Authentication write audit events to `audit_outbox` and publish asynchronously (fire-and-forget) to RabbitMQ.
 
 ---
 

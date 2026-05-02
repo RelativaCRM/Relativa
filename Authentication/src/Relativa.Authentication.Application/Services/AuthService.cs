@@ -3,6 +3,7 @@ using Relativa.Authentication.Application.DTOs;
 using Relativa.Authentication.Application.Interfaces;
 using Relativa.Persistence.Entities;
 using Relativa.Authentication.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 
 namespace Relativa.Authentication.Application.Services;
 
@@ -11,7 +12,8 @@ public sealed class AuthService(
     ITokenService tokenService,
     IPasswordHasher passwordHasher,
     IValidator<LoginRequestDto> loginValidator,
-    IValidator<RegisterRequestDto> registerValidator) : IAuthService
+    IValidator<RegisterRequestDto> registerValidator,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IAuthService
 {
     public async Task<LoginResponseDto> LoginAsync(LoginRequestDto request, CancellationToken ct = default)
     {
@@ -46,6 +48,31 @@ public sealed class AuthService(
         };
 
         await userRepository.AddAsync(user, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "authentication",
+                    ActorUserId: user.Id,
+                    AuditScope: AuditRouting.ScopeUser,
+                    TargetId: user.Id,
+                    Action: "user_registered",
+                    FieldName: null,
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        user.Id,
+                        user.Email,
+                        user.FirstName,
+                        user.LastName
+                    })),
+                ct);
+        }
 
         return new RegisterResponseDto(
             user.Id,

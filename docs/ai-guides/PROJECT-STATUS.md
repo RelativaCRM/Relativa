@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-02 (CR-118: client-side API integration + persisted state; entity store; GraphView rendered from live entity data; typed audit API client)
+> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline implemented with outbox + consumer)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -14,8 +14,8 @@
 | Authentication | **Functional** | Login, register, `/me` profile endpoint, JWT (sub + email only), FluentValidation -- all working |
 | Core | **Functional** (org + ws RBAC + entity CRUD) | Organization management, workspace management, split RBAC, members, invitations, join requests, permissions, entity-type listing (public), and workspace-scoped entity CRUD all implemented |
 | Graph | **Stub** | SignalR hub exists but has no logic |
-| Audit | **Stub** | Returns empty array; JWT validation disabled |
-| Migration | **Functional** | Applies EF migrations on startup; schema + seed data work. Four migrations: `InitialCreate`, `SeedData`, `EavSchemaReplace`, `ReseedPermissions`. |
+| Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
+| Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
 | ML | **Stub** | Single endpoint returns hardcoded stub |
 | Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + members/invitations + entity CRUD UI + dynamic entity-graph rendering, all driven by typed API clients (auth, org, workspace, entity, audit). Persisted state (token, profile, roles, current org/workspace ids) via a shared `localStorage` helper |
 | Persistence | **Functional** | Full EAV entity model (21 entities), fluent configs, ModelBuilderExtensions |
@@ -33,6 +33,7 @@
 - GlobalExceptionHandler maps ValidationException -> 400, UnauthorizedAccessException -> 401, duplicate email -> 409.
 - EF Core health check at `/health`.
 - OpenAPI + Scalar docs.
+- Fire-and-forget audit publishing: register flow writes to `audit_outbox`, dispatcher publishes to RabbitMQ.
 
 ### Core service -- Organization management
 
@@ -63,6 +64,7 @@
   - `PUT /{entityId}` — replace all property values; requires `manage_entities`.
   - `DELETE /{entityId}` — soft-delete (`is_archived = true`); requires `manage_entities`.
 - **GlobalExceptionHandler extended:** `KeyNotFoundException` → 404, `ValidationException` → 400 with error detail.
+- Fire-and-forget audit publishing for core write flows via `audit_outbox` + RabbitMQ dispatcher, including organizations/workspaces/entities, join requests, invitations, membership updates, and role lifecycle changes.
 
 ### Gateway
 
@@ -112,21 +114,18 @@
 
 - Vue 3 + Vite scaffold with TypeScript, Pinia, Vue Router.
 - **UI stack:** PrimeVue 4 (Aura preset) + Tailwind CSS 3 (`tailwindcss-primeui` bridge) + Inter font.
-- **Typed API client** (`src/api/http.ts`): `gatewayFetch` with JWT + `X-Workspace-ID` headers (workspace id read from the workspace store), `ApiError` class, JSON helpers (`api.get/post/put/del`), auto session clear on `401`.
-- **Persistence helper** (`src/api/persistence.ts`): `loadString` / `saveString` / `loadJson` / `saveJson` / `loadNumber` / `saveNumber` wrap `localStorage` with safe quota and JSON-parse handling. Used by auth/org/workspace stores.
+- **Typed API client** (`src/api/http.ts`): `gatewayFetch` with JWT + `X-Workspace-ID` headers (workspace id read from the workspace store), `ApiError` class, JSON helpers (`api.get/post/put/patch/del`). Auto session clear on `401` is **scoped to auth endpoints only** (`/auth/me`, `/auth/refresh`) — generic `401`s on business endpoints surface as `ApiError` so a transient permission change does not log the user out.
 - **Auth service** (`src/api/auth.ts`): `authApi.register`, `authApi.login`, `authApi.me` (via Gateway, CR-96).
 - **Organization service** (`src/api/organizations.ts`): org CRUD, members, invitations, join requests, roles, combined invitations (`/invitations/mine`).
 - **Workspace service** (`src/api/workspaces.ts`): workspace CRUD, members, roles, invitations.
-- **Entity service** (`src/api/entities.ts`): entity-type listing + workspace-scoped entity CRUD.
-- **Audit service** (`src/api/audit.ts`): typed `auditApi.list()` for `GET /audit/audit-log` (Swagger parity; backend still returns `[]` until the Audit service is implemented).
-- **Auth store** (Pinia) persists `accessToken` + `expiresAt` + `user` profile + `roles` in `localStorage` (CR-121); auto-saves user/roles via `watch`. Re-validates the cached profile on app boot via `App.vue` `onMounted` (`auth.fetchProfile`); falls back to logout on 401. Exposes `login`, `register`, `logout`, `fetchProfile`, `setRoles`; `isAuthenticated` respects token expiry.
-- **Organization store** (Pinia) manages current org selection (persisted via the persistence helper), members, roles, invitations; exposes `createOrganization`, `inviteMember`, `changeMemberRole`, `removeMember`, `fetchOrganizations`, `hasOrganization`.
-- **Workspace store** (Pinia) manages current workspace selection (persisted under `relativa_ws_id` via the persistence helper), workspaces list, members, roles, invitations; exposes `setCurrentWorkspace`, `fetchWorkspaces`, `createWorkspace`, `updateWorkspace`, `archiveWorkspace`, member/role/invitation actions, `clear`.
-- **Entity store** (Pinia) caches entity types globally and an entity list per workspace id, plus a per-id detail map; exposes `fetchTypes` (cached unless forced), `fetchList`, `fetchDetail`, `create`, `update`, `archive`, `clearWorkspace`, `clear`. Cleared on logout to avoid cross-tenant leak.
-- **Audit store** (Pinia) wraps `auditApi.list` with loading/error refs for the upcoming AuditLogView.
-- **Layouts:** `AuthLayout.vue` (centered card, brand mark) and `MainLayout.vue` (top bar with user name + org name + logout, sidebar nav with Home/Members/Workspaces/Invitations/Graph).
-- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype), `OnboardingView.vue` (create org, search & join, pending org invitations), `WorkspaceSelectorView.vue` (post-login workspace gate: lists workspaces as cards, auto-selects when exactly one exists, offers inline workspace creation when the user has none), `MembersView.vue`, `WorkspacesView.vue`, `WorkspaceMembersView.vue`, `EntitiesView.vue`, `EntityCreateForm.vue` (both consume the entity store), `InvitationsView.vue`, `HomeView.vue` (session + org info cards), `GraphView.vue` (vis-network rendering of the current workspace's entities; nodes labeled by the first non-empty primary property — title/name/email — with relationship edges deferred until the Graph backend ships an API).
-- **Router guards:** `meta.public`, `meta.guestOnly`, `meta.skipOrgCheck`, and `meta.skipWorkspaceCheck` flags. Unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users cannot visit `/login` or `/register`; authenticated users without an organization are sent to `/onboarding`; authenticated users with an organization but no current workspace are sent to `/workspace-select` (which auto-selects when only one workspace is available, preventing a needless extra screen).
+- **Entity service** (`src/api/entities.ts`): typed DTOs for `EntityTypeDto` / `EntityTypePropertyDto` / `EntityDetailDto`; `entityApi.listTypes()` (`GET /entity-types`), `entityApi.list/get/create/update/archive` (workspace-scoped under `/workspaces/{id}/entities`). `update` uses the shared `api.patch` helper.
+- **Auth store** (Pinia) persists `accessToken` + `expiresAt` in `localStorage`; stores `user` profile from `/me`; exposes `login`, `register`, `logout`, `fetchProfile`; `isAuthenticated` respects token expiry.
+- **Organization store** (Pinia) manages current org selection (persisted in `localStorage`), members, roles, invitations; exposes `createOrganization`, `inviteMember`, `changeMemberRole`, `removeMember`, `fetchOrganizations`, `hasOrganization`.
+- **Workspace store** (Pinia) manages current workspace selection (persisted in `localStorage` under `relativa_ws_id`), workspaces list, members, roles, invitations; exposes `setCurrentWorkspace`, `fetchWorkspaces`, `createWorkspace`, `updateWorkspace`, `archiveWorkspace`, member/role/invitation actions, `clear`.
+- **Layouts:** `AuthLayout.vue` (centered card, brand mark) and `MainLayout.vue` (top bar with user name + org name + logout, sidebar nav with Home/Workspaces/Invitations/Graph). Home uses `exact-active-class` so it does not stay highlighted when navigating to nested routes. The standalone top-level *Members* link was removed — member management is reached through *Workspaces → workspace card → Manage members*, which scopes membership to a specific workspace.
+- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype), `OnboardingView.vue` (create org, search & join, pending org invitations), `WorkspaceSelectorView.vue` (post-login workspace gate: lists workspaces as cards, auto-selects when exactly one exists, offers inline workspace creation when the user has none), `MembersView.vue` (org members; route still mounted but no longer surfaced from the sidebar), `WorkspacesView.vue` (cards now expose two actions per workspace: *Manage members* and *Entities*), `WorkspaceMembersView.vue` (header has a quick *Entities* button alongside *Invite member*; role labels cover `ws_admin / ws_manager / ws_analyst / ws_member` — the placeholder `ws_viewer` was removed), `InvitationsView.vue`, `EntitiesView.vue` (CR-138: `/workspaces/:id/entities` list of `entityApi.list()` rows with empty state and *Create entity* button; verifies the workspace belongs to the user before issuing the API call), `EntityCreateForm.vue` (CR-138: dropdown of entity types from `GET /entity-types`, dynamic field rendering by `dataType` — `String → InputText`, `Int/Decimal → InputNumber` with `min=0`, `Bool → ToggleSwitch`, `Date → DatePicker` serialized as `yyyy-MM-dd`; submit disabled while any required field is empty; toast `"<TypeName> created"` on 201; redirects to `workspace-entities`; *Cancel* navigates to the entities list, not browser history; shows "No record types available." when `GET /entity-types` returns empty), `HomeView.vue` (session + org info cards), `GraphView.vue` (vis-network placeholder, unchanged).
+- **Routes:** `/workspaces/:id/entities` → `EntitiesView.vue` (name `workspace-entities`); `/workspaces/:id/entities/new` → `EntityCreateForm.vue` (name `workspace-entity-create`).
+- **Router guards:** `meta.public`, `meta.guestOnly`, `meta.skipOrgCheck`, and `meta.skipWorkspaceCheck` flags. Unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users cannot visit `/login` or `/register`; authenticated users without an organization are sent to `/onboarding`; authenticated users with an organization but no current workspace are sent to `/workspace-select` (which auto-selects when only one workspace is available, preventing a needless extra screen). On a hard refresh, when `auth.isAuthenticated` is true but `auth.user` is null, the guard now eagerly calls `auth.fetchProfile()` so views like `HomeView.vue` always have an email/name to render.
 - `GraphView.vue` with vis-network placeholder (unchanged).
 - Reads `VITE_GATEWAY_URL` from environment; all traffic goes through the gateway.
 
@@ -150,8 +149,8 @@
 
 ### Audit service
 
-**What exists:** `/audit-log` endpoint with `AuditReaders` authorization policy (requires any authenticated user -- stub).
-**What is missing:** Endpoint returns empty array `[]`. JWT signature validation is deliberately disabled (all checks set to `false`). No actual audit event storage or ingestion. No domain event consumer.
+**What exists:** RabbitMQ consumer (`audit.#`) with idempotency tracking (`audit_processed_event`), persistence into all four audit tables, and filtered `/audit-log` endpoint.
+**What is missing:** JWT validation hardening (signature/issuer/audience/lifetime checks are still disabled for now).
 
 ### ML service
 
@@ -160,8 +159,8 @@
 
 ### Client
 
-**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) + org onboarding (create/join) + post-login workspace selection (`/workspace-select`, auto-select for single-workspace users, inline create when user has none) + member management (invite, role change, remove) + workspace CRUD + entity-type-driven entity creation + entity-graph visualization wired to Gateway. Typed API clients for auth + org + workspace + entity + audit endpoints. Router guards with org and workspace checks. Persisted state (token, expiry, user profile, roles, current org id, current workspace id) via a shared `localStorage` helper, with cached profile revalidated on app boot.
-**What is missing:** No join request review UI (admin can approve/reject). No custom role creation UI. No deal/client management UI. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). Graph relationships and ML scores are deferred until the Graph/ML services ship their APIs (Sprint 3). Audit-log view UI is deferred until the backend stops returning `[]` (Sprint 2 task 1.4.4).
+**What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth flow (login/register) + org onboarding (create/join) + post-login workspace selection (`/workspace-select`, auto-select for single-workspace users, inline create when user has none) + member management (invite, role change, remove) + workspace CRUD wired to Gateway. Typed API client for auth + org + workspace endpoints. Router guards with org and workspace checks.
+**What is missing:** No join request review UI (admin can approve/reject). No custom role creation UI. The entity list view is intentionally minimal (id + type tag) — entity detail / edit / archive UIs are still pending. No dashboard. "Forgot password?" link is a placeholder (endpoint not in backend). D3 integration noted as "for later."
 
 ---
 
@@ -233,13 +232,12 @@
 - ~~Organization onboarding (create / search & join).~~ *(done in CR-96)*
 - ~~Organization member management (list, invite, role change, remove).~~ *(done in CR-96)*
 - ~~Workspace selection (post-login gate with auto-select-when-one).~~ *(done in CR-133)*
-- ~~Typed API services + dynamic rendering of entity data.~~ *(done in CR-118 — `apiClient` is fetch-based, structured per Swagger)*
-- ~~Persistent client state (token, profile, roles, current org/workspace) across reloads.~~ *(done in CR-118 — shared `localStorage` helper, app-boot profile revalidation)*
-- ~~Replace static graph nodes with live workspace entities.~~ *(done in CR-118 — `GraphView.vue` renders entities returned by Core)*
+- ~~Entity create form (Sprint 1 ENT.5 — dropdown of types + dynamic property fields driven by `GET /entity-types`).~~ *(done in CR-138)*
+- ~~Minimal entity list view as the landing place after a successful create.~~ *(done in CR-138 follow-up)*
 - Workspace management UI (rename, archive from list).
 - Join request review UI (approve/reject pending requests).
 - Role and permission management UI.
-- Deal/client management pages.
+- Entity detail / edit / archive pages (Sprint 2).
 - Dashboard with analytics.
 - D3-based graph visualization (replacing vis-network placeholder).
 - Password reset flow (requires new backend endpoint).

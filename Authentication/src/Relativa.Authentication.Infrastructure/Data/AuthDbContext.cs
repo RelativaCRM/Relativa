@@ -9,6 +9,7 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbC
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<UserAuditLog> UserAuditLogs => Set<UserAuditLog>();
+    public DbSet<AuditOutboxMessage> AuditOutboxMessages => Set<AuditOutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
