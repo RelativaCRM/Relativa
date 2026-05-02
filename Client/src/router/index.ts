@@ -18,6 +18,7 @@ const WorkspaceMembersView = () =>
 const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
 const InvitationsView = () => import('@/views/InvitationsView.vue');
+const AuditLogView = () => import('@/views/AuditLogView.vue');
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -86,6 +87,11 @@ const router = createRouter({
           name: 'graph',
           component: GraphView,
           meta: { roles: ['User', 'Admin', 'Analyst'] },
+        },
+        {
+          path: 'audit-log',
+          name: 'audit-log',
+          component: AuditLogView,
         },
       ],
     },
