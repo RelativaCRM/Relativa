@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -8,7 +8,7 @@ import { useGraphStore } from '@/stores/graph';
 import { useEntityStore } from '@/stores/entity';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { ApiError } from '@/api/http';
-import type { EntityDetailDto, EntityListItemDto } from '@/api/entities';
+import type { EntityListItemDto } from '@/api/entities';
 
 const router = useRouter();
 const graphStore = useGraphStore();
@@ -25,28 +25,23 @@ const entities = computed(() =>
   workspaceId.value ? entityStore.entitiesFor(workspaceId.value) : [],
 );
 
-function pickPrimaryLabel(detail: EntityDetailDto | undefined, fallback: string): string {
-  if (!detail) return fallback;
-  const preferredOrder = ['title', 'name', 'first_name', 'email', 'company'];
-  for (const want of preferredOrder) {
-    const match = detail.propertyValues.find(
+const PRIMARY_FIELDS = ['title', 'name', 'first_name', 'email', 'company'];
+
+function buildLabel(item: EntityListItemDto): string {
+  const fallback = `${item.entityTypeName} #${item.id}`;
+  const values = item.propertyValues ?? [];
+  for (const want of PRIMARY_FIELDS) {
+    const match = values.find(
       (p) => p.name.toLowerCase() === want && p.value && p.value.trim() !== '',
     );
     if (match?.value) return match.value;
   }
-  const firstNonEmpty = detail.propertyValues.find(
-    (p) => p.value && p.value.trim() !== '',
-  );
+  const firstNonEmpty = values.find((p) => p.value && p.value.trim() !== '');
   return firstNonEmpty?.value ?? fallback;
 }
 
-function buildLabel(item: EntityListItemDto): string {
-  const detail = entityStore.detailById[item.id];
-  const fallback = `${item.entityTypeName} #${item.id}`;
-  return pickPrimaryLabel(detail, fallback);
-}
-
-function render() {
+async function render() {
+  await nextTick();
   if (!container.value) return;
   const items = entities.value;
   const nodes = items.map((e) => ({
@@ -79,19 +74,16 @@ async function load() {
   loading.value = true;
   errorMessage.value = null;
   try {
-    const list = await entityStore.fetchList(workspaceId.value);
-    await Promise.all(
-      list
-        .filter((e) => !entityStore.detailById[e.id])
-        .slice(0, 50)
-        .map((e) => entityStore.fetchDetail(workspaceId.value!, e.id)),
-    );
-    render();
+    await entityStore.fetchList(workspaceId.value);
+    await render();
   } catch (err) {
+    console.error('GraphView load failed:', err);
     errorMessage.value =
       err instanceof ApiError
-        ? err.message
-        : 'Failed to load graph data.';
+        ? err.message || `Request failed (${err.status})`
+        : err instanceof Error
+          ? err.message
+          : 'Failed to load graph data.';
   } finally {
     loading.value = false;
   }

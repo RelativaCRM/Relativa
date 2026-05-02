@@ -58,14 +58,7 @@ export const useEntityStore = defineStore('entity', () => {
     const current = entitiesByWorkspace.value[workspaceId] ?? [];
     entitiesByWorkspace.value = {
       ...entitiesByWorkspace.value,
-      [workspaceId]: [
-        ...current,
-        {
-          id: detail.id,
-          entityTypeId: detail.entityTypeId,
-          entityTypeName: detail.entityTypeName,
-        },
-      ],
+      [workspaceId]: [...current, detail],
     };
     return detail;
   }

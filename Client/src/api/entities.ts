@@ -30,14 +30,10 @@ export interface EntityListItemDto {
   id: number;
   entityTypeId: number;
   entityTypeName: string;
-}
-
-export interface EntityDetailDto {
-  id: number;
-  entityTypeId: number;
-  entityTypeName: string;
   propertyValues: EntityPropertyValueDto[];
 }
+
+export type EntityDetailDto = EntityListItemDto;
 
 export interface EntityPropertyInput {
   propertyId: number;
