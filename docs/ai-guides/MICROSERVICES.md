@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-02 (Transactional outbox: audit.exchange + choreography `relativa.domain`; Graph & ML consume `core.workspace.*`)
+> **Last verified:** 2026-05-02 (User provisioning: org-scoped admin APIs + email normalization; transactional outbox unchanged)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -51,6 +51,8 @@
 
 **JWT-required auth routes** (not anonymous):
 - `GET /auth/api/v1/auth/me`
+- `PATCH /auth/api/v1/auth/me`
+- `DELETE /auth/api/v1/auth/me`
 
 ### Status: Functional
 
@@ -78,16 +80,18 @@ YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issue
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password, returns user DTO + Location header |
-| POST | `/api/v1/auth/login` | None | Validates credentials, returns `{ accessToken, expiresAt }` |
+| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password (email stored lowercase), returns user DTO + Location header |
+| POST | `/api/v1/auth/login` | None | Validates credentials (email matched lowercase), returns `{ accessToken, expiresAt }` |
 | GET | `/api/v1/auth/me` | JWT | Returns authenticated user's profile `{ id, email, firstName, lastName }` from JWT `sub` claim |
+| PATCH | `/api/v1/auth/me` | JWT | Updates authenticated user's first and last name |
+| DELETE | `/api/v1/auth/me` | JWT | Soft-archives the authenticated user (`is_archived`) |
 | GET | `/health` | None | EF Core DB health check |
 | GET | `/scalar/v1` | None | Scalar interactive API docs |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
 ### Status: Functional
 
-Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, duplicate email to 409.
+Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are normalized to lowercase on register and login. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, `KeyNotFoundException` to 404, duplicate email to 409 (including PostgreSQL unique violations on concurrent insert).
 
 **Not yet implemented:** token refresh, token blacklisting.
 
@@ -97,7 +101,8 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 
 - `Authentication/src/Relativa.Authentication/Program.cs` -- DI, middleware, endpoint mapping
 - `Authentication/src/Relativa.Authentication/Endpoints/AuthEndpoints.cs` -- route definitions
-- `Authentication/src/Relativa.Authentication.Application/Services/AuthService.cs` -- business logic
+- `Authentication/src/Relativa.Authentication.Application/Services/AuthService.cs` -- login/profile; register delegates to `UserProvisioningService`
+- `Authentication/src/Relativa.Authentication.Application/Services/UserProvisioningService.cs` -- shared user create/update/archive + audit
 - `Authentication/src/Relativa.Authentication.Application/DTOs/` -- request/response DTOs (includes `UserProfileDto`)
 - `Authentication/src/Relativa.Authentication.Application/Interfaces/IAuthService.cs`
 - `Authentication/src/Relativa.Authentication.Application/Validators/` -- FluentValidation rules
@@ -136,6 +141,14 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | GET | `/api/v1/organizations/{id}/members` | JWT + org membership | List organization members |
 | DELETE | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove member from organization |
 | PUT | `/api/v1/organizations/{id}/members/{userId}/role` | JWT + `assign_org_roles` | Change member's organization role |
+
+### Endpoints -- Organization users (admin provisioning)
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` | Create user account (bcrypt password), add as `org_member`; 201 + Location |
+| PATCH | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's first/last name (not self; use Auth `/me`) |
+| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (soft-delete) |
 
 ### Endpoints -- Organization Join Requests
 

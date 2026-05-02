@@ -68,6 +68,7 @@ try
     builder.Services.AddScoped<IUserRepository, UserRepository>();
     builder.Services.AddScoped<ITokenService, JwtTokenService>();
     builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+    builder.Services.AddScoped<IUserProvisioningService, UserProvisioningService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
     builder.Services.AddHostedService<AuditOutboxDispatcher>();

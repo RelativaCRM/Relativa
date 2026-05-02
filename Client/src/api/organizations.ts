@@ -1,3 +1,4 @@
+import type { RegisterRequest, RegisterResponse, UserProfile } from '@/api/auth';
 import { api } from '@/api/http';
 
 /* ── DTOs ───────────────────────────────────────────────── */
@@ -88,6 +89,25 @@ export const orgApi = {
   },
   removeMember(orgId: number, userId: number): Promise<void> {
     return api.del(`${CORE}/organizations/${orgId}/members/${userId}`);
+  },
+
+  /** Requires `create_org_users`; adds new user as org_member */
+  createOrgUser(orgId: number, payload: RegisterRequest): Promise<RegisterResponse> {
+    return api.post<RegisterResponse>(`${CORE}/organizations/${orgId}/users`, {
+      ...payload,
+    });
+  },
+  /** Requires `edit_other_org_users_profile` */
+  updateOrgUserProfile(
+    orgId: number,
+    userId: number,
+    payload: { firstName: string; lastName: string },
+  ): Promise<UserProfile> {
+    return api.patch<UserProfile>(`${CORE}/organizations/${orgId}/users/${userId}`, payload);
+  },
+  /** Requires `delete_org_users`; archives the user account */
+  deleteOrgUser(orgId: number, userId: number): Promise<void> {
+    return api.del(`${CORE}/organizations/${orgId}/users/${userId}`);
   },
   changeMemberRole(orgId: number, userId: number, roleId: number): Promise<void> {
     return api.put(`${CORE}/organizations/${orgId}/members/${userId}/role`, {

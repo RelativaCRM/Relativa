@@ -33,6 +33,11 @@ export interface UserProfile {
 
 const AUTH_PREFIX = '/auth/api/v1/auth';
 
+export interface UpdateProfileRequest {
+  firstName: string;
+  lastName: string;
+}
+
 export const authApi = {
   register(payload: RegisterRequest): Promise<RegisterResponse> {
     return api.post<RegisterResponse>(`${AUTH_PREFIX}/register`, { ...payload });
@@ -42,5 +47,11 @@ export const authApi = {
   },
   me(): Promise<UserProfile> {
     return api.get<UserProfile>(`${AUTH_PREFIX}/me`);
+  },
+  updateProfile(payload: UpdateProfileRequest): Promise<UserProfile> {
+    return api.patch<UserProfile>(`${AUTH_PREFIX}/me`, { ...payload });
+  },
+  deleteAccount(): Promise<void> {
+    return api.del(`${AUTH_PREFIX}/me`);
   },
 };
