@@ -22,8 +22,9 @@ export interface EntityTypeDto {
 
 export interface EntityPropertyValueDto {
   propertyId: number;
-  name: string;
-  value: string | null;
+  propertyName: string;
+  dataType: EntityPropertyDataType;
+  value: string | number | boolean | null;
 }
 
 export interface EntityListItemDto {

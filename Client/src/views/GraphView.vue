@@ -27,17 +27,23 @@ const entities = computed(() =>
 
 const PRIMARY_FIELDS = ['title', 'name', 'first_name', 'email', 'company'];
 
+function valueToString(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v.trim();
+  return String(v);
+}
+
 function buildLabel(item: EntityListItemDto): string {
   const fallback = `${item.entityTypeName} #${item.id}`;
   const values = item.propertyValues ?? [];
   for (const want of PRIMARY_FIELDS) {
     const match = values.find(
-      (p) => p.name.toLowerCase() === want && p.value && p.value.trim() !== '',
+      (p) => (p.propertyName ?? '').toLowerCase() === want && valueToString(p.value) !== '',
     );
-    if (match?.value) return match.value;
+    if (match) return valueToString(match.value);
   }
-  const firstNonEmpty = values.find((p) => p.value && p.value.trim() !== '');
-  return firstNonEmpty?.value ?? fallback;
+  const firstNonEmpty = values.find((p) => valueToString(p.value) !== '');
+  return firstNonEmpty ? valueToString(firstNonEmpty.value) : fallback;
 }
 
 async function render() {
