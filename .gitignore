@@ -55,3 +55,4 @@ Thumbs.db
 # Playwright output
 test-results/
 tests/e2e/results.json
+.claude/
