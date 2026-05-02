@@ -1,6 +1,7 @@
 using Relativa.Core.Application.DTOs.Member;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
@@ -9,7 +10,8 @@ public sealed class WorkspaceMemberService(
     IUserRoleWorkspaceRepository memberRepository,
     IWorkspaceRoleRepository roleRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
-    IWorkspaceRepository workspaceRepository) : IWorkspaceMemberService
+    IWorkspaceRepository workspaceRepository,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IWorkspaceMemberService
 {
     public async Task<List<WorkspaceMemberDto>> GetMembersAsync(int workspaceId, int userId, CancellationToken ct = default)
     {
@@ -43,6 +45,24 @@ public sealed class WorkspaceMemberService(
 
         targetMember.WsRoleId = role.Id;
         await memberRepository.UpdateAsync(targetMember, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: workspaceId,
+                    Action: "workspace_member_role_changed",
+                    FieldName: "user_role_workspace.ws_role_id",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { targetUserId, RoleId = role.Id })),
+                ct);
+        }
     }
 
     public async Task RemoveAsync(int workspaceId, int targetUserId, int callerUserId, CancellationToken ct = default)
@@ -54,6 +74,24 @@ public sealed class WorkspaceMemberService(
             ?? throw new KeyNotFoundException("Target user is not a member of this workspace.");
 
         await memberRepository.RemoveAsync(member, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: workspaceId,
+                    Action: "workspace_member_removed",
+                    FieldName: "user_role_workspace",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { targetUserId }),
+                    NewValueJson: null),
+                ct);
+        }
     }
 
     public async Task<WorkspaceMemberDto> AddMemberAsync(int workspaceId, int callerUserId, AddWorkspaceMemberRequest request, CancellationToken ct = default)
@@ -86,6 +124,24 @@ public sealed class WorkspaceMemberService(
         };
 
         await memberRepository.AddAsync(member, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: workspaceId,
+                    Action: "workspace_member_added",
+                    FieldName: "user_role_workspace",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { member.UserId, member.WsRoleId })),
+                ct);
+        }
 
         var user = targetOrgMembership.User;
         return new WorkspaceMemberDto(

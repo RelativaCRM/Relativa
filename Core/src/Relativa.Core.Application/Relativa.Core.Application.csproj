@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Relativa.Core.Domain\Relativa.Core.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Persistence\src\Relativa.Persistence\Relativa.Persistence.csproj" />
   </ItemGroup>
 
   <ItemGroup>

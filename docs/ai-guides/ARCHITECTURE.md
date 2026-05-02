@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-04-23 (entity-type listing + entity CRUD implemented; GlobalExceptionHandler extended; permissions re-seeded)
+> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline + outbox dispatchers added)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -101,7 +101,7 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 | `Configurations/` | EF Fluent API `IEntityTypeConfiguration<T>` classes for each entity |
 | `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full 21-entity model) |
 
-### Entity list (21 entities)
+### Entity list (25 entities)
 
 | Entity | Table name | Notes |
 |---|---|---|
@@ -126,6 +126,10 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 | `EntityPropertyValue` | `entity_property_value` | **EAV data layer.** Stores a concrete attribute value for an entity. Composite PK `(entity_id, property_id)`. Five typed value columns: `value_string`, `value_int`, `value_decimal`, `value_bool`, `value_date`. Only one is populated per row. |
 | `EntityRelationshipType` | `entity_relationship_type` | **EAV schema layer.** Defines valid entity-type-to-entity-type link schemas (e.g. `deal_client`: deal → client). |
 | `EntityRelationship` | `entity_relationship` | **EAV data layer.** A concrete directed link between two entity instances, typed by `EntityRelationshipType`. |
+| `EntityAuditLog` | `entity_audit_log` | Polymorphic audit log base class specialized for entities. Has `entity_id` and `changed_by` JSONB properties. |
+| `WorkspaceAuditLog` | `workspace_audit_log` | Polymorphic audit log base class specialized for workspaces. |
+| `UserAuditLog` | `user_audit_log` | Polymorphic audit log base class specialized for users. |
+| `OrganizationAuditLog` | `organization_audit_log` | Polymorphic audit log base class specialized for organizations. |
 
 **Dropped in EAV migration:** `EntityProperty` (polymorphic hub), `PersonalDataPropertyValue`, `LocationPropertyValue`, `DealPropertyValue`. Their data is now stored as `EntityPropertyValue` rows. The deal→client association previously held as a FK in `DealPropertyValue.client_id` is now an `EntityRelationship` row of type `deal_client`.
 
@@ -357,17 +361,17 @@ Authorization for workspace endpoints:
 ### Authorization policies
 
 - **Gateway:** `MapReverseProxy().RequireAuthorization()` -- all proxied routes require a valid JWT unless explicitly marked anonymous in YARP route config. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
-- **Audit:** `AuditReaders` policy requires any authenticated user (stub -- will be refined when Audit is implemented).
+- **Audit:** `AuditReaders` policy requires any authenticated user. Audit now consumes RabbitMQ events and persists entries into `entity_audit_log`, `workspace_audit_log`, `organization_audit_log`, `user_audit_log`.
 - **Core:** No ASP.NET authentication or authorization middleware. Identity comes exclusively from `X-User-Id` / `X-User-Email` headers (see "Internal identity propagation" above). Per-endpoint authorization is then enforced via `UserRoleOrganization` / `UserRoleWorkspace` DB lookups inside the application service layer.
 
 ---
 
 ## Inter-Service Communication
 
-- **HTTP via Gateway only.** No service-to-service calls exist.
-- **No message bus.** No RabbitMQ, Kafka, MassTransit, or gRPC.
+- **HTTP via Gateway only** for client-facing requests.
+- **RabbitMQ event bus** for audit events (`audit.events` exchange, topic routing by scope).
 - **SignalR:** Graph service exposes a WebSocket hub at `/hubs/graph` for real-time client updates (not inter-service messaging).
-- **Planned:** Domain events from Core to Audit (mechanism not yet decided -- could be direct HTTP, a message bus, or outbox pattern).
+- **Outbox dispatchers:** Core and Authentication write audit events to `audit_outbox` and publish asynchronously (fire-and-forget) to RabbitMQ.
 
 ---
 
@@ -379,7 +383,7 @@ Authorization for workspace endpoints:
 | **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. | Core, Authentication, Gateway (distinct implementations per host) |
 | **Health checks** | `/health` endpoint, EF Core DB checks on Auth and Core | All .NET services |
 | **API docs** | OpenAPI + Scalar (`/scalar/v1`, `/openapi/v1.json`) | Auth, Core, Gateway, Graph (dev) |
-| **CORS** | Gateway: named-origin allowlist with credentials (reads `Cors:Origins` from config, defaults to `http://localhost:5173` and `http://localhost:3000`). Core: `AllowAnyOrigin/Header/Method` (dev-only, Core is only reached via the gateway in deployed environments). | Gateway + Core |
+| **CORS** | Gateway-only policy. Default: named-origin allowlist with credentials (`Cors:Origins`). Optional local dev override: `Cors:AllowAnyOriginForDev=true` enables wildcard origin without credentials. Downstream services do not apply local CORS policies to avoid drift. | Gateway |
 | **Identity forwarding** | YARP request transform on every proxied request: strips any incoming `X-User-Id` / `X-User-Email`, then re-adds them from the validated `ClaimsPrincipal` (`sub` and `email` claims). Downstream services trust these headers and do not re-validate JWTs. | Gateway |
 | **Forwarded headers** | `X-Forwarded-For`, `X-Forwarded-Proto` | Gateway |
 

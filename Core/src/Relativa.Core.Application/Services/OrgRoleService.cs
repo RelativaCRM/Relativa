@@ -3,6 +3,7 @@ using Relativa.Core.Application.DTOs.OrgRole;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
@@ -11,7 +12,8 @@ public sealed class OrgRoleService(
     IOrganizationRoleRepository orgRoleRepository,
     IPermissionRepository permissionRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
-    IValidator<CreateOrgRoleRequest> createValidator) : IOrgRoleService
+    IValidator<CreateOrgRoleRequest> createValidator,
+    IAuditOutboxWriter? auditOutboxWriter = null) : IOrgRoleService
 {
     public async Task<List<OrgRoleDto>> GetByOrganizationAsync(int organizationId, int userId, CancellationToken ct = default)
     {
@@ -56,6 +58,24 @@ public sealed class OrgRoleService(
         }
 
         await orgRoleRepository.UpdateAsync(role, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_role_created",
+                    FieldName: "organization_roles",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { role.Id, role.Name, request.PermissionIds })),
+                ct);
+        }
 
         return new OrgRoleDto(
             role.Id,
@@ -98,6 +118,24 @@ public sealed class OrgRoleService(
         }
 
         await orgRoleRepository.UpdateAsync(role, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_role_updated",
+                    FieldName: "organization_roles",
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { role.Id, role.Name, request.PermissionIds })),
+                ct);
+        }
     }
 
     public async Task ArchiveAsync(int organizationId, int roleId, int userId, CancellationToken ct = default)
@@ -115,6 +153,24 @@ public sealed class OrgRoleService(
 
         role.IsArchived = true;
         await orgRoleRepository.UpdateAsync(role, ct);
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_role_archived",
+                    FieldName: "organization_roles.is_archived",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = false, role.Id }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = true, role.Id })),
+                ct);
+        }
     }
 
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)

@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Relativa.Authentication.Domain\Relativa.Authentication.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Persistence\src\Relativa.Persistence\Relativa.Persistence.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,6 @@
 # Docker Setup -- Infrastructure and Deployment
 
-> **Last verified:** 2026-04-13
+> **Last verified:** 2026-05-01 (RabbitMQ added for audit event transport)
 
 > **Maintenance obligation:** If you change Docker Compose, Dockerfiles, networking, volumes, or environment variables, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -56,16 +56,19 @@ The startup chain enforced by Docker Compose `depends_on` conditions:
 2. **pgadmin** starts once postgres is healthy (ops tool, not an app dependency).
 3. **migration** starts once postgres is healthy. Runs `Database.MigrateAsync()`, applies all EF migrations, then exits with code 0.
 4. **auth** and **core** start once migration completes successfully (`service_completed_successfully`). Both need the schema to be ready.
-5. **graph**, **ml**, **audit** start independently (no DB dependency in compose, though Graph/Audit may add one later).
-6. **gateway** starts once auth, core, graph, ml, and audit are started (so YARP has upstream targets).
-7. **client** starts once gateway is started (needs `VITE_GATEWAY_URL` to resolve).
+5. **rabbitmq** starts and becomes healthy.
+6. **graph**, **ml** start independently.
+7. **audit** starts after postgres + migration + rabbitmq.
+8. **auth** and **core** also depend on rabbitmq for audit-outbox publishing.
+9. **gateway** starts once auth, core, graph, ml, and audit are started (so YARP has upstream targets).
+10. **client** starts once gateway is started (needs `VITE_GATEWAY_URL` to resolve).
 
 ---
 
 ## Network
 
 - **Single bridge network:** `relativa_net` (`driver: bridge`)
-- All 10 services attach to this network.
+- All services attach to this network, including RabbitMQ.
 - **Internal DNS:** Services resolve each other by compose service name (e.g. `postgres`, `auth`, `core`). The Gateway's YARP cluster destinations are overridden in compose to use these DNS names (e.g. `http://auth:8081/`).
 
 ---
@@ -91,6 +94,8 @@ No other named or bind-mount volumes are defined. Service containers are statele
 | graph | 8083 | 8083 | |
 | ml | 8084 | 8084 | |
 | audit | 8086 | 8086 | |
+| rabbitmq | 5672 | 5672 | AMQP broker for audit events |
+| rabbitmq-management | 15672 | 15672 | RabbitMQ management UI |
 | gateway | 8080 | 8080 | Main entry point for clients |
 | client | 3000 | `${CLIENT_PORT}` (default 3000) | |
 | migration | -- | -- | No port (console app, exits after migration) |
@@ -123,7 +128,7 @@ Services that reference the shared `Persistence` library need the **repo root** 
 | `Migration/Dockerfile` | `.` (repo root) | Yes |
 | `Gateway/Dockerfile` | `./Gateway` | No |
 | `Graph/Dockerfile` | `./Graph` | No |
-| `Audit/Dockerfile` | `./Audit` | No |
+| `Audit/Dockerfile` | `.` (repo root) | Yes |
 
 ### Non-.NET services
 
@@ -151,6 +156,9 @@ Template for Docker Compose variable substitution. Users copy to `.env` (gitigno
 | `PGADMIN_PORT` | pgadmin | Host-exposed port |
 | `CLIENT_PORT` | client | Host-exposed port |
 | `VITE_GATEWAY_URL` | client | Gateway URL the SPA calls |
+| `CORS_ORIGIN_1` | gateway | First allowed browser origin for gateway CORS allowlist |
+| `CORS_ORIGIN_2` | gateway | Second allowed browser origin for gateway CORS allowlist |
+| `CORS_ALLOW_ANY_ORIGIN_FOR_DEV` | gateway | Local dev-only wildcard CORS override (`true`/`false`) |
 | `JWT_SECRET` | auth, gateway | Shared symmetric signing key |
 | `JWT_ISSUER` | auth, gateway | Token issuer claim |
 | `JWT_AUDIENCE` | auth, gateway | Token audience claim |
@@ -161,6 +169,7 @@ Template for Docker Compose variable substitution. Users copy to `.env` (gitigno
 - **.NET services** read these as **configuration overrides** using the ASP.NET Core env-var convention: `ConnectionStrings__Default`, `Jwt__Secret`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__AccessTokenMinutes`.
 - **Default values** live in each service's `appsettings.json` (localhost-friendly). Docker overrides them for the container environment.
 - **Gateway YARP destinations** are overridden in compose: `ReverseProxy__Clusters__auth-cluster__Destinations__default__Address=http://auth:8081/` etc.
+- **Gateway CORS policy** is configured by compose env overrides: `Cors__Origins__0`, `Cors__Origins__1`, and `Cors__AllowAnyOriginForDev`.
 - **Client** reads `VITE_GATEWAY_URL` at build/dev time (Vite env prefix).
 
 ### Critical: JWT settings must match

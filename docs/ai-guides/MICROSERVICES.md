@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-04-23 (entity-type listing + entity CRUD implemented; permissions re-seeded)
+> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline implemented)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -14,7 +14,7 @@
 | Authentication | 8081 | .NET 10, JWT, BCrypt, FluentValidation | Functional |
 | Core | 8082 | .NET 10, EF Core | Functional (org + workspace RBAC) |
 | Graph | 8083 | .NET 10, SignalR | Stub |
-| Audit | 8086 | .NET 10 | Stub |
+| Audit | 8086 | .NET 10, EF Core, RabbitMQ | Functional |
 | Migration | -- | .NET 10, EF Core (console) | Functional |
 | ML | 8084 | Django 5.1, DRF | Stub |
 | Client | 3000 | Vue 3, Vite | Scaffold |
@@ -54,7 +54,7 @@
 
 ### Status: Functional
 
-YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issuer, audience, signing key, lifetime), CORS (named-origin allowlist with credentials, configurable via `Cors:Origins`), forwarded headers, Serilog, global exception handler, OpenAPI + Scalar all working. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
+YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issuer, audience, signing key, lifetime), and gateway-owned CORS all working. Gateway CORS is configured via `Cors:Origins` (allowlist + credentials by default) with optional local dev override `Cors:AllowAnyOriginForDev=true` (wildcard origin without credentials). Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
 
 **Identity forwarding:** a YARP request transform runs on every proxied request. It unconditionally removes any incoming `X-User-Id` / `X-User-Email` (so clients cannot spoof identity), then, if the request is authenticated, re-adds them from the validated `ClaimsPrincipal` (`sub` → `X-User-Id`, `email` → `X-User-Email`). Downstream services (Core today; Graph/ML/Audit in the future) trust these headers and do **not** re-validate JWTs. This keeps JWT handling centralized in the Gateway (single-responsibility) and avoids duplicating JWT config across every service.
 
@@ -90,6 +90,8 @@ YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issue
 Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, duplicate email to 409.
 
 **Not yet implemented:** token refresh, token blacklisting.
+
+**Audit publishing:** Authentication now writes audit events to `audit_outbox` and a background dispatcher publishes them to RabbitMQ (`audit.events`) in fire-and-forget mode.
 
 ### Key Files
 
@@ -233,11 +235,11 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | GET | `/scalar/v1` | None | Scalar interactive API docs (dev only) |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
-### Status: Functional (organization + workspace RBAC + entity CRUD implemented)
+### Status: Functional (organization + workspace RBAC + entity CRUD + audit outbox publishing implemented)
 
-Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), the split RBAC permission model, and workspace-scoped entity CRUD are all functional. Business rules and domain events are not yet implemented.
+Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), the split RBAC permission model, workspace-scoped entity CRUD, and audit outbox publishing are functional.
 
-**Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`). It reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway; in `docker-compose.yml` only the Gateway publishes a host port.
+**Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`) and no local CORS policy; browser CORS is enforced at Gateway. Core reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway.
 
 ### Key Files
 
@@ -294,13 +296,15 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 | GET | `/` | None | Returns `{"service":"relativa-audit"}` |
 | GET | `/audit-log` | Policy `AuditReaders` (role = Admin or Analyst) | Returns empty array `[]` |
 
-### Status: Stub
+### Status: Functional
 
-JWT Bearer is registered but **signature validation is disabled** (issuer, audience, signing key, lifetime checks all `false`). The `SignatureValidator` parses the token without cryptographic verification. The `/audit-log` endpoint returns an empty array. No actual audit event ingestion exists.
+JWT Bearer is registered (stub validation settings retained for now), Audit now consumes RabbitMQ audit events (`audit.#`) and persists them into `entity_audit_log`, `workspace_audit_log`, `organization_audit_log`, and `user_audit_log` with idempotency tracking (`audit_processed_event`). `/audit-log` now supports filtered reads by `scope`, `targetId`, `actorUserId`, and date range.
 
 ### Key Files
 
-- `Audit/src/Relativa.Audit/Program.cs` -- JWT stub config, authorization policy, endpoints
+- `Audit/src/Relativa.Audit/Program.cs` -- JWT config, authorization policy, endpoints
+- `Audit/src/Relativa.Audit/Services/AuditEventConsumer.cs` -- RabbitMQ consumer + persistence mapping
+- `Audit/src/Relativa.Audit/Data/AuditDbContext.cs` -- audit persistence context
 
 ---
 
