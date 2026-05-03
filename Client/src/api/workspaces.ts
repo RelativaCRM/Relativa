@@ -31,6 +31,20 @@ export interface WorkspaceRoleDto {
 
 export type WorkspaceInvitationDto = MyWorkspaceInvitationDto;
 
+export interface WsJoinRequestDto {
+  id: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  workspaceId: number;
+  workspaceName: string;
+  message: string | null;
+  status: string;
+  createdAt: string;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+}
+
 const CORE = '/core/api/v1';
 
 export const workspaceApi = {
@@ -102,6 +116,39 @@ export const workspaceApi = {
   },
   cancelInvitation(wsId: number, invId: number): Promise<void> {
     return api.del(`${CORE}/workspaces/${wsId}/invitations/${invId}`);
+  },
+  resendInvitation(
+    wsId: number,
+    invId: number,
+  ): Promise<WorkspaceInvitationDto> {
+    return api.post<WorkspaceInvitationDto>(
+      `${CORE}/workspaces/${wsId}/invitations/${invId}/resend`,
+    );
+  },
+
+  /* Workspace join requests */
+  submitJoinRequest(wsId: number, message: string): Promise<WsJoinRequestDto> {
+    return api.post<WsJoinRequestDto>(
+      `${CORE}/workspaces/${wsId}/join-requests`,
+      { message },
+    );
+  },
+  listJoinRequests(wsId: number): Promise<WsJoinRequestDto[]> {
+    return api.get<WsJoinRequestDto[]>(
+      `${CORE}/workspaces/${wsId}/join-requests`,
+    );
+  },
+  reviewJoinRequest(
+    wsId: number,
+    reqId: number,
+    decision: 'Approved' | 'Rejected',
+  ): Promise<void> {
+    return api.put(`${CORE}/workspaces/${wsId}/join-requests/${reqId}`, {
+      decision,
+    });
+  },
+  myWorkspaceJoinRequests(): Promise<WsJoinRequestDto[]> {
+    return api.get<WsJoinRequestDto[]>(`${CORE}/workspace-join-requests/mine`);
   },
 };
 

@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
+using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Core.Application.DTOs.Invitation;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.DTOs.Workspace;
@@ -63,6 +64,9 @@ public sealed class WorkspaceIsolationTests
             _memberRepo.Object,
             new Mock<IWorkspaceRoleRepository>().Object,
             new Mock<IOrgInvitationRepository>().Object,
+            new Mock<IWorkspaceRepository>().Object,
+            new Mock<IUserRoleOrganizationRepository>().Object,
+            new Mock<IUserRepository>().Object,
             inviteValidator.Object,
             new Mock<IValidator<AcceptInvitationRequest>>().Object);
     }

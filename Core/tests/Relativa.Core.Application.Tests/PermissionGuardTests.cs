@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
+using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Core.Application.DTOs.Invitation;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.DTOs.Workspace;
@@ -49,11 +50,22 @@ public sealed class PermissionGuardTests
         Mock<IUserRoleWorkspaceRepository> memberRepo,
         Mock<IWorkspaceRoleRepository> roleRepo,
         Mock<IWorkspaceInvitationRepository> invitationRepo,
-        Mock<IValidator<InviteMemberRequest>> inviteValidator) =>
-        new(invitationRepo.Object, memberRepo.Object, roleRepo.Object,
+        Mock<IValidator<InviteMemberRequest>> inviteValidator)
+    {
+        var workspaceRepo = new Mock<IWorkspaceRepository>();
+        workspaceRepo
+            .Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) =>
+                new Workspace { Id = id, OrganizationId = id + 1000, Name = "Test WS" });
+
+        return new(invitationRepo.Object, memberRepo.Object, roleRepo.Object,
             new Mock<IOrgInvitationRepository>().Object,
+            workspaceRepo.Object,
+            new Mock<IUserRoleOrganizationRepository>().Object,
+            new Mock<IUserRepository>().Object,
             inviteValidator.Object,
             new Mock<IValidator<AcceptInvitationRequest>>().Object);
+    }
 
     private static RoleService BuildRoleService(
         Mock<IUserRoleWorkspaceRepository> memberRepo,

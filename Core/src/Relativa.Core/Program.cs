@@ -63,6 +63,7 @@ try
     builder.Services.AddScoped<IOrganizationRoleRepository, OrganizationRoleRepository>();
     builder.Services.AddScoped<IJoinRequestRepository, JoinRequestRepository>();
     builder.Services.AddScoped<IOrgInvitationRepository, OrgInvitationRepository>();
+    builder.Services.AddScoped<IWsJoinRequestRepository, WsJoinRequestRepository>();
     builder.Services.AddScoped<IEntityTypeRepository, EntityTypeRepository>();
     builder.Services.AddScoped<IEntityRepository, EntityRepository>();
 
@@ -79,6 +80,7 @@ try
     builder.Services.AddScoped<IOrgRoleService, OrgRoleService>();
     builder.Services.AddScoped<IOrgInvitationService, OrgInvitationService>();
     builder.Services.AddScoped<IJoinRequestService, JoinRequestService>();
+    builder.Services.AddScoped<IWsJoinRequestService, WsJoinRequestService>();
     builder.Services.AddScoped<IOrganizationUserAdminService, OrganizationUserAdminService>();
 
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -102,6 +104,7 @@ try
     app.MapOrganizationEndpoints();
     app.MapOrgMemberEndpoints();
     app.MapJoinRequestEndpoints();
+    app.MapWsJoinRequestEndpoints();
     app.MapOrgInvitationEndpoints();
     app.MapOrgRoleEndpoints();
     app.MapOrganizationUserEndpoints();

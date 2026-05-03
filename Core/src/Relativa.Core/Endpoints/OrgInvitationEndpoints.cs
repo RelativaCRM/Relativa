@@ -41,6 +41,16 @@ public static class OrgInvitationEndpoints
         .WithSummary("Cancel a pending organization invitation")
         .Produces(StatusCodes.Status204NoContent);
 
+        orgGroup.MapPost("/{invitationId:int}/resend", async (int organizationId, int invitationId, IOrgInvitationService service, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            var result = await service.ResendAsync(organizationId, invitationId, userId, ct);
+            return Results.Ok(result);
+        })
+        .WithName("ResendOrgInvitation")
+        .WithSummary("Rotate the token and extend the expiry on a pending organization invitation")
+        .Produces<OrgInvitationDto>(StatusCodes.Status200OK);
+
         var acceptGroup = routes.MapGroup("/api/v1/invitations")
             .WithTags("Invitations");
 

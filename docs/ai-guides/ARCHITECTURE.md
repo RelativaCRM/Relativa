@@ -1,10 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-<<<<<<< HEAD
-> **Last verified:** 2026-05-03 (CR-127: documented client-side error envelope contract — `normalizeError` parses `{ status, title, detail }` and FluentValidation `Field: msg` strings into `fieldErrors`)
-=======
-> **Last verified:** 2026-05-02 (Core ↔ Authentication.Application user provisioning; Auth exception mapping extended)
->>>>>>> release/1.0
+> **Last verified:** 2026-05-03 (Prod-grade invitation system: `OrganizationInvitation.OrgRoleId` added, new `workspace_join_requests` table + `manage_ws_join_requests` permission, partial unique indexes on pending invitations/join requests, workspace invites require invitee to be an org member)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -125,13 +121,14 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 | `OrganizationRole` | `organization_roles` | Org-scoped roles (system + custom). |
 | `OrganizationRolePermission` | `organization_role_permissions` | Join between org roles and permissions. |
 | `UserRoleOrganization` | `user_role_organization` | Org membership: user + org + org role. |
-| `OrganizationJoinRequest` | `organization_join_requests` | Pending/approved/rejected requests to join an org. |
-| `OrganizationInvitation` | `organization_invitations` | Email-based invitations to join an org. |
+| `OrganizationJoinRequest` | `organization_join_requests` | Pending/approved/rejected requests to join an org. Partial unique index on `(organization_id, user_id) WHERE status='Pending'`. |
+| `OrganizationInvitation` | `organization_invitations` | Email-based invitations to join an org, targeting a specific `OrgRoleId`. Partial unique index on `(organization_id, lower(email)) WHERE status='Pending'`. |
 | `WorkspaceRole` | `workspace_roles` | Ws-scoped roles (system + custom). |
 | `WorkspaceRolePermission` | `workspace_role_permissions` | Join between ws roles and permissions. |
 | `UserRoleWorkspace` | `user_role_workspace` | Ws membership: user + workspace + ws role. |
-| `Permission` | `permissions` | Shared by both org and ws role-permission joins. 16 granular permissions. |
-| `WorkspaceInvitation` | `workspace_invitations` | Email-based invitations to join a workspace. |
+| `Permission` | `permissions` | Shared by both org and ws role-permission joins. 17 granular permissions. |
+| `WorkspaceInvitation` | `workspace_invitations` | Email-based invitations to join a workspace. Only valid for users already members of the parent organization. Partial unique index on `(workspace_id, lower(email)) WHERE status='Pending'`. |
+| `WorkspaceJoinRequest` | `workspace_join_requests` | User-initiated requests to join a workspace. Requester must already be a member of the workspace's organization. Partial unique index on `(workspace_id, user_id) WHERE status='Pending'`. |
 | `EntityType` | `entity_type` | Named type discriminator (`client`, `deal`). Singular table name. |
 | `Entity` | `entity` | Business record typed by EntityType. Singular table name. |
 | `EntityWorkspace` | `entity_workspace` | Join between Entity and Workspace. Singular table name. |
@@ -182,6 +179,7 @@ This matrix defines which service is the **authoritative writer** for each table
 | `workspace_role_permissions` | -- | **Read/Write** |
 | `user_role_workspace` | -- | **Read/Write** |
 | `workspace_invitations` | -- | **Read/Write** |
+| `workspace_join_requests` | -- | **Read/Write** |
 | `permissions` | -- | **Read/Write** |
 | `entity_type` | -- | **Read/Write** |
 | `entity` | -- | **Read/Write** |
@@ -214,6 +212,7 @@ erDiagram
     Workspace ||--o{ EntityWorkspace : contains
     Workspace ||--o{ UserRoleWorkspace : "has members"
     Workspace ||--o{ WorkspaceInvitation : "has invites"
+    Workspace ||--o{ WorkspaceJoinRequest : "has join requests"
     Workspace ||--o{ WorkspaceRole : "scoped roles"
     WorkspaceRole ||--o{ WorkspaceRolePermission : grants
     WorkspaceRole ||--o{ UserRoleWorkspace : "assigned via"
@@ -241,14 +240,19 @@ erDiagram
 - **Split RBAC schema:** Organization roles and workspace roles are separate table hierarchies that share a common `permissions` table.
   - **Org path:** `User` → `UserRoleOrganization` → `OrganizationRole` → `OrganizationRolePermission` → `Permission`
   - **Ws path:** `User` → `UserRoleWorkspace` → `WorkspaceRole` → `WorkspaceRolePermission` → `Permission`
-- **16 granular permissions** in the shared `permissions` table:
+- **17 granular permissions** in the shared `permissions` table:
   - **7 org-scoped:** `manage_org_settings`, `invite_to_org`, `manage_join_requests`, `remove_org_members`, `assign_org_roles`, `manage_org_roles`, `create_workspaces`
-  - **9 ws-scoped:** `manage_ws_settings`, `invite_to_workspace`, `add_ws_members`, `remove_ws_members`, `assign_ws_roles`, `manage_ws_roles`, `edit_deals`, `view_deals`, `view_analytics`
+  - **10 ws-scoped:** `manage_ws_settings`, `invite_to_workspace`, `manage_ws_join_requests`, `add_ws_members`, `remove_ws_members`, `assign_ws_roles`, `manage_ws_roles`, `edit_deals`, `view_deals`, `view_analytics`
 - **7 default system roles:**
   - **3 org roles:** `org_owner` (all 7 org perms), `org_admin` (subset), `org_member` (minimal)
-  - **4 ws roles:** `ws_admin` (all 9 ws perms), `ws_manager` (subset), `ws_analyst` (view-only), `ws_member` (minimal)
-- `OrganizationJoinRequest` tracks pending/approved/rejected requests from users wanting to join an org.
-- `OrganizationInvitation` tracks email-based invitations to join an org (parallel to `WorkspaceInvitation` for workspaces).
+  - **4 ws roles:** `ws_admin` (all 10 ws perms incl. `manage_ws_join_requests`), `ws_manager` (subset), `ws_analyst` (view-only), `ws_member` (minimal)
+- **Invitation / join-request flows** are symmetrical at both scopes (org and workspace):
+  - `OrganizationJoinRequest` / `WorkspaceJoinRequest` track user-initiated requests; reviewed by a member with the corresponding `manage_join_requests` / `manage_ws_join_requests` permission.
+  - `OrganizationInvitation` / `WorkspaceInvitation` track admin-initiated invitations that carry a target role (`OrgRoleId` / `WsRoleId`). Non-default target roles require the caller to also hold `assign_org_roles` / `assign_ws_roles`.
+  - **Org-member guard:** A workspace invitation is only valid for a user who is already a member of the workspace's parent organization. The check is enforced at both invite-send time (when the email matches an existing user) and at accept time (the accepting user's org membership is verified). Workspace join requests likewise require the requester to be an org member.
+  - **Dedup:** Partial unique indexes on `(scope, target) WHERE status='Pending'` guarantee at most one pending invitation/join-request per `(organization, email)`, `(workspace, email)`, `(organization, user)`, `(workspace, user)`.
+  - **Resend:** Dedicated `POST …/invitations/{id}/resend` endpoints rotate the token and extend `expires_at`; original row/id are preserved so audit history is continuous.
+  - **Expiry:** Inbox reads filter out rows where `expires_at ≤ now`; services opportunistically flip stale rows to `Expired` when encountered.
 - `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client` or `deal`). All entity types use the same EAV storage — there are no separate per-type tables.
 - **EAV two-level pattern:**
   - **Schema layer:** `EntityTypeProperty` defines which `Property` definitions belong to each `EntityType` (with `is_required`). `EntityRelationshipType` defines which entity type pairs can be linked (e.g. `deal_client`: deal → client).
@@ -401,11 +405,7 @@ Authorization for workspace endpoints:
 | Concern | Implementation | Where |
 |---|---|---|
 | **Logging** | Serilog (console + rolling file) | Core, Authentication, Gateway |
-<<<<<<< HEAD
-| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. Audit adds `ForbiddenAccessException` → 403. Backend services serialize errors as `{ status, title, detail }` (validation `detail` is `"Field: msg; Field2: msg"`). The Vue client consumes that envelope through `Client/src/api/errors.ts` (`normalizeError` → `NormalizedError` with status flags + parsed `fieldErrors`) and `Client/src/api/errorToast.ts` (`useApiErrorHandler().notify` for toast dispatch). Forms render `fieldErrors` inline under inputs; non-form failures are surfaced via toasts. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
-=======
-| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. Authentication additionally maps: `KeyNotFoundException` → 404, PostgreSQL unique violations (`DbUpdateException`) → 409. Audit adds `ForbiddenAccessException` → 403. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
->>>>>>> release/1.0
+| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. Authentication additionally maps: `KeyNotFoundException` → 404, PostgreSQL unique violations (`DbUpdateException`) → 409. Audit adds `ForbiddenAccessException` → 403. Backend services serialize errors as `{ status, title, detail }` (validation `detail` is `"Field: msg; Field2: msg"`). The Vue client consumes that envelope through `Client/src/api/errors.ts` (`normalizeError` → `NormalizedError` with status flags + parsed `fieldErrors`) and `Client/src/api/errorToast.ts` (`useApiErrorHandler().notify` for toast dispatch). Forms render `fieldErrors` inline under inputs; non-form failures are surfaced via toasts. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
 | **Health checks** | `/health` endpoint, EF Core DB checks on Auth and Core | All .NET services |
 | **API docs** | OpenAPI + Scalar (`/scalar/v1`, `/openapi/v1.json`) | Auth, Core, Gateway, Graph (dev) |
 | **CORS** | Gateway-only policy. Default: named-origin allowlist with credentials (`Cors:Origins`). Optional local dev override: `Cors:AllowAnyOriginForDev=true` enables wildcard origin without credentials. Downstream services do not apply local CORS policies to avoid drift. | Gateway |

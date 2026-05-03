@@ -577,6 +577,10 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("invited_by_user_id");
 
+                    b.Property<int>("OrgRoleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("org_role_id");
+
                     b.Property<int>("OrganizationId")
                         .HasColumnType("integer")
                         .HasColumnName("organization_id");
@@ -594,6 +598,8 @@ namespace Relativa.Migration.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("InvitedByUserId");
+
+                    b.HasIndex("OrgRoleId");
 
                     b.HasIndex("Token")
                         .IsUnique()
@@ -1035,6 +1041,57 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("workspace_invitations", (string)null);
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceJoinRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("text")
+                        .HasColumnName("message");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("reviewed_by_user_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("WorkspaceId")
+                        .HasColumnType("integer")
+                        .HasColumnName("workspace_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("UserId", "Status")
+                        .HasDatabaseName("ix_wjr_user_status");
+
+                    b.HasIndex("WorkspaceId", "Status")
+                        .HasDatabaseName("ix_wjr_workspace_status");
+
+                    b.ToTable("workspace_join_requests", (string)null);
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceRole", b =>
                 {
                     b.Property<int>("Id")
@@ -1314,9 +1371,18 @@ namespace Relativa.Migration.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_oi_organization");
 
+                    b.HasOne("Relativa.Persistence.Entities.OrganizationRole", "Role")
+                        .WithMany()
+                        .HasForeignKey("OrgRoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_oi_org_role");
+
                     b.Navigation("InvitedBy");
 
                     b.Navigation("Organization");
+
+                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.OrganizationJoinRequest", b =>
@@ -1502,6 +1568,35 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Workspace");
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceJoinRequest", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "ReviewedBy")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_wjr_reviewed_by");
+
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_wjr_user");
+
+                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
+                        .WithMany("JoinRequests")
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_wjr_workspace");
+
+                    b.Navigation("ReviewedBy");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Workspace");
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceRole", b =>
                 {
                     b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
@@ -1607,6 +1702,8 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("EntityWorkspaces");
 
                     b.Navigation("Invitations");
+
+                    b.Navigation("JoinRequests");
 
                     b.Navigation("Members");
 

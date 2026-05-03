@@ -6,6 +6,7 @@ import {
   type WorkspaceMemberDto,
   type WorkspaceRoleDto,
   type WorkspaceInvitationDto,
+  type WsJoinRequestDto,
 } from '@/api/workspaces';
 import { loadNumber, saveNumber } from '@/api/persistence';
 
@@ -17,6 +18,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const members = ref<WorkspaceMemberDto[]>([]);
   const roles = ref<WorkspaceRoleDto[]>([]);
   const invitations = ref<WorkspaceInvitationDto[]>([]);
+  const joinRequests = ref<WsJoinRequestDto[]>([]);
 
   const currentWorkspace = computed(
     () =>
@@ -83,6 +85,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     invitations.value = invitations.value.filter((i) => i.id !== invId);
   }
 
+  async function resendInvitation(wsId: number, invId: number) {
+    const refreshed = await workspaceApi.resendInvitation(wsId, invId);
+    const idx = invitations.value.findIndex((i) => i.id === invId);
+    if (idx >= 0) invitations.value[idx] = refreshed;
+    return refreshed;
+  }
+
+  async function fetchJoinRequests(wsId: number) {
+    joinRequests.value = await workspaceApi.listJoinRequests(wsId);
+  }
+
+  async function reviewJoinRequest(
+    wsId: number,
+    reqId: number,
+    decision: 'Approved' | 'Rejected',
+  ) {
+    await workspaceApi.reviewJoinRequest(wsId, reqId, decision);
+    joinRequests.value = joinRequests.value.filter((r) => r.id !== reqId);
+  }
+
   async function changeMemberRole(
     wsId: number,
     userId: number,
@@ -103,6 +125,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     members.value = [];
     roles.value = [];
     invitations.value = [];
+    joinRequests.value = [];
     saveNumber(WS_KEY, null);
   }
 
@@ -113,6 +136,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     members,
     roles,
     invitations,
+    joinRequests,
     setCurrentWorkspace,
     fetchWorkspaces,
     createWorkspace,
@@ -123,6 +147,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     fetchInvitations,
     inviteMember,
     cancelInvitation,
+    resendInvitation,
+    fetchJoinRequests,
+    reviewJoinRequest,
     changeMemberRole,
     removeMember,
     clear,

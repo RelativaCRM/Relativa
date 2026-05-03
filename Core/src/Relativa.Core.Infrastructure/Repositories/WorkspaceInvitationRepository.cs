@@ -42,6 +42,18 @@ public sealed class WorkspaceInvitationRepository(RelativaDbContext db) : IWorks
             .ToListAsync(ct);
     }
 
+    public async Task<WorkspaceInvitation?> GetPendingByWorkspaceAndEmailAsync(int workspaceId, string email, CancellationToken ct = default)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        return await db.WorkspaceInvitations
+            .Include(i => i.Role)
+            .FirstOrDefaultAsync(
+                i => i.WorkspaceId == workspaceId
+                     && i.Email == normalized
+                     && i.Status == "Pending",
+                ct);
+    }
+
     public async Task AddAsync(WorkspaceInvitation invitation, CancellationToken ct = default)
     {
         db.WorkspaceInvitations.Add(invitation);

@@ -7,6 +7,12 @@ public sealed class InviteToOrgRequestValidator : AbstractValidator<InviteToOrgR
 {
     public InviteToOrgRequestValidator()
     {
-        RuleFor(x => x.Email).NotEmpty().WithMessage("Email is required.").EmailAddress().WithMessage("A valid email address is required.");
+        RuleFor(x => x.Email)
+            .NotEmpty().WithMessage("Email is required.")
+            .EmailAddress().WithMessage("A valid email address is required.");
+
+        RuleFor(x => x.OrgRoleId)
+            .GreaterThan(0).WithMessage("Role id must be a positive integer.")
+            .When(x => x.OrgRoleId.HasValue);
     }
 }

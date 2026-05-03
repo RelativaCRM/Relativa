@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-03 (Client: `/account` self-service profile PATCH/DELETE via Auth `/me`; org admin member profile PATCH via Core `.../organizations/{id}/users/{userId}` when role has `edit_other_org_users_profile`; Members join-request UI already present — stub line removed. DB: `AddPerformanceIndexes`; Graph: `GraphDbContext` choreography idempotency.)
+> **Last verified:** 2026-05-03 (Prod-grade invitation system: role-on-invite for org, resend endpoints for both scopes, workspace join requests, org-member guard on workspace invites, partial unique indexes on pending invitations/join requests, `manage_ws_join_requests` permission seeded for `ws_admin`.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -42,18 +42,19 @@
 - **Organization CRUD:** `POST /api/v1/organizations` (create, creator becomes `org_owner`), `GET` (list user's orgs), `GET /search?q=...` (search by name), `GET /{id}` (details, requires org membership), `PUT /{id}` (update, requires `manage_org_settings`).
 - **Organization members:** `GET .../members` (list, requires org membership), `DELETE .../members/{userId}` (remove membership, requires `remove_org_members`), `PUT .../members/{userId}/role` (change role, requires `assign_org_roles`).
 - **Organization users (account provisioning):** `POST .../users` (create user + add as `org_member`, requires `create_org_users`), `PATCH .../users/{userId}` (edit another member's name, requires `edit_other_org_users_profile`), `DELETE .../users/{userId}` (archive user account, requires `delete_org_users`). Implemented via Core orchestration + shared `UserProvisioningService` from Authentication.Application.
-- **Join requests:** `POST .../join-requests` (request to join), `GET .../join-requests` (list pending, requires `manage_join_requests`), `PUT .../join-requests/{reqId}` (approve/reject, requires `manage_join_requests`), `GET /api/v1/join-requests/mine` (own requests).
-- **Organization invitations:** `POST .../invitations` (invite by email, requires `invite_to_org`), `GET .../invitations` (list pending), `DELETE .../invitations/{invId}` (cancel), `POST /api/v1/invitations/accept-org` (accept, requires matching email).
+- **Join requests:** `POST .../join-requests` (request to join), `GET .../join-requests` (list pending, requires `manage_join_requests`), `PUT .../join-requests/{reqId}` (approve/reject, requires `manage_join_requests`), `GET /api/v1/join-requests/mine` (own requests). Protected by a partial unique index `(organization_id, user_id) WHERE status='Pending'` so a user cannot file two simultaneous requests for the same org.
+- **Organization invitations:** `POST .../invitations` (invite by email + optional `orgRoleId`, requires `invite_to_org`; non-default role additionally requires `assign_org_roles`), `GET .../invitations` (list pending, non-expired, includes `roleName`), `DELETE .../invitations/{invId}` (cancel), `POST .../invitations/{invId}/resend` (rotate token + extend expiry), `POST /api/v1/invitations/accept-org` (accept — adds user with the invitation's recorded role). Protected by a partial unique index `(organization_id, lower(email)) WHERE status='Pending'` and an in-service check that the email does not already resolve to an existing org member.
 - **Organization roles:** `GET .../roles` (list system + custom, requires org membership), `POST .../roles` (create custom, requires `manage_org_roles`), `PUT .../roles/{roleId}` (update), `DELETE .../roles/{roleId}` (delete). System roles cannot be modified.
 
 ### Core service -- Workspace RBAC
 
 - **Workspace CRUD:** `POST /api/v1/workspaces` (create within an org, requires `create_workspaces` org perm + `organizationId`; creator becomes `ws_admin`), `GET` (list user's workspaces), `GET /{id}`, `PUT /{id}` (requires `manage_ws_settings`), `DELETE /{id}` (archive, requires `ws_admin` role).
 - **Member management:** `GET .../members`, `POST .../members` (add org member directly, requires `add_ws_members`), `PUT .../members/{userId}/role` (requires `assign_ws_roles`), `DELETE .../members/{userId}` (requires `remove_ws_members` or self).
-- **Invitation system:** `POST .../invitations` (invite by email, requires `invite_to_workspace`, returns token in response), `GET .../invitations` (list pending), `DELETE .../invitations/{id}` (cancel), `POST /api/v1/invitations/accept` (accept by token).
+- **Invitation system:** `POST .../invitations` (invite by email + `roleId`, requires `invite_to_workspace`; **409** if the invitee already exists and is not a member of the workspace's parent organization), `GET .../invitations` (list pending, non-expired), `DELETE .../invitations/{id}` (cancel), `POST .../invitations/{id}/resend` (rotate token + extend expiry), `POST /api/v1/invitations/accept` (accept by token — also verifies the caller is a member of the workspace's parent organization; **409** otherwise). Protected by a partial unique index `(workspace_id, lower(email)) WHERE status='Pending'`.
+- **Workspace join requests:** `POST .../join-requests` (submit; requester must already be a member of the workspace's parent org), `GET .../join-requests` (list pending, requires `manage_ws_join_requests`), `PUT .../join-requests/{reqId}` (approve/reject; approval re-checks org membership and auto-rejects if it was revoked in-flight), `GET /api/v1/workspace-join-requests/mine`. Protected by a partial unique index `(workspace_id, user_id) WHERE status='Pending'`.
 - **Role management:** `GET .../roles` (list system + custom), `POST .../roles` (create custom, requires `manage_ws_roles`), `PUT .../roles/{id}` (update), `DELETE .../roles/{id}` (archive). System roles cannot be modified.
-- **Combined invitations:** `GET /api/v1/invitations/mine` -- lists all pending invitations (both workspace + org) for the authenticated user.
-- **Permission listing:** `GET /api/v1/permissions` -- lists all permissions in `permissions` (19 rows after migration `AddOrgUserAdminPermissions`: org-scoped includes `create_org_users`, `edit_other_org_users_profile`, `delete_org_users`; workspace-scoped unchanged). **Workspace permissions 14 and 15 are `manage_entities` / `view_entities`** (previously `edit_deals` / `view_deals`; base set re-seeded via `ReseedPermissions` migration).
+- **Combined invitations:** `GET /api/v1/invitations/mine` -- lists all pending, non-expired invitations (both workspace + org) for the authenticated user.
+- **Permission listing:** `GET /api/v1/permissions` -- lists all permissions in `permissions` (20 rows after migration `InvitationSystemProdGrade`: org-scoped includes `create_org_users`, `edit_other_org_users_profile`, `delete_org_users`; workspace-scoped includes new `manage_ws_join_requests` granted to `ws_admin`). **Workspace permissions 14 and 15 are `manage_entities` / `view_entities`** (previously `edit_deals` / `view_deals`; base set re-seeded via `ReseedPermissions` migration).
 - Full clean-architecture layers: Domain (repository interfaces), Application (11 services, DTOs, validators), Infrastructure (repositories, WorkspaceContext).
 - Authorization checked per-request via `UserRoleOrganization` or `UserRoleWorkspace` DB lookup. **Core does not parse JWTs**; it reads the caller identity from the `X-User-Id` header that the Gateway injects after JWT validation (see Gateway entry below). `X-User-Email` is read on invitation-accept flows. Missing headers are treated as a 401.
 
@@ -87,7 +88,7 @@
 
 ### Migration
 
-- `MigrationDbContext` mirrors full Persistence model (21 entities).
+- `MigrationDbContext` mirrors full Persistence model (22 entities).
 - `Program.cs` runs `Database.MigrateAsync()` as a generic host console app.
 - Migrations in `Migration/src/Relativa.Migration/Migrations/` include (non-exhaustive):
   - `20260416224419_InitialCreate.cs` — full initial schema (RBAC, org management, old polymorphic entity tables).
@@ -95,15 +96,16 @@
   - `20260423000000_EavSchemaReplace.cs` — EAV schema migration: drops old property tables, renames entity tables to singular, creates new EAV tables.
   - `20260423100000_ReseedPermissions.cs` — FK-safe wipe and full re-insert of `permissions`, `organization_role_permissions`, `workspace_role_permissions`; replaces `edit_deals`/`view_deals` with `manage_entities`/`view_entities` for existing databases.
   - `20260503194004_AddPerformanceIndexes.cs` — composite/DESC indexes for RBAC/invitations/join requests/audit tables/outbox; drops redundant single-column indexes; unique constraint on `entity_workspace (entity_id, workspace_id)`.
+  - `20260503235000_InvitationSystemProdGrade.cs` — adds `organization_invitations.org_role_id` (FK, backfilled to `org_member`); creates `workspace_join_requests` table; adds partial unique indexes `ux_oi_org_email_pending`, `ux_wi_ws_email_pending`, `ux_ojr_org_user_pending`, `ux_wjr_ws_user_pending` on pending rows only; seeds new permission `manage_ws_join_requests` (id 20) and grants it to `ws_admin`.
 - Docker Compose runs this before auth and core start.
 
 ### Persistence library
 
-- 21 entity classes with EF Fluent API configurations (including performance-oriented `HasIndex` composites where queries filter + order by time).
+- 22 entity classes with EF Fluent API configurations (including performance-oriented `HasIndex` composites where queries filter + order by time; `WorkspaceJoinRequest` added in the prod-grade invitation rewrite).
 - Split RBAC model: separate `OrganizationRole`/`OrganizationRolePermission` and `WorkspaceRole`/`WorkspaceRolePermission` hierarchies sharing a common `Permission` table.
 - **EAV entity model:** `Property`, `EntityTypeProperty`, `EntityPropertyValue`, `EntityRelationshipType`, `EntityRelationship` replace the old hard-coded `EntityProperty` / `PersonalDataPropertyValue` / `LocationPropertyValue` / `DealPropertyValue` tables.
 - `ModelBuilderExtensions.ApplyAuthEntityConfigurations()` for auth-only subset (User).
-- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 21 entities).
+- `ModelBuilderExtensions.ApplyAllEntityConfigurations()` for full model (all 22 entities).
 - Referenced by Core, Authentication, and Migration via ProjectReference.
 
 ### Docker Compose
@@ -145,7 +147,7 @@
 **What is missing:**
 - No business rules (BP-01 through BP-06).
 - No generalized domain-event catalog beyond workspace choreography pilot + audit payloads.
-- No email notifications for invitations or join request outcomes.
+- **No email notifications for invitations or join request outcomes (intentional).** Invitation tokens are returned in the POST response and surfaced as a copy-link in the UI. The token-in-response / copy-link UX is intentional for this iteration — integrating a real SMTP/transactional-email provider is out of scope. Resend rotates the token and bumps `ExpiresAt` but still returns the new token inline.
 - No property management endpoints (list/create/update org-scoped custom properties).
 - Relationship management endpoints (`entity_relationship`) deferred — the table and seed data exist but no API surface yet.
 
@@ -198,7 +200,7 @@
 - Entity relationship management endpoints (`entity_relationship` table exists; API surface deferred).
 - Business rules BP-01 through BP-06 (referenced in `Core/README.md`, not defined in code).
 - Domain events published to Audit after entity mutations.
-- Email notifications for invitation sends, join request approvals/rejections.
+- Email notifications for invitation sends, join request approvals/rejections. *(Intentionally deferred — see Stubs section; token is returned in the response and surfaced as a copy-link in the UI.)*
 
 ### Authentication
 
@@ -240,7 +242,7 @@
 - ~~Entity create form (Sprint 1 ENT.5 — dropdown of types + dynamic property fields driven by `GET /entity-types`).~~ *(done in CR-138)*
 - ~~Minimal entity list view as the landing place after a successful create.~~ *(done in CR-138 follow-up)*
 - Workspace management UI (rename, archive from list).
-- Join request review UI (approve/reject pending requests).
+- ~~Join request review UI (approve/reject pending requests).~~ *(done — both org-scoped in `MembersView.vue` and workspace-scoped in `WorkspaceMembersView.vue` with `manage_ws_join_requests` gating.)*
 - Role and permission management UI.
 - Entity detail / edit / archive pages (Sprint 2).
 - Dashboard with analytics.

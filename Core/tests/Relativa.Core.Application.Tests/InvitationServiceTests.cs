@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
+using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Core.Application.DTOs.Invitation;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
@@ -16,6 +17,9 @@ public sealed class InvitationServiceTests
     private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
     private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
     private readonly Mock<IOrgInvitationRepository> _orgInvitationRepo = new();
+    private readonly Mock<IWorkspaceRepository> _workspaceRepo = new();
+    private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
+    private readonly Mock<IUserRepository> _userRepo = new();
     private readonly Mock<IValidator<InviteMemberRequest>> _inviteValidator = new();
     private readonly Mock<IValidator<AcceptInvitationRequest>> _acceptValidator = new();
     private readonly InvitationService _sut;
@@ -27,6 +31,9 @@ public sealed class InvitationServiceTests
             _memberRepo.Object,
             _roleRepo.Object,
             _orgInvitationRepo.Object,
+            _workspaceRepo.Object,
+            _orgMemberRepo.Object,
+            _userRepo.Object,
             _inviteValidator.Object,
             _acceptValidator.Object
         );
@@ -75,6 +82,9 @@ public sealed class InvitationServiceTests
         _roleRepo
             .Setup(r => r.GetByIdAsync(2, It.IsAny<CancellationToken>()))
             .ReturnsAsync(role);
+        _workspaceRepo
+            .Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Workspace { Id = 5, OrganizationId = 11, Name = "Sales" });
 
         WorkspaceInvitation? captured = null;
         _invitationRepo
@@ -115,6 +125,78 @@ public sealed class InvitationServiceTests
     }
 
     [Fact]
+    public async Task InviteAsync_InviteeExistsButNotInParentOrg_ThrowsInvalidOperationException()
+    {
+        var request = new InviteMemberRequest("outsider@relativa.io", 2);
+        var caller = MemberWithPermission(1, 5, "invite_to_workspace");
+        var role = new WorkspaceRole { Id = 2, Name = "ws_member", WorkspaceId = null };
+        var workspace = new Workspace { Id = 5, OrganizationId = 11, Name = "Sales" };
+        var existingUser = new User { Id = 77, Email = "outsider@relativa.io" };
+
+        SetupValidInvite();
+        _memberRepo
+            .Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+        _roleRepo
+            .Setup(r => r.GetByIdAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(role);
+        _workspaceRepo
+            .Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(workspace);
+        _userRepo
+            .Setup(r => r.GetByEmailAsync("outsider@relativa.io", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingUser);
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(77, 11, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleOrganization?)null);
+
+        var act = () => _sut.InviteAsync(5, 1, request);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*member of the organization*");
+        _invitationRepo.Verify(
+            r => r.AddAsync(It.IsAny<WorkspaceInvitation>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task AcceptAsync_CallerNotOrgMember_ThrowsInvalidOperationException()
+    {
+        var request = new AcceptInvitationRequest("t-intruder");
+        var workspace = new Workspace { Id = 3, OrganizationId = 12, Name = "Ops" };
+        var invitation = new WorkspaceInvitation
+        {
+            Id = 1,
+            WorkspaceId = 3,
+            Workspace = workspace,
+            Email = "kravets@relativa.io",
+            WsRoleId = 2,
+            Token = "t-intruder",
+            Status = "Pending",
+            ExpiresAt = DateTime.UtcNow.AddDays(2)
+        };
+
+        SetupValidAccept();
+        _invitationRepo
+            .Setup(r => r.GetByTokenAsync("t-intruder", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invitation);
+        _memberRepo
+            .Setup(r => r.GetAsync(10, 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleWorkspace?)null);
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(10, 12, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleOrganization?)null);
+
+        var act = () => _sut.AcceptAsync(10, "kravets@relativa.io", request);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*organization*before accepting*");
+        _memberRepo.Verify(
+            r => r.AddAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task InviteAsync_RoleFromAnotherWorkspace_ThrowsArgumentException()
     {
         var request = new InviteMemberRequest("bondarenko@relativa.io", 7);
@@ -139,10 +221,12 @@ public sealed class InvitationServiceTests
     public async Task AcceptAsync_ValidToken_CreatesMemberAndSetsAccepted()
     {
         var request = new AcceptInvitationRequest("valid-token-abc");
+        var workspace = new Workspace { Id = 3, OrganizationId = 12, Name = "Ops" };
         var invitation = new WorkspaceInvitation
         {
             Id = 1,
             WorkspaceId = 3,
+            Workspace = workspace,
             Email = "kravets@relativa.io",
             WsRoleId = 2,
             Token = "valid-token-abc",
@@ -157,6 +241,9 @@ public sealed class InvitationServiceTests
         _memberRepo
             .Setup(r => r.GetAsync(10, 3, It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserRoleWorkspace?)null);
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(10, 12, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization { UserId = 10, OrganizationId = 12 });
 
         await _sut.AcceptAsync(10, "kravets@relativa.io", request);
 

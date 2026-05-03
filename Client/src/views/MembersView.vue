@@ -76,11 +76,32 @@ async function handleReviewRequest(
 }
 
 /* ── Invite dialog ─────────────────────────────────────── */
+const ASSIGN_ORG_ROLES_PERM = 'assign_org_roles';
 const showInvite = ref(false);
 const inviteEmail = ref('');
+const inviteRoleId = ref<number | null>(null);
 const inviteSending = ref(false);
 const inviteSuccess = ref<string | null>(null);
 const inviteError = ref<string | null>(null);
+
+const canAssignOrgRoles = computed(() => {
+  const roleName = orgStore.currentOrg?.userRole;
+  if (!roleName) return false;
+  const role = orgStore.roles.find((r) => r.name === roleName);
+  return (
+    role?.permissions.some((p) => p.name === ASSIGN_ORG_ROLES_PERM) ?? false
+  );
+});
+
+const inviteRoleOptions = computed(() =>
+  orgStore.roles
+    .filter((r) => r.name === 'org_admin' || r.name === 'org_member')
+    .map((r) => ({
+      label: r.name === 'org_admin' ? 'Admin' : 'Member',
+      value: r.id,
+      name: r.name,
+    })),
+);
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const canInvite = computed(
@@ -93,7 +114,10 @@ async function handleInvite() {
   inviteSuccess.value = null;
   inviteError.value = null;
   try {
-    await orgStore.inviteMember(inviteEmail.value.trim());
+    await orgStore.inviteMember(
+      inviteEmail.value.trim(),
+      inviteRoleId.value ?? undefined,
+    );
     inviteSuccess.value = `Invitation sent to ${inviteEmail.value}`;
     inviteEmail.value = '';
   } catch (err) {
@@ -103,9 +127,17 @@ async function handleInvite() {
   }
 }
 
+function openInviteDialog() {
+  const memberRoleId =
+    inviteRoleOptions.value.find((o) => o.name === 'org_member')?.value ?? null;
+  inviteRoleId.value = memberRoleId;
+  showInvite.value = true;
+}
+
 function closeInviteDialog() {
   showInvite.value = false;
   inviteEmail.value = '';
+  inviteRoleId.value = null;
   inviteSuccess.value = null;
   inviteError.value = null;
 }
@@ -234,12 +266,31 @@ async function handleSaveMemberProfile() {
   }
 }
 
-/* ── Cancel invitation ─────────────────────────────────── */
+/* ── Cancel / resend invitation ────────────────────────── */
+const resendingInvId = ref<number | null>(null);
+
 async function handleCancelInvitation(invId: number) {
   try {
     await orgStore.cancelInvitation(invId);
   } catch (err) {
     notify(err, { fallback: 'Failed to cancel invitation.' });
+  }
+}
+
+async function handleResendInvitation(invId: number) {
+  resendingInvId.value = invId;
+  try {
+    await orgStore.resendInvitation(invId);
+    toast.add({
+      severity: 'success',
+      summary: 'Invitation resent',
+      detail: 'Token rotated and expiry extended.',
+      life: 4000,
+    });
+  } catch (err) {
+    notify(err, { fallback: 'Failed to resend invitation.' });
+  } finally {
+    resendingInvId.value = null;
   }
 }
 
@@ -270,7 +321,7 @@ onMounted(async () => {
       <Button
         icon="pi pi-user-plus"
         label="Invite member"
-        @click="showInvite = true"
+        @click="openInviteDialog"
       />
     </div>
 
@@ -365,20 +416,40 @@ onMounted(async () => {
           :key="inv.id"
           class="flex items-center justify-between px-5 py-3 border-b border-line last:border-0"
         >
-          <div>
-            <p class="text-sm text-ink-700">{{ inv.email }}</p>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <p class="text-sm text-ink-700 truncate">{{ inv.email }}</p>
+              <Tag
+                v-if="inv.roleName"
+                :value="displayRole(inv.roleName)"
+                :severity="roleSeverity(inv.roleName)"
+              />
+            </div>
             <p class="text-xs text-ink-400">
               Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
             </p>
           </div>
-          <Button
-            icon="pi pi-times"
-            severity="secondary"
-            text
-            rounded
-            size="small"
-            @click="handleCancelInvitation(inv.id)"
-          />
+          <div class="flex items-center gap-1 shrink-0">
+            <Button
+              icon="pi pi-refresh"
+              severity="secondary"
+              text
+              rounded
+              size="small"
+              title="Resend (rotate token and extend expiry)"
+              :loading="resendingInvId === inv.id"
+              @click="handleResendInvitation(inv.id)"
+            />
+            <Button
+              icon="pi pi-times"
+              severity="secondary"
+              text
+              rounded
+              size="small"
+              title="Cancel invitation"
+              @click="handleCancelInvitation(inv.id)"
+            />
+          </div>
         </div>
       </div>
 
@@ -507,6 +578,25 @@ onMounted(async () => {
             placeholder="colleague@example.com"
             class="!h-10"
           />
+        </div>
+
+        <div v-if="canAssignOrgRoles" class="flex flex-col gap-1.5">
+          <label for="inviteRole" class="text-xs font-medium text-ink-600">
+            Role
+          </label>
+          <Select
+            id="inviteRole"
+            v-model="inviteRoleId"
+            :options="inviteRoleOptions"
+            option-label="label"
+            option-value="value"
+            class="!h-10"
+          />
+          <p class="text-xs text-ink-400">
+            Defaults to Member. Requires the
+            <code class="text-ink-600">assign_org_roles</code> permission to
+            invite as Admin.
+          </p>
         </div>
 
         <Message v-if="inviteSuccess" severity="success" :closable="false" class="!my-0">

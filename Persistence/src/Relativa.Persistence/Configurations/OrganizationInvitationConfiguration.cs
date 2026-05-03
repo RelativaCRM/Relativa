@@ -13,6 +13,7 @@ public class OrganizationInvitationConfiguration : IEntityTypeConfiguration<Orga
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.OrganizationId).HasColumnName("organization_id").IsRequired();
         builder.Property(e => e.Email).HasColumnName("email").IsRequired();
+        builder.Property(e => e.OrgRoleId).HasColumnName("org_role_id").IsRequired();
         builder.Property(e => e.InvitedByUserId).HasColumnName("invited_by_user_id").IsRequired();
         builder.Property(e => e.Token).HasColumnName("token").IsRequired();
         builder.HasIndex(e => e.Token)
@@ -30,6 +31,11 @@ public class OrganizationInvitationConfiguration : IEntityTypeConfiguration<Orga
             .HasForeignKey(e => e.OrganizationId)
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("fk_oi_organization");
+        builder.HasOne(e => e.Role)
+            .WithMany()
+            .HasForeignKey(e => e.OrgRoleId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_oi_org_role");
         builder.HasOne(e => e.InvitedBy)
             .WithMany()
             .HasForeignKey(e => e.InvitedByUserId)

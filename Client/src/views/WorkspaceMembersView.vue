@@ -149,12 +149,73 @@ async function handleRemove(userId: number) {
   }
 }
 
-/* ── Cancel invitation ─────────────────────────────────── */
+/* ── Cancel / resend invitation ────────────────────────── */
+const resendingInvId = ref<number | null>(null);
+
 async function handleCancelInvitation(invId: number) {
   try {
     await wsStore.cancelInvitation(workspaceId.value, invId);
   } catch (err) {
     notify(err, { fallback: 'Failed to cancel invitation.' });
+  }
+}
+
+async function handleResendInvitation(invId: number) {
+  resendingInvId.value = invId;
+  try {
+    await wsStore.resendInvitation(workspaceId.value, invId);
+    toast.add({
+      severity: 'success',
+      summary: 'Invitation resent',
+      detail: 'Token rotated and expiry extended.',
+      life: 4000,
+    });
+  } catch (err) {
+    notify(err, { fallback: 'Failed to resend invitation.' });
+  } finally {
+    resendingInvId.value = null;
+  }
+}
+
+/* ── Workspace join requests ───────────────────────────── */
+const MANAGE_WS_JOIN_REQUESTS_PERM = 'manage_ws_join_requests';
+const canManageJoinRequests = computed(() => {
+  const roleName = wsStore.members.find(
+    (m) => m.userId === auth.user?.id,
+  )?.roleName;
+  if (!roleName) return false;
+  const role = wsStore.roles.find((r) => r.name === roleName);
+  return (
+    role?.permissions.some(
+      (p) => p.name === MANAGE_WS_JOIN_REQUESTS_PERM,
+    ) ?? false
+  );
+});
+const reviewingJoinReqId = ref<number | null>(null);
+
+async function fetchJoinRequests() {
+  if (!canManageJoinRequests.value) return;
+  try {
+    await wsStore.fetchJoinRequests(workspaceId.value);
+  } catch (err) {
+    notify(err, { fallback: 'Failed to load join requests.' });
+  }
+}
+
+async function handleReviewJoinRequest(
+  reqId: number,
+  decision: 'Approved' | 'Rejected',
+) {
+  reviewingJoinReqId.value = reqId;
+  try {
+    await wsStore.reviewJoinRequest(workspaceId.value, reqId, decision);
+    if (decision === 'Approved') {
+      await wsStore.fetchMembers(workspaceId.value);
+    }
+  } catch (err) {
+    notify(err, { fallback: 'Failed to review join request.' });
+  } finally {
+    reviewingJoinReqId.value = null;
   }
 }
 
@@ -170,6 +231,7 @@ async function loadAll() {
         : Promise.resolve(),
     ]);
     wsStore.setCurrentWorkspace(workspaceId.value);
+    await fetchJoinRequests();
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       router.replace({ name: 'workspaces' });
@@ -305,8 +367,8 @@ onMounted(loadAll);
           :key="inv.id"
           class="flex items-center justify-between px-5 py-3 border-b border-line last:border-0"
         >
-          <div>
-            <p class="text-sm text-ink-700">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm text-ink-700 truncate">
               {{ inv.email }}
               <span class="text-xs text-ink-400 ml-2"
                 >as {{ displayRole(inv.roleName) }}</span
@@ -316,14 +378,73 @@ onMounted(loadAll);
               Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
             </p>
           </div>
-          <Button
-            icon="pi pi-times"
-            severity="secondary"
-            text
-            rounded
-            size="small"
-            @click="handleCancelInvitation(inv.id)"
-          />
+          <div class="flex items-center gap-1 shrink-0">
+            <Button
+              icon="pi pi-refresh"
+              severity="secondary"
+              text
+              rounded
+              size="small"
+              title="Resend (rotate token and extend expiry)"
+              :loading="resendingInvId === inv.id"
+              @click="handleResendInvitation(inv.id)"
+            />
+            <Button
+              icon="pi pi-times"
+              severity="secondary"
+              text
+              rounded
+              size="small"
+              title="Cancel invitation"
+              @click="handleCancelInvitation(inv.id)"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="canManageJoinRequests && wsStore.joinRequests.length"
+        class="border-t border-line"
+      >
+        <div
+          class="px-5 py-3 bg-surface text-xs font-medium text-ink-500 uppercase tracking-wider"
+        >
+          Join requests
+        </div>
+        <div
+          v-for="req in wsStore.joinRequests"
+          :key="req.id"
+          class="flex items-start justify-between px-5 py-3 border-b border-line last:border-0 gap-4"
+        >
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-ink-900">
+              {{ req.userName }}
+            </p>
+            <p class="text-xs text-ink-500">{{ req.userEmail }}</p>
+            <p v-if="req.message" class="text-xs text-ink-600 mt-1 italic">
+              &ldquo;{{ req.message }}&rdquo;
+            </p>
+            <p class="text-xs text-ink-400 mt-1">
+              Requested {{ new Date(req.createdAt).toLocaleDateString() }}
+            </p>
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <Button
+              icon="pi pi-check"
+              label="Approve"
+              size="small"
+              :loading="reviewingJoinReqId === req.id"
+              @click="handleReviewJoinRequest(req.id, 'Approved')"
+            />
+            <Button
+              icon="pi pi-times"
+              label="Reject"
+              size="small"
+              severity="secondary"
+              :loading="reviewingJoinReqId === req.id"
+              @click="handleReviewJoinRequest(req.id, 'Rejected')"
+            />
+          </div>
         </div>
       </div>
     </div>

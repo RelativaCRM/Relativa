@@ -1,4 +1,5 @@
 using FluentValidation;
+using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Core.Application.DTOs.Invitation;
 using Relativa.Core.Application.DTOs.OrgInvitation;
 using Relativa.Core.Application.Interfaces;
@@ -13,10 +14,15 @@ public sealed class InvitationService(
     IUserRoleWorkspaceRepository memberRepository,
     IWorkspaceRoleRepository roleRepository,
     IOrgInvitationRepository orgInvitationRepository,
+    IWorkspaceRepository workspaceRepository,
+    IUserRoleOrganizationRepository orgMemberRepository,
+    IUserRepository userRepository,
     IValidator<InviteMemberRequest> inviteValidator,
     IValidator<AcceptInvitationRequest> acceptValidator,
     IOutboxWriter? auditOutboxWriter = null) : IInvitationService
 {
+    private static readonly TimeSpan InvitationLifetime = TimeSpan.FromDays(7);
+
     public async Task<InvitationDto> InviteAsync(int workspaceId, int callerUserId, InviteMemberRequest request, CancellationToken ct = default)
     {
         await inviteValidator.ValidateAndThrowAsync(request, ct);
@@ -28,37 +34,35 @@ public sealed class InvitationService(
         if (role.WorkspaceId.HasValue && role.WorkspaceId.Value != workspaceId)
             throw new ArgumentException("The specified role does not belong to this workspace.");
 
+        var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
+            ?? throw new KeyNotFoundException("Workspace not found.");
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+        await EnsureInviteeEligibleAsync(workspace, normalizedEmail, ct);
+        await EnsureNoPendingInvitationAsync(workspaceId, normalizedEmail, ct);
+
         var invitation = new WorkspaceInvitation
         {
             WorkspaceId = workspaceId,
-            Email = request.Email.Trim().ToLowerInvariant(),
+            Email = normalizedEmail,
             WsRoleId = request.RoleId,
             InvitedByUserId = callerUserId,
             Token = Guid.NewGuid().ToString("N"),
             Status = "Pending",
             CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddDays(7)
+            ExpiresAt = DateTime.UtcNow.Add(InvitationLifetime)
         };
 
         await invitationRepository.AddAsync(invitation, ct);
-        if (auditOutboxWriter is not null)
-        {
-            await auditOutboxWriter.EnqueueAuditAsync(
-                new AuditEventContract(
-                    EventId: Guid.NewGuid(),
-                    SchemaVersion: 1,
-                    OccurredAtUtc: DateTimeOffset.UtcNow,
-                    SourceService: "core",
-                    ActorUserId: callerUserId,
-                    AuditScope: AuditRouting.ScopeWorkspace,
-                    TargetId: workspaceId,
-                    Action: "workspace_invitation_created",
-                    FieldName: "workspace_invitations",
-                    EntityType: null,
-                    OldValueJson: null,
-                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { invitation.Id, invitation.Email, invitation.WsRoleId, invitation.Status })),
-                ct);
-        }
+        await EnqueueAuditAsync(
+            callerUserId,
+            workspaceId,
+            action: "workspace_invitation_created",
+            field: "workspace_invitations",
+            oldJson: null,
+            newJson: new { invitation.Id, invitation.Email, invitation.WsRoleId, invitation.Status },
+            ct);
 
         var reloaded = await invitationRepository.GetByIdAsync(invitation.Id, ct) ?? invitation;
         return new InvitationDto(reloaded.Id, reloaded.Email, reloaded.Workspace?.Name ?? "", role.Name, reloaded.Status, reloaded.Token, reloaded.ExpiresAt);
@@ -68,9 +72,10 @@ public sealed class InvitationService(
     {
         await RequirePermission(callerUserId, workspaceId, "invite_to_workspace", ct);
 
+        var now = DateTime.UtcNow;
         var invitations = await invitationRepository.GetByWorkspaceIdAsync(workspaceId, ct);
         return invitations
-            .Where(i => i.Status == "Pending")
+            .Where(i => i.Status == "Pending" && i.ExpiresAt > now)
             .Select(i => new InvitationDto(i.Id, i.Email, i.Workspace?.Name ?? "", i.Role.Name, i.Status, i.Token, i.ExpiresAt))
             .ToList();
     }
@@ -85,26 +90,58 @@ public sealed class InvitationService(
         if (invitation.WorkspaceId != workspaceId)
             throw new KeyNotFoundException("Invitation not found.");
 
+        if (invitation.Status != "Pending")
+            throw new InvalidOperationException($"Invitation is no longer pending (status: {invitation.Status}).");
+
         invitation.Status = "Cancelled";
         await invitationRepository.UpdateAsync(invitation, ct);
-        if (auditOutboxWriter is not null)
-        {
-            await auditOutboxWriter.EnqueueAuditAsync(
-                new AuditEventContract(
-                    EventId: Guid.NewGuid(),
-                    SchemaVersion: 1,
-                    OccurredAtUtc: DateTimeOffset.UtcNow,
-                    SourceService: "core",
-                    ActorUserId: callerUserId,
-                    AuditScope: AuditRouting.ScopeWorkspace,
-                    TargetId: workspaceId,
-                    Action: "workspace_invitation_cancelled",
-                    FieldName: "workspace_invitations.status",
-                    EntityType: null,
-                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending", invitation.Email }),
-                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Cancelled", invitation.Email })),
-                ct);
-        }
+        await EnqueueAuditAsync(
+            callerUserId,
+            workspaceId,
+            action: "workspace_invitation_cancelled",
+            field: "workspace_invitations.status",
+            oldJson: new { Status = "Pending", invitation.Email },
+            newJson: new { Status = "Cancelled", invitation.Email },
+            ct);
+    }
+
+    public async Task<InvitationDto> ResendAsync(int workspaceId, int invitationId, int callerUserId, CancellationToken ct = default)
+    {
+        await RequirePermission(callerUserId, workspaceId, "invite_to_workspace", ct);
+
+        var invitation = await invitationRepository.GetByIdAsync(invitationId, ct)
+            ?? throw new KeyNotFoundException("Invitation not found.");
+
+        if (invitation.WorkspaceId != workspaceId)
+            throw new KeyNotFoundException("Invitation not found.");
+
+        if (invitation.Status != "Pending")
+            throw new InvalidOperationException($"Cannot resend invitation in status '{invitation.Status}'.");
+
+        var previousToken = invitation.Token;
+        var previousExpiresAt = invitation.ExpiresAt;
+
+        invitation.Token = Guid.NewGuid().ToString("N");
+        invitation.ExpiresAt = DateTime.UtcNow.Add(InvitationLifetime);
+
+        await invitationRepository.UpdateAsync(invitation, ct);
+        await EnqueueAuditAsync(
+            callerUserId,
+            workspaceId,
+            action: "workspace_invitation_resent",
+            field: "workspace_invitations.token",
+            oldJson: new { Token = previousToken, ExpiresAt = previousExpiresAt, invitation.Email },
+            newJson: new { invitation.Token, invitation.ExpiresAt, invitation.Email },
+            ct);
+
+        return new InvitationDto(
+            invitation.Id,
+            invitation.Email,
+            invitation.Workspace?.Name ?? "",
+            invitation.Role?.Name ?? string.Empty,
+            invitation.Status,
+            invitation.Token,
+            invitation.ExpiresAt);
     }
 
     public async Task AcceptAsync(int userId, string userEmail, AcceptInvitationRequest request, CancellationToken ct = default)
@@ -131,6 +168,15 @@ public sealed class InvitationService(
         if (existingMembership is not null)
             throw new InvalidOperationException("You are already a member of this workspace.");
 
+        var workspace = invitation.Workspace
+            ?? await workspaceRepository.GetByIdAsync(invitation.WorkspaceId, ct)
+            ?? throw new KeyNotFoundException("Workspace not found.");
+
+        var orgMembership = await orgMemberRepository.GetAsync(userId, workspace.OrganizationId, ct);
+        if (orgMembership is null)
+            throw new InvalidOperationException(
+                "You must be a member of this workspace's organization before accepting the invitation.");
+
         var member = new UserRoleWorkspace
         {
             UserId = userId,
@@ -141,62 +187,107 @@ public sealed class InvitationService(
         };
 
         await memberRepository.AddAsync(member, ct);
-        if (auditOutboxWriter is not null)
-        {
-            await auditOutboxWriter.EnqueueAuditAsync(
-                new AuditEventContract(
-                    EventId: Guid.NewGuid(),
-                    SchemaVersion: 1,
-                    OccurredAtUtc: DateTimeOffset.UtcNow,
-                    SourceService: "core",
-                    ActorUserId: userId,
-                    AuditScope: AuditRouting.ScopeWorkspace,
-                    TargetId: invitation.WorkspaceId,
-                    Action: "workspace_member_added_via_invitation",
-                    FieldName: "user_role_workspace",
-                    EntityType: null,
-                    OldValueJson: null,
-                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { member.UserId, member.WsRoleId })),
-                ct);
-        }
+        await EnqueueAuditAsync(
+            userId,
+            invitation.WorkspaceId,
+            action: "workspace_member_added_via_invitation",
+            field: "user_role_workspace",
+            oldJson: null,
+            newJson: new { member.UserId, member.WsRoleId },
+            ct);
 
         invitation.Status = "Accepted";
         await invitationRepository.UpdateAsync(invitation, ct);
-        if (auditOutboxWriter is not null)
-        {
-            await auditOutboxWriter.EnqueueAuditAsync(
-                new AuditEventContract(
-                    EventId: Guid.NewGuid(),
-                    SchemaVersion: 1,
-                    OccurredAtUtc: DateTimeOffset.UtcNow,
-                    SourceService: "core",
-                    ActorUserId: userId,
-                    AuditScope: AuditRouting.ScopeWorkspace,
-                    TargetId: invitation.WorkspaceId,
-                    Action: "workspace_invitation_accepted",
-                    FieldName: "workspace_invitations.status",
-                    EntityType: null,
-                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending", invitation.Email }),
-                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Accepted", invitation.Email })),
-                ct);
-        }
+        await EnqueueAuditAsync(
+            userId,
+            invitation.WorkspaceId,
+            action: "workspace_invitation_accepted",
+            field: "workspace_invitations.status",
+            oldJson: new { Status = "Pending", invitation.Email },
+            newJson: new { Status = "Accepted", invitation.Email },
+            ct);
     }
 
     public async Task<MyInvitationsDto> GetMyInvitationsAsync(int userId, string userEmail, CancellationToken ct = default)
     {
+        var now = DateTime.UtcNow;
+
         var wsInvitations = await invitationRepository.GetByEmailAsync(userEmail, ct);
         var workspaceInvitations = wsInvitations
-            .Where(i => i.Status == "Pending")
+            .Where(i => i.Status == "Pending" && i.ExpiresAt > now)
             .Select(i => new InvitationDto(i.Id, i.Email, i.Workspace?.Name ?? "", i.Role.Name, i.Status, i.Token, i.ExpiresAt))
             .ToList();
 
         var orgInvitations = await orgInvitationRepository.GetByEmailAsync(userEmail, ct);
         var organizationInvitations = orgInvitations
-            .Where(i => i.Status == "Pending")
-            .Select(i => new OrgInvitationDto(i.Id, i.Email, i.Organization.Name, i.Status, i.Token, i.ExpiresAt))
+            .Where(i => i.Status == "Pending" && i.ExpiresAt > now)
+            .Select(i => new OrgInvitationDto(
+                i.Id,
+                i.Email,
+                i.Organization.Name,
+                i.Role?.Name ?? string.Empty,
+                i.Status,
+                i.Token,
+                i.ExpiresAt))
             .ToList();
 
         return new MyInvitationsDto(workspaceInvitations, organizationInvitations);
+    }
+
+    private async Task EnsureInviteeEligibleAsync(Workspace workspace, string normalizedEmail, CancellationToken ct)
+    {
+        var user = await userRepository.GetByEmailAsync(normalizedEmail, ct);
+        if (user is null)
+        {
+            return;
+        }
+
+        var orgMembership = await orgMemberRepository.GetAsync(user.Id, workspace.OrganizationId, ct);
+        if (orgMembership is null)
+        {
+            throw new InvalidOperationException(
+                "User must be a member of the organization before being invited to its workspaces.");
+        }
+
+        var existingWsMembership = await memberRepository.GetAsync(user.Id, workspace.Id, ct);
+        if (existingWsMembership is not null)
+        {
+            throw new InvalidOperationException("This user is already a member of the workspace.");
+        }
+    }
+
+    private async Task EnsureNoPendingInvitationAsync(int workspaceId, string normalizedEmail, CancellationToken ct)
+    {
+        var existing = await invitationRepository.GetPendingByWorkspaceAndEmailAsync(workspaceId, normalizedEmail, ct);
+        if (existing is null) return;
+        if (existing.ExpiresAt <= DateTime.UtcNow)
+        {
+            existing.Status = "Expired";
+            await invitationRepository.UpdateAsync(existing, ct);
+            return;
+        }
+        throw new InvalidOperationException("A pending invitation for this email already exists.");
+    }
+
+    private async Task EnqueueAuditAsync(int actorUserId, int workspaceId, string action, string? field, object? oldJson, object? newJson, CancellationToken ct)
+    {
+        if (auditOutboxWriter is null) return;
+
+        await auditOutboxWriter.EnqueueAuditAsync(
+            new AuditEventContract(
+                EventId: Guid.NewGuid(),
+                SchemaVersion: 1,
+                OccurredAtUtc: DateTimeOffset.UtcNow,
+                SourceService: "core",
+                ActorUserId: actorUserId,
+                AuditScope: AuditRouting.ScopeWorkspace,
+                TargetId: workspaceId,
+                Action: action,
+                FieldName: field,
+                EntityType: null,
+                OldValueJson: oldJson is null ? null : System.Text.Json.JsonSerializer.Serialize(oldJson),
+                NewValueJson: newJson is null ? null : System.Text.Json.JsonSerializer.Serialize(newJson)),
+            ct);
     }
 
     private async Task RequirePermission(int userId, int workspaceId, string permission, CancellationToken ct)

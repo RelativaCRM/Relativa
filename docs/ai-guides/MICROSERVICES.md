@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-02 (User provisioning: org-scoped admin APIs + email normalization; transactional outbox unchanged)
+> **Last verified:** 2026-05-03 (Prod-grade invitation system: org invite accepts `orgRoleId`, new `POST .../invitations/{id}/resend` for both scopes, new `workspace_join_requests` endpoints, new `manage_ws_join_requests` permission)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -163,10 +163,11 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | Invite user to organization by email |
-| GET | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | List pending org invitations |
-| DELETE | `/api/v1/organizations/{id}/invitations/{invId}` | JWT + `invite_to_org` | Cancel org invitation |
-| POST | `/api/v1/invitations/accept-org` | JWT + matching email | Accept organization invitation |
+| POST | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` (+ `assign_org_roles` for non-default role) | Invite user by email. Body: `{ email, orgRoleId? }`. Default role is `org_member`; specifying any other role additionally requires `assign_org_roles`. Token returned in response (no real email). |
+| GET | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | List pending, non-expired org invitations (includes `roleName`) |
+| DELETE | `/api/v1/organizations/{id}/invitations/{invId}` | JWT + `invite_to_org` | Cancel org invitation (sets status `Cancelled`) |
+| POST | `/api/v1/organizations/{id}/invitations/{invId}/resend` | JWT + `invite_to_org` | Rotate the token and extend `expires_at` on a pending invitation; returns the refreshed DTO |
+| POST | `/api/v1/invitations/accept-org` | JWT + matching email | Accept organization invitation. Adds user with the `OrgRoleId` recorded on the invitation. |
 
 ### Endpoints -- Organization Roles
 
@@ -206,10 +207,20 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | Invite user by email (returns token in response) |
-| GET | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | List pending invitations |
-| DELETE | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `invite_to_workspace` | Cancel invitation |
-| POST | `/api/v1/invitations/accept` | JWT + matching email | Accept workspace invitation by token |
+| POST | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | Invite user by email + `roleId` (returns token in response). **409** if the invitee already exists and is not a member of the workspace's parent organization. |
+| GET | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | List pending, non-expired invitations |
+| DELETE | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `invite_to_workspace` | Cancel invitation (sets status `Cancelled`) |
+| POST | `/api/v1/workspaces/{id}/invitations/{invId}/resend` | JWT + `invite_to_workspace` | Rotate the token and extend `expires_at` on a pending invitation; returns the refreshed DTO |
+| POST | `/api/v1/invitations/accept` | JWT + matching email + org membership | Accept workspace invitation by token. **409** if the caller is not a member of the workspace's parent organization. |
+
+### Endpoints -- Workspace Join Requests
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/workspaces/{id}/join-requests` | JWT + org membership of parent org | Submit a request to join the workspace. Body: `{ message? }`. **401** if not an org member, **409** if already a ws member or has a pending request. |
+| GET | `/api/v1/workspaces/{id}/join-requests` | JWT + `manage_ws_join_requests` | List pending join requests for the workspace |
+| PUT | `/api/v1/workspaces/{id}/join-requests/{reqId}` | JWT + `manage_ws_join_requests` | Approve or reject. Approval re-checks the requester's org membership and adds them as `ws_member`; if org membership was revoked in-flight, the request is automatically rejected and **409** is returned. |
+| GET | `/api/v1/workspace-join-requests/mine` | JWT | List own workspace join requests |
 
 ### Endpoints -- Workspace Roles
 
@@ -261,8 +272,8 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 ### Key Files
 
 - `Core/src/Relativa.Core/Program.cs` -- DI wiring, endpoint mapping
-- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
-- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `EntityTypeService`, `EntityService`
+- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `WsJoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
+- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `WsJoinRequestService`, `EntityTypeService`, `EntityService`
 - `Core/src/Relativa.Core.Application/DTOs/` -- request/response DTOs organized by feature
 - `Core/src/Relativa.Core.Application/Validators/` -- FluentValidation rules
 - `Core/src/Relativa.Core.Domain/Interfaces/` -- repository interfaces

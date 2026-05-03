@@ -22,6 +22,7 @@ public sealed class RelativaDbContext(DbContextOptions<RelativaDbContext> option
     public DbSet<WorkspaceRolePermission> WorkspaceRolePermissions => Set<WorkspaceRolePermission>();
     public DbSet<UserRoleWorkspace> UserRoleWorkspaces => Set<UserRoleWorkspace>();
     public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
+    public DbSet<WorkspaceJoinRequest> WorkspaceJoinRequests => Set<WorkspaceJoinRequest>();
 
     public DbSet<EntityType> EntityTypes => Set<EntityType>();
     public DbSet<Entity> Entities => Set<Entity>();

@@ -105,6 +105,10 @@ public sealed class JoinRequestService(
 
         if (request.Decision == "Approved")
         {
+            var existingMembership = await orgMemberRepository.GetAsync(joinRequest.UserId, organizationId, ct);
+            if (existingMembership is not null)
+                throw new InvalidOperationException("The requester is already a member of this organization.");
+
             var memberRole = await orgRoleRepository.GetSystemRoleByNameAsync("org_member", ct)
                 ?? throw new InvalidOperationException("System org_member role not found.");
 

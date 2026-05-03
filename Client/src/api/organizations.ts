@@ -30,6 +30,7 @@ export interface OrgInvitationDto {
   id: number;
   email: string;
   organizationName: string;
+  roleName: string;
   status: string;
   token: string;
   expiresAt: string;
@@ -107,10 +108,14 @@ export const orgApi = {
   },
 
   /* Invitations */
-  invite(orgId: number, email: string): Promise<OrgInvitationDto> {
+  invite(
+    orgId: number,
+    email: string,
+    orgRoleId?: number,
+  ): Promise<OrgInvitationDto> {
     return api.post<OrgInvitationDto>(
       `${CORE}/organizations/${orgId}/invitations`,
-      { email },
+      orgRoleId ? { email, orgRoleId } : { email },
     );
   },
   listInvitations(orgId: number): Promise<OrgInvitationDto[]> {
@@ -120,6 +125,11 @@ export const orgApi = {
   },
   cancelInvitation(orgId: number, invId: number): Promise<void> {
     return api.del(`${CORE}/organizations/${orgId}/invitations/${invId}`);
+  },
+  resendInvitation(orgId: number, invId: number): Promise<OrgInvitationDto> {
+    return api.post<OrgInvitationDto>(
+      `${CORE}/organizations/${orgId}/invitations/${invId}/resend`,
+    );
   },
   acceptOrgInvitation(token: string): Promise<void> {
     return api.post(`${CORE}/invitations/accept-org`, { token });

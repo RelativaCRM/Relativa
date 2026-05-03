@@ -12,5 +12,6 @@ public class Workspace
     public ICollection<EntityWorkspace> EntityWorkspaces { get; set; } = new List<EntityWorkspace>();
     public ICollection<UserRoleWorkspace> Members { get; set; } = new List<UserRoleWorkspace>();
     public ICollection<WorkspaceInvitation> Invitations { get; set; } = new List<WorkspaceInvitation>();
+    public ICollection<WorkspaceJoinRequest> JoinRequests { get; set; } = new List<WorkspaceJoinRequest>();
     public ICollection<WorkspaceRole> Roles { get; set; } = new List<WorkspaceRole>();
 }
