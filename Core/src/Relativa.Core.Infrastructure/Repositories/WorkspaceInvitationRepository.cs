@@ -34,10 +34,11 @@ public sealed class WorkspaceInvitationRepository(RelativaDbContext db) : IWorks
 
     public async Task<List<WorkspaceInvitation>> GetByEmailAsync(string email, CancellationToken ct = default)
     {
+        var normalized = email.Trim().ToLowerInvariant();
         return await db.WorkspaceInvitations
             .Include(i => i.Role)
             .Include(i => i.Workspace)
-            .Where(i => i.Email.ToLower() == email.ToLower() && i.Status == "Pending")
+            .Where(i => i.Email == normalized && i.Status == "Pending")
             .ToListAsync(ct);
     }
 

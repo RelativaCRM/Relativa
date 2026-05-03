@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-02 (Client: AuditLogView added — DataTable + filters + paginator wired to `GET /audit/audit-log`, gated to `ws_admin`/`ws_analyst` and org owners/admins)
+> **Last verified:** 2026-05-03 (DB: migration `AddPerformanceIndexes` — composite/DESC indexes for hot paths, redundant indexes dropped, invitation emails stored lowercase; Graph: `GraphDbContext` + EF insert for choreography idempotency instead of raw Npgsql)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -13,12 +13,12 @@
 | Gateway | **Functional** | YARP routing, JWT validation, split anonymous/auth routes, health, Scalar -- all working |
 | Authentication | **Functional** | Login, register, `/me` read + PATCH + DELETE, email normalization, JWT (sub + email only), FluentValidation -- all working |
 | Core | **Functional** (org + ws RBAC + entity CRUD) | Organization management, workspace management, split RBAC, members, org-scoped user provisioning (`create_org_users` / `edit_other_org_users_profile` / `delete_org_users`), invitations, join requests, permissions, entity-type listing (public), and workspace-scoped entity CRUD all implemented |
-| Graph | **Stub** | SignalR hub + RabbitMQ choreography consumer broadcasts workspace lifecycle payloads; graph projection logic still absent |
+| Graph | **Stub** | SignalR hub + RabbitMQ choreography consumer broadcasts workspace lifecycle payloads; choreography idempotency via EF `GraphDbContext` on `rabbitmq_processed_delivery`; graph projection logic still absent |
 | Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
 | ML | **Stub** | REST stub unchanged; **`run_domain_consumer`** processes choreography events (stub logging path) beside `runserver` in Docker |
 | Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + members/invitations + entity CRUD UI + dynamic entity-graph rendering, all driven by typed API clients (auth, org, workspace, entity, audit). Persisted state (token, profile, roles, current org/workspace ids) via a shared `localStorage` helper |
-| Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions |
+| Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions; performance indexes on membership/join-requests/invitations/audit logs/outbox + unique `entity_workspace (entity_id, workspace_id)` |
 
 ---
 
@@ -89,16 +89,17 @@
 
 - `MigrationDbContext` mirrors full Persistence model (21 entities).
 - `Program.cs` runs `Database.MigrateAsync()` as a generic host console app.
-- Four migrations in `Migration/src/Relativa.Migration/Migrations/`:
+- Migrations in `Migration/src/Relativa.Migration/Migrations/` include (non-exhaustive):
   - `20260416224419_InitialCreate.cs` — full initial schema (RBAC, org management, old polymorphic entity tables).
   - `20260416224514_SeedData.cs` — seeds all reference data. Permission ids 14/15 are `manage_entities`/`view_entities`.
   - `20260423000000_EavSchemaReplace.cs` — EAV schema migration: drops old property tables, renames entity tables to singular, creates new EAV tables.
   - `20260423100000_ReseedPermissions.cs` — FK-safe wipe and full re-insert of `permissions`, `organization_role_permissions`, `workspace_role_permissions`; replaces `edit_deals`/`view_deals` with `manage_entities`/`view_entities` for existing databases.
+  - `20260503194004_AddPerformanceIndexes.cs` — composite/DESC indexes for RBAC/invitations/join requests/audit tables/outbox; drops redundant single-column indexes; unique constraint on `entity_workspace (entity_id, workspace_id)`.
 - Docker Compose runs this before auth and core start.
 
 ### Persistence library
 
-- 21 entity classes with EF Fluent API configurations.
+- 21 entity classes with EF Fluent API configurations (including performance-oriented `HasIndex` composites where queries filter + order by time).
 - Split RBAC model: separate `OrganizationRole`/`OrganizationRolePermission` and `WorkspaceRole`/`WorkspaceRolePermission` hierarchies sharing a common `Permission` table.
 - **EAV entity model:** `Property`, `EntityTypeProperty`, `EntityPropertyValue`, `EntityRelationshipType`, `EntityRelationship` replace the old hard-coded `EntityProperty` / `PersonalDataPropertyValue` / `LocationPropertyValue` / `DealPropertyValue` tables.
 - `ModelBuilderExtensions.ApplyAuthEntityConfigurations()` for auth-only subset (User).
@@ -150,7 +151,7 @@
 
 ### Graph service
 
-**What exists:** SignalR hub mapped at `/hubs/graph`, identity endpoint, `DomainEventConsumerHostedService` (workspace choreography), DLQ wiring, Postgres idempotency receipts, broadcast event `domain.workspace.lifecycle.v1`.
+**What exists:** SignalR hub mapped at `/hubs/graph`, identity endpoint, `DomainEventConsumerHostedService` (workspace choreography), DLQ wiring, Postgres idempotency receipts via EF `GraphDbContext` (`rabbitmq_processed_delivery`), broadcast event `domain.workspace.lifecycle.v1`.
 **What is missing:** `OnConnectedAsync` only calls `base`. No graph-domain queries, recursive CTE traversal, RBAC-scoped hub groups, or ML score integration.
 
 ### Audit service

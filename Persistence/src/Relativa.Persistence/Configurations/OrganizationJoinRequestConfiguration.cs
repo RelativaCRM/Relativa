@@ -33,5 +33,9 @@ public class OrganizationJoinRequestConfiguration : IEntityTypeConfiguration<Org
             .HasForeignKey(e => e.ReviewedByUserId)
             .OnDelete(DeleteBehavior.SetNull)
             .HasConstraintName("fk_ojr_reviewed_by");
+        builder.HasIndex(e => new { e.OrganizationId, e.Status })
+            .HasDatabaseName("ix_ojr_org_status");
+        builder.HasIndex(e => new { e.UserId, e.Status })
+            .HasDatabaseName("ix_ojr_user_status");
     }
 }

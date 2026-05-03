@@ -22,7 +22,7 @@ public sealed class OrgInvitationService(
         var invitation = new OrganizationInvitation
         {
             OrganizationId = organizationId,
-            Email = request.Email,
+            Email = request.Email.Trim().ToLowerInvariant(),
             InvitedByUserId = callerUserId,
             Token = Guid.NewGuid().ToString("N"),
             Status = "Pending",

@@ -18,6 +18,10 @@ public class OrganizationInvitationConfiguration : IEntityTypeConfiguration<Orga
         builder.HasIndex(e => e.Token)
             .IsUnique()
             .HasDatabaseName("ix_org_invitations_token");
+        builder.HasIndex(e => new { e.OrganizationId, e.Status })
+            .HasDatabaseName("ix_oi_org_status");
+        builder.HasIndex(e => new { e.Email, e.Status })
+            .HasDatabaseName("ix_oi_email_status");
         builder.Property(e => e.Status).HasColumnName("status").IsRequired();
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(e => e.ExpiresAt).HasColumnName("expires_at").IsRequired();

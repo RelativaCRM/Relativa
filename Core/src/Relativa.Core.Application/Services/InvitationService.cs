@@ -31,7 +31,7 @@ public sealed class InvitationService(
         var invitation = new WorkspaceInvitation
         {
             WorkspaceId = workspaceId,
-            Email = request.Email,
+            Email = request.Email.Trim().ToLowerInvariant(),
             WsRoleId = request.RoleId,
             InvitedByUserId = callerUserId,
             Token = Guid.NewGuid().ToString("N"),

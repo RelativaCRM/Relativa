@@ -17,8 +17,6 @@ public class EntityPropertyValueConfiguration : IEntityTypeConfiguration<EntityP
         builder.Property(e => e.ValueDecimal).HasColumnName("value_decimal");
         builder.Property(e => e.ValueBool).HasColumnName("value_bool");
         builder.Property(e => e.ValueDate).HasColumnName("value_date");
-        builder.HasIndex(e => e.EntityId).HasDatabaseName("ix_epv_entity_id");
-        builder.HasIndex(e => e.PropertyId).HasDatabaseName("ix_epv_property_id");
         builder.HasOne(e => e.Entity)
             .WithMany(en => en.EntityPropertyValues)
             .HasForeignKey(e => e.EntityId)

@@ -19,6 +19,8 @@ public class UserRoleOrganizationConfiguration : IEntityTypeConfiguration<UserRo
         builder.HasIndex(e => new { e.UserId, e.OrganizationId })
             .IsUnique()
             .HasDatabaseName("ix_user_role_org_user_org");
+        builder.HasIndex(e => new { e.OrganizationId, e.IsArchived })
+            .HasDatabaseName("ix_uro_org_active");
         builder.HasOne(e => e.User)
             .WithMany(u => u.OrganizationMemberships)
             .HasForeignKey(e => e.UserId)

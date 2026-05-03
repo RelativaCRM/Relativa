@@ -28,7 +28,12 @@ public class OrganizationAuditLogConfiguration : IEntityTypeConfiguration<Organi
             .HasForeignKey(e => e.ChangedById)
             .OnDelete(DeleteBehavior.SetNull)
             .HasConstraintName("fk_organization_audit_log_users");
-        builder.HasIndex(e => e.OrganizationId).HasDatabaseName("ix_organization_audit_log_organization_id");
         builder.HasIndex(e => e.ChangedAt).IsDescending().HasDatabaseName("ix_organization_audit_log_changed_at");
+        builder.HasIndex(e => new { e.OrganizationId, e.ChangedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_oal_organization_changed_at");
+        builder.HasIndex(e => new { e.ChangedById, e.ChangedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_oal_changed_by_changed_at");
     }
 }

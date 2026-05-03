@@ -13,6 +13,9 @@ public class EntityWorkspaceConfiguration : IEntityTypeConfiguration<EntityWorks
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.EntityId).HasColumnName("entity_id").IsRequired();
         builder.Property(e => e.WorkspaceId).HasColumnName("workspace_id").IsRequired();
+        builder.HasIndex(e => new { e.EntityId, e.WorkspaceId })
+            .IsUnique()
+            .HasDatabaseName("ix_ew_entity_workspace");
         builder.HasOne(e => e.Entity)
             .WithMany(e => e.EntityWorkspaces)
             .HasForeignKey(e => e.EntityId)

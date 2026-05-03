@@ -19,6 +19,8 @@ public class UserRoleWorkspaceConfiguration : IEntityTypeConfiguration<UserRoleW
         builder.HasIndex(e => new { e.UserId, e.WorkspaceId })
             .IsUnique()
             .HasDatabaseName("ix_user_role_workspace_user_ws");
+        builder.HasIndex(e => new { e.WorkspaceId, e.IsArchived })
+            .HasDatabaseName("ix_urw_workspace_active");
         builder.HasOne(e => e.User)
             .WithMany(u => u.WorkspaceMemberships)
             .HasForeignKey(e => e.UserId)

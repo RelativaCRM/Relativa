@@ -28,7 +28,12 @@ public class UserAuditLogConfiguration : IEntityTypeConfiguration<UserAuditLog>
             .HasForeignKey(e => e.ChangedById)
             .OnDelete(DeleteBehavior.SetNull)
             .HasConstraintName("fk_user_audit_log_users");
-        builder.HasIndex(e => e.TargetUserId).HasDatabaseName("ix_user_audit_log_target_user_id");
         builder.HasIndex(e => e.ChangedAt).IsDescending().HasDatabaseName("ix_user_audit_log_changed_at");
+        builder.HasIndex(e => new { e.TargetUserId, e.ChangedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_ual_target_user_changed_at");
+        builder.HasIndex(e => new { e.ChangedById, e.ChangedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_ual_changed_by_changed_at");
     }
 }
