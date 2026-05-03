@@ -8,11 +8,13 @@ import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
+import { useApiErrorHandler } from '@/api/errorToast';
 
 const router = useRouter();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
+const { notify } = useApiErrorHandler();
 
 const loading = ref(true);
 const showCreate = ref(false);
@@ -36,8 +38,7 @@ async function handleCreate() {
     closeDialog();
     router.push({ name: 'workspace-members', params: { id: ws.id } });
   } catch (err) {
-    createError.value =
-      err instanceof ApiError ? err.message : 'Failed to create workspace.';
+    createError.value = normalizeError(err, 'Failed to create workspace.').message;
   } finally {
     creating.value = false;
   }
@@ -71,6 +72,8 @@ function displayRole(roleName: string | null): string {
 onMounted(async () => {
   try {
     await wsStore.fetchWorkspaces();
+  } catch (err) {
+    notify(err, { fallback: 'Failed to load workspaces.' });
   } finally {
     loading.value = false;
   }

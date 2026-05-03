@@ -1,6 +1,10 @@
 # Architecture -- Patterns, Layers, and Conventions
 
+<<<<<<< HEAD
+> **Last verified:** 2026-05-03 (CR-127: documented client-side error envelope contract — `normalizeError` parses `{ status, title, detail }` and FluentValidation `Field: msg` strings into `fieldErrors`)
+=======
 > **Last verified:** 2026-05-02 (Core ↔ Authentication.Application user provisioning; Auth exception mapping extended)
+>>>>>>> release/1.0
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -397,7 +401,11 @@ Authorization for workspace endpoints:
 | Concern | Implementation | Where |
 |---|---|---|
 | **Logging** | Serilog (console + rolling file) | Core, Authentication, Gateway |
+<<<<<<< HEAD
+| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. Audit adds `ForbiddenAccessException` → 403. Backend services serialize errors as `{ status, title, detail }` (validation `detail` is `"Field: msg; Field2: msg"`). The Vue client consumes that envelope through `Client/src/api/errors.ts` (`normalizeError` → `NormalizedError` with status flags + parsed `fieldErrors`) and `Client/src/api/errorToast.ts` (`useApiErrorHandler().notify` for toast dispatch). Forms render `fieldErrors` inline under inputs; non-form failures are surfaced via toasts. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
+=======
 | **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. Authentication additionally maps: `KeyNotFoundException` → 404, PostgreSQL unique violations (`DbUpdateException`) → 409. Audit adds `ForbiddenAccessException` → 403. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
+>>>>>>> release/1.0
 | **Health checks** | `/health` endpoint, EF Core DB checks on Auth and Core | All .NET services |
 | **API docs** | OpenAPI + Scalar (`/scalar/v1`, `/openapi/v1.json`) | Auth, Core, Gateway, Graph (dev) |
 | **CORS** | Gateway-only policy. Default: named-origin allowlist with credentials (`Cors:Origins`). Optional local dev override: `Cors:AllowAnyOriginForDev=true` enables wildcard origin without credentials. Downstream services do not apply local CORS policies to avoid drift. | Gateway |

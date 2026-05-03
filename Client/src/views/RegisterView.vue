@@ -7,7 +7,7 @@ import Button from 'primevue/button';
 import Message from 'primevue/message';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import { useAuthStore } from '@/stores/auth';
-import { ApiError } from '@/api/http';
+import { normalizeError, firstFieldError, type FieldErrors } from '@/api/errors';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -21,6 +21,15 @@ const form = reactive({
 const submitting = ref(false);
 const serverError = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
+const serverFieldErrors = ref<FieldErrors>({});
+
+function clearFieldError(field: keyof typeof form) {
+  if (serverFieldErrors.value[field]) {
+    const next = { ...serverFieldErrors.value };
+    delete next[field];
+    serverFieldErrors.value = next;
+  }
+}
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const emailInvalid = computed(
@@ -29,12 +38,18 @@ const emailInvalid = computed(
 const passwordTooShort = computed(
   () => form.password.length > 0 && form.password.length < 8,
 );
+const firstNameTooShort = computed(
+  () => form.firstName.trim().length > 0 && form.firstName.trim().length < 2,
+);
+const lastNameTooShort = computed(
+  () => form.lastName.trim().length > 0 && form.lastName.trim().length < 2,
+);
 
 const canSubmit = computed(
   () =>
     !submitting.value &&
-    form.firstName.trim().length > 0 &&
-    form.lastName.trim().length > 0 &&
+    form.firstName.trim().length >= 2 &&
+    form.lastName.trim().length >= 2 &&
     emailPattern.test(form.email) &&
     form.password.length >= 8,
 );
@@ -43,6 +58,7 @@ async function handleSubmit() {
   if (!canSubmit.value) return;
   serverError.value = null;
   successMessage.value = null;
+  serverFieldErrors.value = {};
   submitting.value = true;
   try {
     await auth.register({
@@ -54,14 +70,11 @@ async function handleSubmit() {
     await auth.login({ email: form.email, password: form.password });
     router.push({ name: 'home' });
   } catch (err) {
-    if (err instanceof ApiError) {
-      serverError.value =
-        err.status === 409
-          ? 'A user with this email already exists.'
-          : err.message || 'Registration failed.';
-    } else {
-      serverError.value = 'Network error. Please try again.';
-    }
+    const normalized = normalizeError(err, 'Registration failed.');
+    serverFieldErrors.value = normalized.fieldErrors;
+    serverError.value = normalized.isConflict
+      ? 'A user with this email already exists.'
+      : normalized.message;
   } finally {
     submitting.value = false;
   }
@@ -89,7 +102,21 @@ async function handleSubmit() {
             autocomplete="given-name"
             placeholder="Jane"
             class="!h-10"
+            :invalid="firstNameTooShort || !!firstFieldError(serverFieldErrors, 'firstName')"
+            @update:model-value="clearFieldError('firstName')"
           />
+          <small v-if="firstNameTooShort" class="text-xs text-danger">
+            <i class="pi pi-exclamation-circle mr-1" />First name must be at
+            least 2 characters
+          </small>
+          <small
+            v-else-if="firstFieldError(serverFieldErrors, 'firstName')"
+            class="text-xs text-danger"
+          >
+            <i class="pi pi-exclamation-circle mr-1" />{{
+              firstFieldError(serverFieldErrors, 'firstName')
+            }}
+          </small>
         </div>
         <div class="flex flex-col gap-1.5">
           <label for="lastName" class="text-xs font-medium text-ink-600">
@@ -101,7 +128,21 @@ async function handleSubmit() {
             autocomplete="family-name"
             placeholder="Doe"
             class="!h-10"
+            :invalid="lastNameTooShort || !!firstFieldError(serverFieldErrors, 'lastName')"
+            @update:model-value="clearFieldError('lastName')"
           />
+          <small v-if="lastNameTooShort" class="text-xs text-danger">
+            <i class="pi pi-exclamation-circle mr-1" />Last name must be at
+            least 2 characters
+          </small>
+          <small
+            v-else-if="firstFieldError(serverFieldErrors, 'lastName')"
+            class="text-xs text-danger"
+          >
+            <i class="pi pi-exclamation-circle mr-1" />{{
+              firstFieldError(serverFieldErrors, 'lastName')
+            }}
+          </small>
         </div>
       </div>
 
@@ -114,12 +155,21 @@ async function handleSubmit() {
           v-model="form.email"
           type="email"
           autocomplete="email"
-          :invalid="emailInvalid"
+          :invalid="emailInvalid || !!firstFieldError(serverFieldErrors, 'email')"
           placeholder="you@example.com"
           class="!h-10"
+          @update:model-value="clearFieldError('email')"
         />
         <small v-if="emailInvalid" class="text-xs text-danger">
           <i class="pi pi-exclamation-circle mr-1" />Invalid email format
+        </small>
+        <small
+          v-else-if="firstFieldError(serverFieldErrors, 'email')"
+          class="text-xs text-danger"
+        >
+          <i class="pi pi-exclamation-circle mr-1" />{{
+            firstFieldError(serverFieldErrors, 'email')
+          }}
         </small>
       </div>
 
@@ -135,9 +185,19 @@ async function handleSubmit() {
           placeholder="At least 8 characters"
           input-class="!h-10 w-full"
           class="w-full"
+          :invalid="!!firstFieldError(serverFieldErrors, 'password')"
+          @update:model-value="clearFieldError('password')"
         />
         <small v-if="passwordTooShort" class="text-xs text-danger">
           <i class="pi pi-exclamation-circle mr-1" />Password must be at least 8 characters
+        </small>
+        <small
+          v-else-if="firstFieldError(serverFieldErrors, 'password')"
+          class="text-xs text-danger"
+        >
+          <i class="pi pi-exclamation-circle mr-1" />{{
+            firstFieldError(serverFieldErrors, 'password')
+          }}
         </small>
       </div>
 

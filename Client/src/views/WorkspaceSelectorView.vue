@@ -11,7 +11,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
 import type { WorkspaceDto } from '@/api/workspaces';
 
 const router = useRouter();
@@ -59,8 +59,7 @@ async function handleCreate() {
     );
     router.push({ name: 'home' });
   } catch (err) {
-    createError.value =
-      err instanceof ApiError ? err.message : 'Failed to create workspace.';
+    createError.value = normalizeError(err, 'Failed to create workspace.').message;
   } finally {
     creating.value = false;
   }
@@ -77,17 +76,14 @@ function handleLogout() {
 onMounted(async () => {
   try {
     await wsStore.fetchWorkspaces();
-    if (wsStore.workspaces.length === 1) {
-      const only = wsStore.workspaces[0];
+    const only = wsStore.workspaces.length === 1 ? wsStore.workspaces[0] : null;
+    if (only) {
       wsStore.setCurrentWorkspace(only.id);
       router.replace({ name: 'home' });
       return;
     }
   } catch (err) {
-    loadError.value =
-      err instanceof ApiError
-        ? err.message || 'Failed to load workspaces.'
-        : 'Network error. Please try again.';
+    loadError.value = normalizeError(err, 'Failed to load workspaces.').message;
   } finally {
     loading.value = false;
   }

@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-02 (Org user admin APIs + Auth profile PATCH/DELETE + permission migration `AddOrgUserAdminPermissions`)
+> **Last verified:** 2026-05-03 (CR-127: centralized client error handler — `normalizeError`, `useApiErrorHandler`, inline field-error rendering for forms)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -118,6 +118,7 @@
 - Vue 3 + Vite scaffold with TypeScript, Pinia, Vue Router.
 - **UI stack:** PrimeVue 4 (Aura preset) + Tailwind CSS 3 (`tailwindcss-primeui` bridge) + Inter font.
 - **Typed API client** (`src/api/http.ts`): `gatewayFetch` with JWT + `X-Workspace-ID` headers (workspace id read from the workspace store), `ApiError` class, JSON helpers (`api.get/post/put/patch/del`). Auto session clear on `401` is **scoped to auth endpoints only** (`/auth/me`, `/auth/refresh`) — generic `401`s on business endpoints surface as `ApiError` so a transient permission change does not log the user out.
+- **Centralized error handling** (CR-127, `src/api/errors.ts` + `src/api/errorToast.ts`): `normalizeError(err, fallback)` consumes any `ApiError` / `Error` / network failure and returns a `NormalizedError` with friendly `message`, status flags (`isValidation`, `isUnauthorized`, `isForbidden`, `isNotFound`, `isConflict`, `isServer`, `isNetwork`), and a `fieldErrors` map parsed from the backend `{ status, title, detail }` shape (FluentValidation `detail` of the form `"Field: msg; Field2: msg"` is split into per-field arrays; field names are lower-cased to match camelCase form bindings). `useApiErrorHandler()` is a thin composable over PrimeVue's `useToast()` — `notify(err, { fallback, summary, silent })` shows a categorized red error toast and returns the same `NormalizedError` so callers can also react to specific statuses. Forms render server `fieldErrors` inline under the corresponding inputs (red text + `pi pi-exclamation-circle`); each input clears its own server error on `update:model-value`. List/dialog views display non-form errors via toasts (replaces previous silent `catch {}` blocks).
 - **Auth service** (`src/api/auth.ts`): `authApi.register`, `authApi.login`, `authApi.me` (via Gateway, CR-96).
 - **Organization service** (`src/api/organizations.ts`): org CRUD, members, invitations, join requests, roles, combined invitations (`/invitations/mine`).
 - **Workspace service** (`src/api/workspaces.ts`): workspace CRUD, members, roles, invitations.

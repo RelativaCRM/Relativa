@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
@@ -9,10 +10,13 @@ import Tag from 'primevue/tag';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { orgApi, type JoinRequestDto } from '@/api/organizations';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
+import { useApiErrorHandler } from '@/api/errorToast';
 
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
+const toast = useToast();
+const { notify } = useApiErrorHandler();
 
 const loading = ref(true);
 const joinRequests = ref<JoinRequestDto[]>([]);
@@ -31,8 +35,9 @@ async function fetchJoinRequests() {
   if (!orgStore.currentOrgId || !isOrgAdmin.value) return;
   try {
     joinRequests.value = await orgApi.listJoinRequests(orgStore.currentOrgId);
-  } catch {
+  } catch (err) {
     joinRequests.value = [];
+    notify(err, { fallback: 'Failed to load join requests.' });
   }
 }
 
@@ -48,8 +53,8 @@ async function handleReviewRequest(
     if (decision === 'Approved') {
       await orgStore.fetchMembers();
     }
-  } catch {
-    /* silent */
+  } catch (err) {
+    notify(err, { fallback: 'Failed to review join request.' });
   } finally {
     reviewingId.value = null;
   }
@@ -77,8 +82,7 @@ async function handleInvite() {
     inviteSuccess.value = `Invitation sent to ${inviteEmail.value}`;
     inviteEmail.value = '';
   } catch (err) {
-    inviteError.value =
-      err instanceof ApiError ? err.message : 'Failed to send invitation.';
+    inviteError.value = normalizeError(err, 'Failed to send invitation.').message;
   } finally {
     inviteSending.value = false;
   }
@@ -93,6 +97,7 @@ function closeInviteDialog() {
 
 /* ── Role change ───────────────────────────────────────── */
 const changingRole = ref<number | null>(null);
+const roleSelectVersion = ref(0);
 
 const roleOptions = computed(() =>
   orgStore.roles
@@ -120,12 +125,34 @@ function roleIdByName(roleName: string): number | undefined {
 }
 
 async function handleRoleChange(userId: number, newRoleId: number) {
+  const target = orgStore.members.find((m) => m.userId === userId);
+  const newRoleName = orgStore.roles.find((r) => r.id === newRoleId)?.name;
+
+  if (target && target.roleName === 'org_owner' && newRoleName !== 'org_owner') {
+    const ownerCount = orgStore.members.filter(
+      (m) => m.roleName === 'org_owner',
+    ).length;
+    if (ownerCount <= 1) {
+      toast.add({
+        severity: 'error',
+        summary: 'Conflict',
+        detail: 'Cannot remove the last organization owner.',
+        life: 5000,
+      });
+      await orgStore.fetchMembers();
+      roleSelectVersion.value++;
+      return;
+    }
+  }
+
   changingRole.value = userId;
   try {
     await orgStore.changeMemberRole(userId, newRoleId);
-  } catch {
-    /* stay silent, role select will revert on reload */
+  } catch (err) {
+    notify(err, { fallback: 'Failed to update role.' });
   } finally {
+    await orgStore.fetchMembers();
+    roleSelectVersion.value++;
     changingRole.value = null;
   }
 }
@@ -137,8 +164,8 @@ async function handleRemove(userId: number) {
   removingId.value = userId;
   try {
     await orgStore.removeMember(userId);
-  } catch {
-    /* stay silent */
+  } catch (err) {
+    notify(err, { fallback: 'Failed to remove member.' });
   } finally {
     removingId.value = null;
   }
@@ -148,8 +175,8 @@ async function handleRemove(userId: number) {
 async function handleCancelInvitation(invId: number) {
   try {
     await orgStore.cancelInvitation(invId);
-  } catch {
-    /* stay silent */
+  } catch (err) {
+    notify(err, { fallback: 'Failed to cancel invitation.' });
   }
 }
 
@@ -219,6 +246,7 @@ onMounted(async () => {
               <!-- Other roles — editable via select -->
               <Select
                 v-else-if="member.userId !== auth.user?.id"
+                :key="`role-${member.userId}-${member.roleName}-${roleSelectVersion}`"
                 :model-value="roleIdByName(member.roleName)"
                 :options="roleOptions"
                 option-label="label"
