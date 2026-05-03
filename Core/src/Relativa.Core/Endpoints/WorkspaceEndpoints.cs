@@ -21,15 +21,16 @@ public static class WorkspaceEndpoints
         .Produces<WorkspaceDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
-        group.MapGet("/", async (IWorkspaceService service, HttpContext httpContext, CancellationToken ct) =>
+        group.MapGet("/", async (int? organizationId, IWorkspaceService service, HttpContext httpContext, CancellationToken ct) =>
         {
             var userId = GetUserId(httpContext);
-            var result = await service.GetByUserAsync(userId, ct);
+            var result = await service.GetByUserAsync(userId, organizationId, ct);
             return Results.Ok(result);
         })
         .WithName("ListWorkspaces")
-        .WithSummary("List workspaces for the authenticated user")
-        .Produces<List<WorkspaceDto>>();
+        .WithSummary("List workspaces for the authenticated user; optional organizationId limits to that org (caller must be an org member)")
+        .Produces<List<WorkspaceDto>>()
+        .Produces(StatusCodes.Status403Forbidden);
 
         group.MapGet("/{id:int}", async (int id, IWorkspaceService service, HttpContext httpContext, CancellationToken ct) =>
         {

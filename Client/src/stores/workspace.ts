@@ -30,8 +30,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     saveNumber(WS_KEY, id);
   }
 
-  async function fetchWorkspaces() {
-    workspaces.value = await workspaceApi.list();
+  async function fetchWorkspaces(organizationId?: number) {
+    workspaces.value = await workspaceApi.list(organizationId);
     if (
       currentWorkspaceId.value &&
       !workspaces.value.some((w) => w.id === currentWorkspaceId.value)

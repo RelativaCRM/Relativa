@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-03 (Prod-grade invitation system: org invite accepts `orgRoleId`, new `POST .../invitations/{id}/resend` for both scopes, new `workspace_join_requests` endpoints, new `manage_ws_join_requests` permission)
+> **Last verified:** 2026-05-04 (`WorkspaceDto.organizationId`; `GET /workspaces?organizationId=` org-scoped list + **403** if not org member; `InvitationDto` / `OrgInvitationDto` include `workspaceId` / `organizationId` for inbox filtering)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -182,14 +182,14 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| GET | `/api/v1/invitations/mine` | JWT | List all pending invitations (both workspace + org) for the user |
+| GET | `/api/v1/invitations/mine` | JWT | List all pending invitations (workspace + org) for the user. Workspace rows include `workspaceId` and `organizationId`; org rows include `organizationId`. |
 
 ### Endpoints -- Workspaces
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | POST | `/api/v1/workspaces` | JWT + `create_workspaces` (org perm) | Create workspace within an organization (requires `organizationId`) |
-| GET | `/api/v1/workspaces` | JWT | List workspaces for authenticated user |
+| GET | `/api/v1/workspaces` | JWT | List workspaces for the authenticated user (each item includes `organizationId`). Optional query **`organizationId`**: restrict to workspaces in that org; caller must be an org member or **403 Forbidden**. Omit the query to list all workspaces the user belongs to (any org). |
 | GET | `/api/v1/workspaces/{id}` | JWT + ws membership | Get workspace details |
 | PUT | `/api/v1/workspaces/{id}` | JWT + `manage_ws_settings` | Update workspace name |
 | DELETE | `/api/v1/workspaces/{id}` | JWT + ws_admin role | Archive workspace |

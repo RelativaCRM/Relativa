@@ -22,10 +22,26 @@ const processingToken = ref<string | null>(null);
 const error = ref<string | null>(null);
 const success = ref<string | null>(null);
 
+const orgScopedOrgInvitations = computed(() => {
+  const oid = orgStore.currentOrgId;
+  if (!oid) return inbox.value.organizationInvitations;
+  return inbox.value.organizationInvitations.filter(
+    (i) => i.organizationId === oid,
+  );
+});
+
+const orgScopedWorkspaceInvitations = computed(() => {
+  const oid = orgStore.currentOrgId;
+  if (!oid) return inbox.value.workspaceInvitations;
+  return inbox.value.workspaceInvitations.filter(
+    (i) => i.organizationId === oid,
+  );
+});
+
 const hasInvitations = computed(
   () =>
-    inbox.value.organizationInvitations.length > 0 ||
-    inbox.value.workspaceInvitations.length > 0,
+    orgScopedOrgInvitations.value.length > 0 ||
+    orgScopedWorkspaceInvitations.value.length > 0,
 );
 
 async function loadInbox() {
@@ -65,7 +81,10 @@ async function acceptWorkspace(token: string) {
   try {
     await orgApi.acceptWorkspaceInvitation(token);
     success.value = 'Workspace invitation accepted.';
-    await Promise.all([wsStore.fetchWorkspaces(), loadInbox()]);
+    await Promise.all([
+      wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined),
+      loadInbox(),
+    ]);
   } catch (err) {
     error.value = normalizeError(err, 'Failed to accept invitation.').message;
   } finally {
@@ -117,7 +136,7 @@ defineExpose({ loadInbox });
     <div v-else class="flex flex-col gap-6">
       <!-- Organization invitations -->
       <div
-        v-if="inbox.organizationInvitations.length"
+        v-if="orgScopedOrgInvitations.length"
         class="rounded-xl border border-line bg-white overflow-hidden"
       >
         <div
@@ -127,7 +146,7 @@ defineExpose({ loadInbox });
           Organization invitations
         </div>
         <div
-          v-for="inv in inbox.organizationInvitations"
+          v-for="inv in orgScopedOrgInvitations"
           :key="inv.id"
           class="flex items-center justify-between px-5 py-4 border-b border-line last:border-0"
         >
@@ -154,7 +173,7 @@ defineExpose({ loadInbox });
 
       <!-- Workspace invitations -->
       <div
-        v-if="inbox.workspaceInvitations.length"
+        v-if="orgScopedWorkspaceInvitations.length"
         class="rounded-xl border border-line bg-white overflow-hidden"
       >
         <div
@@ -164,7 +183,7 @@ defineExpose({ loadInbox });
           Workspace invitations
         </div>
         <div
-          v-for="inv in inbox.workspaceInvitations"
+          v-for="inv in orgScopedWorkspaceInvitations"
           :key="inv.id"
           class="flex items-center justify-between px-5 py-4 border-b border-line last:border-0"
         >

@@ -28,6 +28,7 @@ export interface OrgRoleDto {
 
 export interface OrgInvitationDto {
   id: number;
+  organizationId: number;
   email: string;
   organizationName: string;
   roleName: string;
@@ -51,6 +52,8 @@ export interface JoinRequestDto {
 export interface MyWorkspaceInvitationDto {
   id: number;
   email: string;
+  workspaceId: number;
+  organizationId: number;
   workspaceName: string;
   roleName: string;
   status: string;

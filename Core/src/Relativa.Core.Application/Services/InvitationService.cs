@@ -65,7 +65,16 @@ public sealed class InvitationService(
             ct);
 
         var reloaded = await invitationRepository.GetByIdAsync(invitation.Id, ct) ?? invitation;
-        return new InvitationDto(reloaded.Id, reloaded.Email, reloaded.Workspace?.Name ?? "", role.Name, reloaded.Status, reloaded.Token, reloaded.ExpiresAt);
+        return new InvitationDto(
+            reloaded.Id,
+            reloaded.Email,
+            workspaceId,
+            workspace.OrganizationId,
+            reloaded.Workspace?.Name ?? "",
+            role.Name,
+            reloaded.Status,
+            reloaded.Token,
+            reloaded.ExpiresAt);
     }
 
     public async Task<List<InvitationDto>> GetPendingAsync(int workspaceId, int callerUserId, CancellationToken ct = default)
@@ -76,7 +85,16 @@ public sealed class InvitationService(
         var invitations = await invitationRepository.GetByWorkspaceIdAsync(workspaceId, ct);
         return invitations
             .Where(i => i.Status == "Pending" && i.ExpiresAt > now)
-            .Select(i => new InvitationDto(i.Id, i.Email, i.Workspace?.Name ?? "", i.Role.Name, i.Status, i.Token, i.ExpiresAt))
+            .Select(i => new InvitationDto(
+                i.Id,
+                i.Email,
+                i.WorkspaceId,
+                i.Workspace?.OrganizationId ?? 0,
+                i.Workspace?.Name ?? "",
+                i.Role?.Name ?? string.Empty,
+                i.Status,
+                i.Token,
+                i.ExpiresAt))
             .ToList();
     }
 
@@ -137,6 +155,8 @@ public sealed class InvitationService(
         return new InvitationDto(
             invitation.Id,
             invitation.Email,
+            invitation.WorkspaceId,
+            invitation.Workspace?.OrganizationId ?? 0,
             invitation.Workspace?.Name ?? "",
             invitation.Role?.Name ?? string.Empty,
             invitation.Status,
@@ -215,7 +235,16 @@ public sealed class InvitationService(
         var wsInvitations = await invitationRepository.GetByEmailAsync(userEmail, ct);
         var workspaceInvitations = wsInvitations
             .Where(i => i.Status == "Pending" && i.ExpiresAt > now)
-            .Select(i => new InvitationDto(i.Id, i.Email, i.Workspace?.Name ?? "", i.Role.Name, i.Status, i.Token, i.ExpiresAt))
+            .Select(i => new InvitationDto(
+                i.Id,
+                i.Email,
+                i.WorkspaceId,
+                i.Workspace?.OrganizationId ?? 0,
+                i.Workspace?.Name ?? "",
+                i.Role?.Name ?? string.Empty,
+                i.Status,
+                i.Token,
+                i.ExpiresAt))
             .ToList();
 
         var orgInvitations = await orgInvitationRepository.GetByEmailAsync(userEmail, ct);
@@ -223,6 +252,7 @@ public sealed class InvitationService(
             .Where(i => i.Status == "Pending" && i.ExpiresAt > now)
             .Select(i => new OrgInvitationDto(
                 i.Id,
+                i.OrganizationId,
                 i.Email,
                 i.Organization.Name,
                 i.Role?.Name ?? string.Empty,

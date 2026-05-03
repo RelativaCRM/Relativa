@@ -36,7 +36,10 @@ async function handleCreate() {
       orgStore.currentOrgId,
     );
     closeDialog();
-    router.push({ name: 'workspace-members', params: { id: ws.id } });
+    router.push({
+      name: 'workspace-members',
+      params: { workspaceId: String(ws.id) },
+    });
   } catch (err) {
     createError.value = normalizeError(err, 'Failed to create workspace.').message;
   } finally {
@@ -52,12 +55,18 @@ function closeDialog() {
 
 function openWorkspace(id: number) {
   wsStore.setCurrentWorkspace(id);
-  router.push({ name: 'workspace-members', params: { id } });
+  router.push({
+    name: 'workspace-members',
+    params: { workspaceId: String(id) },
+  });
 }
 
 function openEntities(id: number) {
   wsStore.setCurrentWorkspace(id);
-  router.push({ name: 'workspace-entities', params: { id } });
+  router.push({
+    name: 'workspace-entities',
+    params: { workspaceId: String(id) },
+  });
 }
 
 function displayRole(roleName: string | null): string {
@@ -71,7 +80,7 @@ function displayRole(roleName: string | null): string {
 
 onMounted(async () => {
   try {
-    await wsStore.fetchWorkspaces();
+    await wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined);
   } catch (err) {
     notify(err, { fallback: 'Failed to load workspaces.' });
   } finally {

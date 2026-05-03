@@ -196,7 +196,7 @@ function goToEntity(row: AuditLogEntryDto) {
   if (!wsId) return;
   router.push({
     name: 'workspace-entities',
-    params: { id: String(wsId) },
+    params: { workspaceId: String(wsId) },
   });
 }
 

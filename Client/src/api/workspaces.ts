@@ -3,6 +3,7 @@ import type { MyWorkspaceInvitationDto } from '@/api/organizations';
 
 export interface WorkspaceDto {
   id: number;
+  organizationId: number;
   name: string;
   memberCount: number;
   userRole: string | null;
@@ -48,8 +49,12 @@ export interface WsJoinRequestDto {
 const CORE = '/core/api/v1';
 
 export const workspaceApi = {
-  list(): Promise<WorkspaceDto[]> {
-    return api.get<WorkspaceDto[]>(`${CORE}/workspaces`);
+  list(organizationId?: number): Promise<WorkspaceDto[]> {
+    const q =
+      organizationId !== undefined && organizationId !== null
+        ? `?organizationId=${encodeURIComponent(String(organizationId))}`
+        : '';
+    return api.get<WorkspaceDto[]>(`${CORE}/workspaces${q}`);
   },
   create(name: string, organizationId: number): Promise<WorkspaceDto> {
     return api.post<WorkspaceDto>(`${CORE}/workspaces`, {

@@ -3,6 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using Relativa.Core.Application.DTOs.Workspace;
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Entities;
@@ -118,6 +119,7 @@ public sealed class WorkspaceServiceTests
         var result = await _sut.CreateAsync(42, request);
 
         result.Name.Should().Be(request.Name);
+        result.OrganizationId.Should().Be(10);
         result.UserRole.Should().Be("ws_admin");
         result.MemberCount.Should().Be(1);
         capturedWorkspace!.CreatedByUserId.Should().Be(42);
@@ -283,5 +285,78 @@ public sealed class WorkspaceServiceTests
         _workspaceRepo.Verify(
             r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByUserAsync_WithOrganizationId_ReturnsOnlyWorkspacesInOrg()
+    {
+        var ws1 = new Workspace { Id = 1, Name = "A", OrganizationId = 10, IsArchived = false };
+        var ws2 = new Workspace { Id = 2, Name = "B", OrganizationId = 99, IsArchived = false };
+
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 10, "create_workspaces"));
+        _workspaceRepo
+            .Setup(r => r.GetByUserIdAndOrganizationIdAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ws1]);
+        _memberRepo
+            .Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AdminMember(1, 1));
+        _memberRepo
+            .Setup(r => r.GetByWorkspaceIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([AdminMember(1, 1)]);
+
+        var result = await _sut.GetByUserAsync(1, 10);
+
+        result.Should().ContainSingle();
+        result[0].Id.Should().Be(1);
+        result[0].OrganizationId.Should().Be(10);
+        _workspaceRepo.Verify(
+            r => r.GetByUserIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByUserAsync_WithOrganizationId_NotOrgMember_ThrowsForbiddenAccessException()
+    {
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleOrganization?)null);
+
+        var act = () => _sut.GetByUserAsync(1, 10);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("You are not a member of this organization.");
+        _workspaceRepo.Verify(
+            r => r.GetByUserIdAndOrganizationIdAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByUserAsync_WithoutOrganizationId_ReturnsAllUserWorkspaces()
+    {
+        var ws1 = new Workspace { Id = 1, Name = "A", OrganizationId = 10, IsArchived = false };
+        var ws2 = new Workspace { Id = 2, Name = "B", OrganizationId = 99, IsArchived = false };
+
+        _workspaceRepo
+            .Setup(r => r.GetByUserIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ws1, ws2]);
+        _memberRepo
+            .Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AdminMember(1, 1));
+        _memberRepo
+            .Setup(r => r.GetAsync(1, 2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AdminMember(1, 2));
+        _memberRepo
+            .Setup(r => r.GetByWorkspaceIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([AdminMember(1, 1)]);
+        _memberRepo
+            .Setup(r => r.GetByWorkspaceIdAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([AdminMember(1, 2)]);
+
+        var result = await _sut.GetByUserAsync(1, null);
+
+        result.Should().HaveCount(2);
+        result.Select(r => r.OrganizationId).Should().BeEquivalentTo([10, 99]);
     }
 }

@@ -54,6 +54,7 @@ public sealed class OrgInvitationService(
 
         return new OrgInvitationDto(
             invitation.Id,
+            invitation.OrganizationId,
             invitation.Email,
             invitation.Organization?.Name ?? string.Empty,
             role.Name,
@@ -72,6 +73,7 @@ public sealed class OrgInvitationService(
             .Where(i => i.Status == "Pending" && i.ExpiresAt > now)
             .Select(i => new OrgInvitationDto(
                 i.Id,
+                i.OrganizationId,
                 i.Email,
                 i.Organization.Name,
                 i.Role?.Name ?? string.Empty,
@@ -137,6 +139,7 @@ public sealed class OrgInvitationService(
 
         return new OrgInvitationDto(
             invitation.Id,
+            invitation.OrganizationId,
             invitation.Email,
             invitation.Organization?.Name ?? string.Empty,
             invitation.Role?.Name ?? string.Empty,

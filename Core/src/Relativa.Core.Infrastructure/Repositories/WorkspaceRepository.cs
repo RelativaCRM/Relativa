@@ -22,6 +22,18 @@ public sealed class WorkspaceRepository(RelativaDbContext db) : IWorkspaceReposi
             .ToListAsync(ct);
     }
 
+    public async Task<List<Workspace>> GetByUserIdAndOrganizationIdAsync(
+        int userId,
+        int organizationId,
+        CancellationToken ct = default)
+    {
+        return await db.UserRoleWorkspaces
+            .Where(urw => urw.UserId == userId && !urw.IsArchived)
+            .Select(urw => urw.Workspace)
+            .Where(w => !w.IsArchived && w.OrganizationId == organizationId)
+            .ToListAsync(ct);
+    }
+
     public async Task AddAsync(Workspace workspace, CancellationToken ct = default)
     {
         db.Workspaces.Add(workspace);

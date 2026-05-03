@@ -9,6 +9,7 @@ import Dialog from 'primevue/dialog';
 import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import { useAuthStore } from '@/stores/auth';
+import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { ApiError } from '@/api/http';
 import { normalizeError } from '@/api/errors';
@@ -18,12 +19,13 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const auth = useAuthStore();
+const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
 const { notify } = useApiErrorHandler();
 
 const ROLE_ORDER = ['ws_admin', 'ws_manager', 'ws_analyst', 'ws_member'];
 
-const workspaceId = computed(() => Number(route.params.id));
+const workspaceId = computed(() => Number(route.params.workspaceId));
 const loading = ref(true);
 
 /* ── Invite dialog ─────────────────────────────────────── */
@@ -227,7 +229,7 @@ async function loadAll() {
       wsStore.fetchRoles(workspaceId.value),
       wsStore.fetchInvitations(workspaceId.value),
       wsStore.workspaces.length === 0
-        ? wsStore.fetchWorkspaces()
+        ? wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined)
         : Promise.resolve(),
     ]);
     wsStore.setCurrentWorkspace(workspaceId.value);
@@ -276,7 +278,7 @@ onMounted(loadAll);
           @click="
             router.push({
               name: 'workspace-entities',
-              params: { id: workspaceId },
+              params: { workspaceId: String(workspaceId) },
             })
           "
         />
