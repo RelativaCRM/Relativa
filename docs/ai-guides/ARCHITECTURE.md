@@ -1,6 +1,10 @@
 # Architecture -- Patterns, Layers, and Conventions
 
+<<<<<<< HEAD
 > **Last verified:** 2026-05-03 (CR-127: documented client-side error envelope contract — `normalizeError` parses `{ status, title, detail }` and FluentValidation `Field: msg` strings into `fieldErrors`)
+=======
+> **Last verified:** 2026-05-02 (Core ↔ Authentication.Application user provisioning; Auth exception mapping extended)
+>>>>>>> release/1.0
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -56,8 +60,8 @@ The project uses a **ports-and-adapters (Clean Architecture)** pattern. Each ser
 
 | Service | Host | Application | Domain | Infrastructure |
 |---|---|---|---|---|
-| **Authentication** | Implemented | Implemented (AuthService, DTOs, validators) | Implemented (interfaces only) | Implemented (AuthDbContext, repos, JWT, bcrypt) |
-| **Core** | Implemented (org, workspace, member, invitation, role, join-request, permission endpoints) | Implemented (OrganizationService, OrgMemberService, OrgInvitationService, OrgRoleService, JoinRequestService, WorkspaceService, WorkspaceMemberService, InvitationService, RoleService, DTOs, validators) | Implemented (repository interfaces, IWorkspaceContext) | Implemented (RelativaDbContext, repos, WorkspaceContext) |
+| **Authentication** | Implemented | Implemented (AuthService, UserProvisioningService, DTOs, validators) | Implemented (interfaces only) | Implemented (AuthDbContext, repos, JWT, bcrypt) |
+| **Core** | Implemented (org, workspace, member, invitation, role, join-request, permission, org-user-admin endpoints) | Implemented (+ `OrganizationUserAdminService`; references Authentication.Application for shared user writes) | Implemented (repository interfaces, IWorkspaceContext) | Implemented (RelativaDbContext, repos, WorkspaceContext, AuthDbContext + Auth repos for provisioning) |
 | **Gateway** | Implemented | N/A (single project) | N/A | N/A |
 | **Graph** | Implemented (stub hub + RabbitMQ choreography consumer) | N/A (single project) | N/A | Uses Postgres + Persistence contracts for idempotent inbox |
 | **Audit** | Implemented (stub) | N/A (single project) | N/A | N/A |
@@ -373,7 +377,7 @@ Authorization for workspace endpoints:
 
 ### Authorization policies
 
-- **Gateway:** `MapReverseProxy().RequireAuthorization()` -- all proxied routes require a valid JWT unless explicitly marked anonymous in YARP route config. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
+- **Gateway:** `MapReverseProxy().RequireAuthorization()` -- all proxied routes require a valid JWT unless explicitly marked anonymous in YARP route config. Auth routes are split: `/login` and `/register` are anonymous; `/me` (GET/PATCH/DELETE) requires JWT.
 - **Audit:** `AuditReaders` requires a validated JWT. Read endpoints (`/audit-log`, `/entities/{id}/audit-log`) enforce **workspace** (`ws_admin` / `ws_analyst`) or **organization** (`org_owner` / `org_admin`) or **user-scope** rules via EF against `user_role_workspace` / `user_role_organization`. The read model joins `Entity`, `EntityType`, `Workspace`, `Organization`, `User`, and EAV `Property` / `EntityTypeProperty` metadata for report-friendly DTOs. See [AUDIT-LOG-API.md](AUDIT-LOG-API.md). Audit also consumes RabbitMQ events and persists into the four `*_audit_log` tables.
 - **Core:** No ASP.NET authentication or authorization middleware. Identity comes exclusively from `X-User-Id` / `X-User-Email` headers (see "Internal identity propagation" above). Per-endpoint authorization is then enforced via `UserRoleOrganization` / `UserRoleWorkspace` DB lookups inside the application service layer.
 
@@ -397,7 +401,11 @@ Authorization for workspace endpoints:
 | Concern | Implementation | Where |
 |---|---|---|
 | **Logging** | Serilog (console + rolling file) | Core, Authentication, Gateway |
+<<<<<<< HEAD
 | **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. Audit adds `ForbiddenAccessException` → 403. Backend services serialize errors as `{ status, title, detail }` (validation `detail` is `"Field: msg; Field2: msg"`). The Vue client consumes that envelope through `Client/src/api/errors.ts` (`normalizeError` → `NormalizedError` with status flags + parsed `fieldErrors`) and `Client/src/api/errorToast.ts` (`useApiErrorHandler().notify` for toast dispatch). Forms render `fieldErrors` inline under inputs; non-form failures are surfaced via toasts. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
+=======
+| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. Authentication additionally maps: `KeyNotFoundException` → 404, PostgreSQL unique violations (`DbUpdateException`) → 409. Audit adds `ForbiddenAccessException` → 403. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
+>>>>>>> release/1.0
 | **Health checks** | `/health` endpoint, EF Core DB checks on Auth and Core | All .NET services |
 | **API docs** | OpenAPI + Scalar (`/scalar/v1`, `/openapi/v1.json`) | Auth, Core, Gateway, Graph (dev) |
 | **CORS** | Gateway-only policy. Default: named-origin allowlist with credentials (`Cors:Origins`). Optional local dev override: `Cors:AllowAnyOriginForDev=true` enables wildcard origin without credentials. Downstream services do not apply local CORS policies to avoid drift. | Gateway |

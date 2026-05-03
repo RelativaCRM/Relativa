@@ -1,5 +1,12 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Relativa.Authentication.Application.DTOs;
+using Relativa.Authentication.Application.Interfaces;
+using Relativa.Authentication.Application.Services;
+using Relativa.Authentication.Domain.Interfaces;
+using Relativa.Authentication.Infrastructure.Data;
+using Relativa.Authentication.Infrastructure.Repositories;
+using Relativa.Authentication.Infrastructure.Services;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
@@ -37,6 +44,14 @@ try
         .AddDbContextCheck<RelativaDbContext>();
 
     builder.Services.AddValidatorsFromAssemblyContaining<IWorkspaceService>();
+    builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestDto>();
+    builder.Services.AddValidatorsFromAssemblyContaining<IOrganizationUserAdminService>();
+
+    builder.Services.AddDbContext<AuthDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+    builder.Services.AddScoped<IUserProvisioningService, UserProvisioningService>();
 
     builder.Services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
     builder.Services.AddScoped<IUserRoleWorkspaceRepository, UserRoleWorkspaceRepository>();
@@ -64,6 +79,7 @@ try
     builder.Services.AddScoped<IOrgRoleService, OrgRoleService>();
     builder.Services.AddScoped<IOrgInvitationService, OrgInvitationService>();
     builder.Services.AddScoped<IJoinRequestService, JoinRequestService>();
+    builder.Services.AddScoped<IOrganizationUserAdminService, OrganizationUserAdminService>();
 
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();
@@ -88,6 +104,7 @@ try
     app.MapJoinRequestEndpoints();
     app.MapOrgInvitationEndpoints();
     app.MapOrgRoleEndpoints();
+    app.MapOrganizationUserEndpoints();
 
     app.Run();
 }
