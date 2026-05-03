@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { auditApi, type AuditLogEntryDto } from '@/api/audit';
+import { normalizeError } from '@/api/errors';
 
 export const useAuditStore = defineStore('audit', () => {
   const rows = ref<AuditLogEntryDto[]>([]);
@@ -14,7 +15,7 @@ export const useAuditStore = defineStore('audit', () => {
       rows.value = await auditApi.list();
       return rows.value;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err);
+      error.value = normalizeError(err, 'Failed to load audit log.').message;
       throw err;
     } finally {
       loading.value = false;

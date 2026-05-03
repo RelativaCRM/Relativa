@@ -11,12 +11,15 @@ import Tag from 'primevue/tag';
 import { useAuthStore } from '@/stores/auth';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
+import { useApiErrorHandler } from '@/api/errorToast';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const auth = useAuthStore();
 const wsStore = useWorkspaceStore();
+const { notify } = useApiErrorHandler();
 
 const ROLE_ORDER = ['ws_admin', 'ws_manager', 'ws_analyst', 'ws_member'];
 
@@ -78,8 +81,7 @@ async function handleInvite() {
     inviteSuccess.value = `Invitation sent to ${inviteEmail.value}`;
     inviteEmail.value = '';
   } catch (err) {
-    inviteError.value =
-      err instanceof ApiError ? err.message : 'Failed to send invitation.';
+    inviteError.value = normalizeError(err, 'Failed to send invitation.').message;
   } finally {
     inviteSending.value = false;
   }
@@ -94,8 +96,28 @@ function closeInviteDialog() {
 
 /* ── Role change ───────────────────────────────────────── */
 const changingRole = ref<number | null>(null);
+const roleSelectVersion = ref(0);
 
 async function handleRoleChange(userId: number, newRoleId: number) {
+  const target = wsStore.members.find((m) => m.userId === userId);
+  const newRoleName = wsStore.roles.find((r) => r.id === newRoleId)?.name;
+  if (target && target.roleName === 'ws_admin' && newRoleName !== 'ws_admin') {
+    const adminCount = wsStore.members.filter(
+      (m) => m.roleName === 'ws_admin',
+    ).length;
+    if (adminCount <= 1) {
+      toast.add({
+        severity: 'error',
+        summary: 'Conflict',
+        detail: 'Cannot remove the last workspace administrator.',
+        life: 5000,
+      });
+      await wsStore.fetchMembers(workspaceId.value);
+      roleSelectVersion.value++;
+      return;
+    }
+  }
+
   changingRole.value = userId;
   try {
     await wsStore.changeMemberRole(workspaceId.value, userId, newRoleId);
@@ -105,14 +127,10 @@ async function handleRoleChange(userId: number, newRoleId: number) {
       life: 3000,
     });
   } catch (err) {
-    toast.add({
-      severity: 'error',
-      summary:
-        err instanceof ApiError ? err.message : 'Failed to update role.',
-      life: 4000,
-    });
-    await wsStore.fetchMembers(workspaceId.value);
+    notify(err, { fallback: 'Failed to update role.' });
   } finally {
+    await wsStore.fetchMembers(workspaceId.value);
+    roleSelectVersion.value++;
     changingRole.value = null;
   }
 }
@@ -124,8 +142,8 @@ async function handleRemove(userId: number) {
   removingId.value = userId;
   try {
     await wsStore.removeMember(workspaceId.value, userId);
-  } catch {
-    /* silent */
+  } catch (err) {
+    notify(err, { fallback: 'Failed to remove member.' });
   } finally {
     removingId.value = null;
   }
@@ -135,8 +153,8 @@ async function handleRemove(userId: number) {
 async function handleCancelInvitation(invId: number) {
   try {
     await wsStore.cancelInvitation(workspaceId.value, invId);
-  } catch {
-    /* silent */
+  } catch (err) {
+    notify(err, { fallback: 'Failed to cancel invitation.' });
   }
 }
 
@@ -155,7 +173,9 @@ async function loadAll() {
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       router.replace({ name: 'workspaces' });
+      return;
     }
+    notify(err, { fallback: 'Failed to load workspace.' });
   } finally {
     loading.value = false;
   }
@@ -234,6 +254,7 @@ onMounted(loadAll);
             <td class="px-5 py-3">
               <Select
                 v-if="roleOptions.length"
+                :key="`role-${member.userId}-${member.roleName}-${roleSelectVersion}`"
                 :model-value="roleIdByName(member.roleName)"
                 :options="roleOptions"
                 option-label="label"

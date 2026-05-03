@@ -8,7 +8,7 @@ import Checkbox from 'primevue/checkbox';
 import Message from 'primevue/message';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import { useAuthStore } from '@/stores/auth';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -41,14 +41,10 @@ async function handleSubmit() {
     const redirect = router.currentRoute.value.query.redirect as string | undefined;
     router.push(redirect ?? { name: 'home' });
   } catch (err) {
-    if (err instanceof ApiError) {
-      serverError.value =
-        err.status === 401
-          ? 'Invalid email or password.'
-          : err.message || 'Sign in failed.';
-    } else {
-      serverError.value = 'Network error. Please try again.';
-    }
+    const normalized = normalizeError(err, 'Sign in failed.');
+    serverError.value = normalized.isUnauthorized
+      ? 'Invalid email or password.'
+      : normalized.message;
   } finally {
     submitting.value = false;
   }

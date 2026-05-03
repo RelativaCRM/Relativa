@@ -15,13 +15,15 @@ import {
   type OrganizationDto,
   type MyInvitationsDto,
 } from '@/api/organizations';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
+import { useApiErrorHandler } from '@/api/errorToast';
 
 const router = useRouter();
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
 const entityStore = useEntityStore();
+const { notify } = useApiErrorHandler();
 
 type Tab = 'invitations' | 'create' | 'join';
 const activeTab = ref<Tab>('create');
@@ -61,8 +63,7 @@ async function acceptOrgInvite(token: string) {
     await orgStore.fetchOrganizations();
     router.push({ name: 'home' });
   } catch (err) {
-    inboxError.value =
-      err instanceof ApiError ? err.message : 'Failed to accept invitation.';
+    inboxError.value = normalizeError(err, 'Failed to accept invitation.').message;
   } finally {
     acceptingToken.value = null;
   }
@@ -83,8 +84,7 @@ async function handleCreate() {
     await orgStore.createOrganization(newOrgName.value.trim());
     router.push({ name: 'home' });
   } catch (err) {
-    createError.value =
-      err instanceof ApiError ? err.message : 'Failed to create organization.';
+    createError.value = normalizeError(err, 'Failed to create organization.').message;
   } finally {
     creating.value = false;
   }
@@ -113,8 +113,9 @@ async function searchOrgs(q: string) {
   searching.value = true;
   try {
     searchResults.value = await orgApi.search(q);
-  } catch {
+  } catch (err) {
     searchResults.value = [];
+    notify(err, { fallback: 'Search failed.' });
   } finally {
     searching.value = false;
   }
@@ -128,8 +129,7 @@ async function handleJoinRequest(orgId: number) {
     await orgApi.submitJoinRequest(orgId, 'I would like to join your organization.');
     joinMessage.value = 'Join request sent. An administrator will review it.';
   } catch (err) {
-    joinError.value =
-      err instanceof ApiError ? err.message : 'Failed to send join request.';
+    joinError.value = normalizeError(err, 'Failed to send join request.').message;
   } finally {
     joinSending.value = null;
   }
