@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter, RouterLink, RouterView } from 'vue-router';
 import Button from 'primevue/button';
 import Badge from 'primevue/badge';
@@ -17,6 +17,13 @@ const entityStore = useEntityStore();
 const router = useRouter();
 
 const pendingInvitationsCount = ref(0);
+
+const canViewAuditLog = computed(() => {
+  const wsRole = wsStore.currentWorkspace?.userRole;
+  if (wsRole === 'ws_admin' || wsRole === 'ws_analyst') return true;
+  const orgRole = orgStore.currentOrg?.userRole;
+  return orgRole === 'org_owner' || orgRole === 'org_admin';
+});
 
 async function refreshInvitationCount() {
   try {
@@ -105,6 +112,14 @@ onMounted(refreshInvitationCount);
             active-class="bg-brand-50 text-brand-700 font-medium"
           >
             <i class="pi pi-share-alt mr-2" />Graph
+          </RouterLink>
+          <RouterLink
+            v-if="canViewAuditLog"
+            to="/audit-log"
+            class="px-3 py-2 rounded-lg hover:bg-surface"
+            active-class="bg-brand-50 text-brand-700 font-medium"
+          >
+            <i class="pi pi-history mr-2" />Audit log
           </RouterLink>
         </nav>
       </aside>
