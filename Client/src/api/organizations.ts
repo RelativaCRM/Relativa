@@ -1,4 +1,5 @@
 import { api } from '@/api/http';
+import type { UserProfile } from '@/api/auth';
 
 /* ── DTOs ───────────────────────────────────────────────── */
 
@@ -93,6 +94,16 @@ export const orgApi = {
     return api.put(`${CORE}/organizations/${orgId}/members/${userId}/role`, {
       roleId,
     });
+  },
+  updateOrgUserProfile(
+    orgId: number,
+    userId: number,
+    payload: { firstName: string; lastName: string },
+  ): Promise<UserProfile> {
+    return api.patch<UserProfile>(
+      `${CORE}/organizations/${orgId}/users/${userId}`,
+      { ...payload },
+    );
   },
 
   /* Invitations */

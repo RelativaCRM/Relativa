@@ -62,9 +62,13 @@ onMounted(refreshInvitationCount);
         </span>
       </div>
       <div class="flex items-center gap-3">
-        <span v-if="auth.user" class="text-sm text-ink-600 hidden sm:inline">
+        <RouterLink
+          v-if="auth.user"
+          to="/account"
+          class="text-sm text-ink-600 hidden sm:inline hover:text-brand-700 hover:underline"
+        >
           {{ auth.user.firstName }} {{ auth.user.lastName }}
-        </span>
+        </RouterLink>
         <Button
           label="Sign out"
           severity="secondary"
@@ -85,6 +89,13 @@ onMounted(refreshInvitationCount);
             exact-active-class="bg-brand-50 text-brand-700 font-medium"
           >
             <i class="pi pi-home mr-2" />Home
+          </RouterLink>
+          <RouterLink
+            to="/account"
+            class="px-3 py-2 rounded-lg hover:bg-surface"
+            active-class="bg-brand-50 text-brand-700 font-medium"
+          >
+            <i class="pi pi-user mr-2" />Account
           </RouterLink>
           <RouterLink
             to="/workspaces"

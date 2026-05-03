@@ -9,7 +9,11 @@ import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
-import { orgApi, type JoinRequestDto } from '@/api/organizations';
+import {
+  orgApi,
+  type JoinRequestDto,
+  type OrgMemberDto,
+} from '@/api/organizations';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
 
@@ -22,9 +26,20 @@ const loading = ref(true);
 const joinRequests = ref<JoinRequestDto[]>([]);
 const reviewingId = ref<number | null>(null);
 
+const EDIT_OTHER_PROFILE_PERM = 'edit_other_org_users_profile';
+
 const isOrgAdmin = computed(() => {
   const role = orgStore.currentOrg?.userRole;
   return role === 'org_owner' || role === 'org_admin';
+});
+
+const canEditOtherProfiles = computed(() => {
+  const roleName = orgStore.currentOrg?.userRole;
+  if (!roleName) return false;
+  const role = orgStore.roles.find((r) => r.name === roleName);
+  return (
+    role?.permissions.some((p) => p.name === EDIT_OTHER_PROFILE_PERM) ?? false
+  );
 });
 
 const pendingJoinRequests = computed(() =>
@@ -171,6 +186,54 @@ async function handleRemove(userId: number) {
   }
 }
 
+/* ── Edit member profile (org permission) ──────────────── */
+const showEditProfile = ref(false);
+const editingMember = ref<OrgMemberDto | null>(null);
+const editFirstName = ref('');
+const editLastName = ref('');
+const editProfileSaving = ref(false);
+
+function openEditProfile(member: OrgMemberDto) {
+  editingMember.value = member;
+  editFirstName.value = member.firstName;
+  editLastName.value = member.lastName;
+  showEditProfile.value = true;
+}
+
+function closeEditProfile() {
+  showEditProfile.value = false;
+  editingMember.value = null;
+  editFirstName.value = '';
+  editLastName.value = '';
+}
+
+async function handleSaveMemberProfile() {
+  if (!orgStore.currentOrgId || !editingMember.value) return;
+  editProfileSaving.value = true;
+  try {
+    await orgApi.updateOrgUserProfile(
+      orgStore.currentOrgId,
+      editingMember.value.userId,
+      {
+        firstName: editFirstName.value.trim(),
+        lastName: editLastName.value.trim(),
+      },
+    );
+    await orgStore.fetchMembers();
+    toast.add({
+      severity: 'success',
+      summary: 'Profile updated',
+      detail: 'Member name has been saved.',
+      life: 4000,
+    });
+    closeEditProfile();
+  } catch (err) {
+    notify(err, { fallback: 'Failed to update member profile.' });
+  } finally {
+    editProfileSaving.value = false;
+  }
+}
+
 /* ── Cancel invitation ─────────────────────────────────── */
 async function handleCancelInvitation(invId: number) {
   try {
@@ -223,7 +286,7 @@ onMounted(async () => {
             <th class="px-5 py-3">Email</th>
             <th class="px-5 py-3">Role</th>
             <th class="px-5 py-3">Joined</th>
-            <th class="px-5 py-3 w-20"></th>
+            <th class="px-5 py-3 w-28 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -264,16 +327,29 @@ onMounted(async () => {
             <td class="px-5 py-3 text-ink-500">
               {{ new Date(member.joinedAt).toLocaleDateString() }}
             </td>
-            <td class="px-5 py-3">
-              <Button
-                v-if="member.roleName !== 'org_owner' && member.userId !== auth.user?.id"
-                icon="pi pi-trash"
-                severity="danger"
-                text
-                rounded
-                :loading="removingId === member.userId"
-                @click="handleRemove(member.userId)"
-              />
+            <td class="px-5 py-3 text-right">
+              <div class="flex items-center justify-end gap-1">
+                <Button
+                  v-if="
+                    canEditOtherProfiles && member.userId !== auth.user?.id
+                  "
+                  title="Edit profile"
+                  icon="pi pi-pencil"
+                  severity="secondary"
+                  text
+                  rounded
+                  @click="openEditProfile(member)"
+                />
+                <Button
+                  v-if="member.roleName !== 'org_owner' && member.userId !== auth.user?.id"
+                  icon="pi pi-trash"
+                  severity="danger"
+                  text
+                  rounded
+                  :loading="removingId === member.userId"
+                  @click="handleRemove(member.userId)"
+                />
+              </div>
             </td>
           </tr>
         </tbody>
@@ -351,6 +427,61 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <!-- Edit member profile -->
+    <Dialog
+      v-model:visible="showEditProfile"
+      header="Edit member profile"
+      modal
+      :style="{ width: '420px' }"
+      @hide="closeEditProfile"
+    >
+      <div v-if="editingMember" class="flex flex-col gap-4">
+        <p class="text-xs text-ink-500">
+          {{ editingMember.email }}
+        </p>
+        <div class="flex flex-col gap-1.5">
+          <label for="editMemberFirst" class="text-xs font-medium text-ink-600">
+            First name <span class="text-danger">*</span>
+          </label>
+          <InputText
+            id="editMemberFirst"
+            v-model="editFirstName"
+            maxlength="100"
+            class="!h-10"
+          />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="editMemberLast" class="text-xs font-medium text-ink-600">
+            Last name <span class="text-danger">*</span>
+          </label>
+          <InputText
+            id="editMemberLast"
+            v-model="editLastName"
+            maxlength="100"
+            class="!h-10"
+          />
+        </div>
+        <div class="flex justify-end gap-2">
+          <Button
+            label="Cancel"
+            severity="secondary"
+            text
+            :disabled="editProfileSaving"
+            @click="closeEditProfile"
+          />
+          <Button
+            label="Save"
+            :loading="editProfileSaving"
+            :disabled="
+              !editFirstName.trim() ||
+              !editLastName.trim()
+            "
+            @click="handleSaveMemberProfile"
+          />
+        </div>
+      </div>
+    </Dialog>
 
     <!-- Invite dialog -->
     <Dialog

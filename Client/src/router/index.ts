@@ -19,6 +19,7 @@ const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
 const InvitationsView = () => import('@/views/InvitationsView.vue');
 const AuditLogView = () => import('@/views/AuditLogView.vue');
+const AccountSettingsView = () => import('@/views/AccountSettingsView.vue');
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -92,6 +93,11 @@ const router = createRouter({
           path: 'audit-log',
           name: 'audit-log',
           component: AuditLogView,
+        },
+        {
+          path: 'account',
+          name: 'account',
+          component: AccountSettingsView,
         },
       ],
     },
