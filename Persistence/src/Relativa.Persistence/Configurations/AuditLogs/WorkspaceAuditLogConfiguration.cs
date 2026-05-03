@@ -28,7 +28,12 @@ public class WorkspaceAuditLogConfiguration : IEntityTypeConfiguration<Workspace
             .HasForeignKey(e => e.ChangedById)
             .OnDelete(DeleteBehavior.SetNull)
             .HasConstraintName("fk_workspace_audit_log_users");
-        builder.HasIndex(e => e.WorkspaceId).HasDatabaseName("ix_workspace_audit_log_workspace_id");
         builder.HasIndex(e => e.ChangedAt).IsDescending().HasDatabaseName("ix_workspace_audit_log_changed_at");
+        builder.HasIndex(e => new { e.WorkspaceId, e.ChangedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_wal_workspace_changed_at");
+        builder.HasIndex(e => new { e.ChangedById, e.ChangedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_wal_changed_by_changed_at");
     }
 }

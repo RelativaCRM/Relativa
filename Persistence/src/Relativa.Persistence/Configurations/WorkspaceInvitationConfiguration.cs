@@ -19,6 +19,10 @@ public class WorkspaceInvitationConfiguration : IEntityTypeConfiguration<Workspa
         builder.HasIndex(e => e.Token)
             .IsUnique()
             .HasDatabaseName("ix_workspace_invitations_token");
+        builder.HasIndex(e => new { e.WorkspaceId, e.Status })
+            .HasDatabaseName("ix_wi_workspace_status");
+        builder.HasIndex(e => new { e.Email, e.Status })
+            .HasDatabaseName("ix_wi_email_status");
         builder.Property(e => e.Status).HasColumnName("status").IsRequired();
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(e => e.ExpiresAt).HasColumnName("expires_at").IsRequired();

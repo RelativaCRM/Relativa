@@ -31,8 +31,9 @@ public sealed class OrgInvitationRepository(RelativaDbContext db) : IOrgInvitati
 
     public async Task<List<OrganizationInvitation>> GetByEmailAsync(string email, CancellationToken ct = default)
     {
+        var normalized = email.Trim().ToLowerInvariant();
         return await db.OrganizationInvitations
-            .Where(i => i.Email.ToLower() == email.ToLower() && i.Status == "Pending")
+            .Where(i => i.Email == normalized && i.Status == "Pending")
             .ToListAsync(ct);
     }
 

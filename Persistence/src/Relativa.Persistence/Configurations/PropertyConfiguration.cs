@@ -17,7 +17,6 @@ public class PropertyConfiguration : IEntityTypeConfiguration<Property>
             .HasConversion<string>()
             .IsRequired();
         builder.Property(p => p.OrganizationId).HasColumnName("organization_id");
-        builder.HasIndex(p => p.OrganizationId).HasDatabaseName("ix_property_organization_id");
         builder.HasOne(p => p.Organization)
             .WithMany()
             .HasForeignKey(p => p.OrganizationId)

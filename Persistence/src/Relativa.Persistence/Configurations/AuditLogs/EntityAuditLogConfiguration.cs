@@ -29,7 +29,12 @@ public class EntityAuditLogConfiguration : IEntityTypeConfiguration<EntityAuditL
             .HasForeignKey(e => e.ChangedById)
             .OnDelete(DeleteBehavior.SetNull)
             .HasConstraintName("fk_entity_audit_log_users");
-        builder.HasIndex(e => e.EntityId).HasDatabaseName("ix_entity_audit_log_entity_id");
         builder.HasIndex(e => e.ChangedAt).IsDescending().HasDatabaseName("ix_entity_audit_log_changed_at");
+        builder.HasIndex(e => new { e.EntityId, e.ChangedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_eal_entity_changed_at");
+        builder.HasIndex(e => new { e.ChangedById, e.ChangedAt })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_eal_changed_by_changed_at");
     }
 }

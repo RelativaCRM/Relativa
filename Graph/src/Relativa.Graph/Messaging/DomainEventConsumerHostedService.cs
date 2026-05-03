@@ -1,15 +1,19 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using Relativa.Graph.Data;
 using Relativa.Graph.Hubs;
 using Relativa.Persistence.Contracts;
+using Relativa.Persistence.Entities;
 
 namespace Relativa.Graph.Messaging;
 
@@ -17,7 +21,7 @@ public sealed class DomainEventConsumerHostedService(
     ILogger<DomainEventConsumerHostedService> logger,
     IOptions<RabbitMqGraphConsumerOptions> optionsAccessor,
     IHubContext<GraphHub> hubContext,
-    NpgsqlDataSource dataSource) : BackgroundService
+    IServiceScopeFactory scopeFactory) : BackgroundService
 {
     private static readonly JsonSerializerOptions SerializerJson = new()
     {
@@ -157,20 +161,23 @@ public sealed class DomainEventConsumerHostedService(
     /// <returns>True when this consumer should process the payload (fresh insert).</returns>
     private async Task<bool> TryMarkProcessedOnceAsync(Guid messageId, CancellationToken ct)
     {
-        await using var conn = await dataSource.OpenConnectionAsync(ct);
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText =
-            """
-            INSERT INTO rabbitmq_processed_delivery (message_id, consumer_group, processed_at_utc)
-            VALUES (@message_id, @consumer_group, @processed_at_utc)
-            ON CONFLICT DO NOTHING
-            """;
-
-        cmd.Parameters.AddWithValue("message_id", messageId);
-        cmd.Parameters.AddWithValue("consumer_group", ConsumerGroup);
-        cmd.Parameters.AddWithValue("processed_at_utc", DateTimeOffset.UtcNow);
-
-        var n = await cmd.ExecuteNonQueryAsync(ct);
-        return n > 0;
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<GraphDbContext>();
+        db.RabbitMqProcessedDeliveries.Add(new RabbitMqProcessedDelivery
+        {
+            MessageId = messageId,
+            ConsumerGroup = ConsumerGroup,
+            ProcessedAtUtc = DateTimeOffset.UtcNow
+        });
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException pg &&
+                                           pg.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            return false;
+        }
     }
 }
