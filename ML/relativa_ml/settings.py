@@ -87,6 +87,12 @@ DATABASES = {
     }
 }
 
+RABBITMQ_HOST = os.environ.get('RABBITMQ_HOST', 'localhost')
+RABBITMQ_PORT = int(os.environ.get('RABBITMQ_PORT', '5672'))
+RABBITMQ_USER = os.environ.get('RABBITMQ_USER', 'guest')
+RABBITMQ_PASSWORD = os.environ.get(
+    'RABBITMQ_PASSWORD',
+    os.environ.get('RABBITMQ_PASS', 'guest'))
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators

@@ -13,7 +13,7 @@ public sealed class OrgRoleService(
     IPermissionRepository permissionRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IValidator<CreateOrgRoleRequest> createValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IOrgRoleService
+    IOutboxWriter? auditOutboxWriter = null) : IOrgRoleService
 {
     public async Task<List<OrgRoleDto>> GetByOrganizationAsync(int organizationId, int userId, CancellationToken ct = default)
     {
@@ -60,7 +60,7 @@ public sealed class OrgRoleService(
         await orgRoleRepository.UpdateAsync(role, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -120,7 +120,7 @@ public sealed class OrgRoleService(
         await orgRoleRepository.UpdateAsync(role, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -155,7 +155,7 @@ public sealed class OrgRoleService(
         await orgRoleRepository.UpdateAsync(role, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,

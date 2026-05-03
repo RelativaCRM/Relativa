@@ -23,7 +23,7 @@ public sealed class AuditOutboxMessageConfiguration : IEntityTypeConfiguration<A
             .IsRequired();
         builder.Property(x => x.RoutingKey)
             .HasColumnName("routing_key")
-            .HasMaxLength(120)
+            .HasMaxLength(512)
             .IsRequired();
         builder.Property(x => x.OccurredAtUtc)
             .HasColumnName("occurred_at_utc")

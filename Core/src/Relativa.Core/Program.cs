@@ -8,6 +8,8 @@ using Relativa.Core.Infrastructure.Data;
 using Relativa.Core.Infrastructure.Repositories;
 using Relativa.Core.Infrastructure.Services.Audit;
 using Relativa.Core.Middleware;
+using Relativa.Messaging;
+using Relativa.Persistence.Contracts;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -28,7 +30,8 @@ try
 
     builder.Services.AddDbContext<RelativaDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-    builder.Services.Configure<RabbitMqAuditOptions>(builder.Configuration.GetSection("RabbitMqAudit"));
+    builder.Services.Configure<RabbitMqPublishingOptions>(
+        builder.Configuration.GetSection(RabbitMqPublishingOptions.ConfigurationSectionKey));
 
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<RelativaDbContext>();
@@ -50,7 +53,7 @@ try
 
     builder.Services.AddScoped<IEntityTypeService, EntityTypeService>();
     builder.Services.AddScoped<IEntityService, EntityService>();
-    builder.Services.AddScoped<IAuditOutboxWriter, AuditOutboxWriter>();
+    builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
     builder.Services.AddHostedService<AuditOutboxDispatcher>();
 
     builder.Services.AddScoped<IWorkspaceService, WorkspaceService>();

@@ -13,7 +13,7 @@ public sealed class AuthService(
     IPasswordHasher passwordHasher,
     IValidator<LoginRequestDto> loginValidator,
     IValidator<RegisterRequestDto> registerValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IAuthService
+    IOutboxWriter? auditOutboxWriter = null) : IAuthService
 {
     public async Task<LoginResponseDto> LoginAsync(LoginRequestDto request, CancellationToken ct = default)
     {
@@ -51,7 +51,7 @@ public sealed class AuthService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,

@@ -15,7 +15,7 @@ public sealed class InvitationService(
     IOrgInvitationRepository orgInvitationRepository,
     IValidator<InviteMemberRequest> inviteValidator,
     IValidator<AcceptInvitationRequest> acceptValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IInvitationService
+    IOutboxWriter? auditOutboxWriter = null) : IInvitationService
 {
     public async Task<InvitationDto> InviteAsync(int workspaceId, int callerUserId, InviteMemberRequest request, CancellationToken ct = default)
     {
@@ -43,7 +43,7 @@ public sealed class InvitationService(
         await invitationRepository.AddAsync(invitation, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -89,7 +89,7 @@ public sealed class InvitationService(
         await invitationRepository.UpdateAsync(invitation, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -143,7 +143,7 @@ public sealed class InvitationService(
         await memberRepository.AddAsync(member, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -164,7 +164,7 @@ public sealed class InvitationService(
         await invitationRepository.UpdateAsync(invitation, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,

@@ -12,7 +12,7 @@ public sealed class RoleService(
     IPermissionRepository permissionRepository,
     IUserRoleWorkspaceRepository memberRepository,
     IValidator<CreateRoleRequest> createValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IRoleService
+    IOutboxWriter? auditOutboxWriter = null) : IRoleService
 {
     public async Task<List<RoleDto>> GetByWorkspaceAsync(int workspaceId, int userId, CancellationToken ct = default)
     {
@@ -59,7 +59,7 @@ public sealed class RoleService(
         await roleRepository.UpdateAsync(role, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -119,7 +119,7 @@ public sealed class RoleService(
         await roleRepository.UpdateAsync(role, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -154,7 +154,7 @@ public sealed class RoleService(
         await roleRepository.UpdateAsync(role, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,

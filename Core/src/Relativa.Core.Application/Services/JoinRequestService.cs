@@ -11,7 +11,7 @@ public sealed class JoinRequestService(
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
     IOrganizationRepository organizationRepository,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IJoinRequestService
+    IOutboxWriter? auditOutboxWriter = null) : IJoinRequestService
 {
     public async Task<JoinRequestDto> SubmitAsync(int organizationId, int userId, CreateJoinRequestRequest request, CancellationToken ct = default)
     {
@@ -41,7 +41,7 @@ public sealed class JoinRequestService(
         await joinRequestRepository.AddAsync(joinRequest, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -120,7 +120,7 @@ public sealed class JoinRequestService(
             await orgMemberRepository.AddAsync(membership, ct);
             if (auditOutboxWriter is not null)
             {
-                await auditOutboxWriter.EnqueueAsync(
+                await auditOutboxWriter.EnqueueAuditAsync(
                     new AuditEventContract(
                         EventId: Guid.NewGuid(),
                         SchemaVersion: 1,
@@ -148,7 +148,7 @@ public sealed class JoinRequestService(
         await joinRequestRepository.UpdateAsync(joinRequest, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
