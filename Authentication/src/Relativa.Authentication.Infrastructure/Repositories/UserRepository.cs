@@ -29,4 +29,10 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         db.Users.Add(user);
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task UpdateAsync(User user, CancellationToken ct = default)
+    {
+        db.Users.Update(user);
+        await db.SaveChangesAsync(ct);
+    }
 }
