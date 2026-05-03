@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Workspace;
 using Relativa.Core.Application.Interfaces;
@@ -14,7 +15,7 @@ public sealed class WorkspaceService(
     IUserRoleOrganizationRepository orgMemberRepository,
     IValidator<CreateWorkspaceRequest> createValidator,
     IValidator<UpdateWorkspaceRequest> updateValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IWorkspaceService
+    IOutboxWriter? auditOutboxWriter = null) : IWorkspaceService
 {
     public async Task<WorkspaceDto> CreateAsync(int userId, CreateWorkspaceRequest request, CancellationToken ct = default)
     {
@@ -54,7 +55,7 @@ public sealed class WorkspaceService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -67,8 +68,17 @@ public sealed class WorkspaceService(
                 FieldName: null,
                 EntityType: null,
                 OldValueJson: null,
-                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { workspace.Id, workspace.Name, workspace.OrganizationId })),
+                NewValueJson: JsonSerializer.Serialize(new { workspace.Id, workspace.Name, workspace.OrganizationId })),
             ct);
+            await PublishWorkspaceDomainAsync(
+                auditOutboxWriter,
+                DomainRouting.CoreWorkspaceVerbCreated,
+                "created",
+                workspace.Id,
+                workspace.OrganizationId,
+                userId,
+                workspace.Name,
+                ct);
         }
 
         return new WorkspaceDto(workspace.Id, workspace.Name, 1, adminRole.Name);
@@ -117,7 +127,7 @@ public sealed class WorkspaceService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -129,9 +139,18 @@ public sealed class WorkspaceService(
                 Action: "workspace_updated",
                 FieldName: "name",
                 EntityType: null,
-                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Name = previousName }),
-                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Name = request.Name })),
+                OldValueJson: JsonSerializer.Serialize(new { Name = previousName }),
+                NewValueJson: JsonSerializer.Serialize(new { Name = request.Name })),
             ct);
+            await PublishWorkspaceDomainAsync(
+                auditOutboxWriter,
+                DomainRouting.CoreWorkspaceVerbUpdated,
+                "updated",
+                workspace.Id,
+                workspace.OrganizationId,
+                userId,
+                workspace.Name,
+                ct);
         }
     }
 
@@ -149,7 +168,7 @@ public sealed class WorkspaceService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -161,10 +180,52 @@ public sealed class WorkspaceService(
                 Action: "workspace_archived",
                 FieldName: "is_archived",
                 EntityType: null,
-                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = false }),
-                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = true })),
+                OldValueJson: JsonSerializer.Serialize(new { IsArchived = false }),
+                NewValueJson: JsonSerializer.Serialize(new { IsArchived = true })),
             ct);
+            await PublishWorkspaceDomainAsync(
+                auditOutboxWriter,
+                DomainRouting.CoreWorkspaceVerbArchived,
+                "archived",
+                workspace.Id,
+                workspace.OrganizationId,
+                userId,
+                workspace.Name,
+                ct);
         }
+    }
+
+    private static Task PublishWorkspaceDomainAsync(
+        IOutboxWriter outboxWriter,
+        string routingVerb,
+        string lifecycleAction,
+        int workspaceId,
+        int organizationId,
+        int actorUserId,
+        string? workspaceName,
+        CancellationToken ct)
+    {
+        var sagaInstanceId = Guid.NewGuid();
+        var envelope = new DomainMessageEnvelope(
+            SchemaVersion: MessagingSchemaVersions.V1,
+            MessageId: Guid.NewGuid(),
+            CorrelationId: sagaInstanceId,
+            SagaInstanceId: sagaInstanceId,
+            CausationId: null,
+            OccurredAtUtc: DateTimeOffset.UtcNow,
+            SourceService: "core",
+            PayloadTypeName: DomainPayloadTypes.WorkspaceLifecycleV1,
+            PayloadJson: JsonSerializer.Serialize(new WorkspaceLifecyclePayloadV1(
+                lifecycleAction,
+                workspaceId,
+                organizationId,
+                actorUserId,
+                workspaceName)));
+
+        return outboxWriter.EnqueueDomainAsync(
+            DomainRouting.RoutingKeyCoreWorkspace(routingVerb),
+            envelope,
+            ct);
     }
 
     private async Task<UserRoleWorkspace> RequireMembership(int userId, int workspaceId, CancellationToken ct)

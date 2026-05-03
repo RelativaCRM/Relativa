@@ -11,14 +11,14 @@
 | Service | Status | One-line summary |
 |---|---|---|
 | Gateway | **Functional** | YARP routing, JWT validation, split anonymous/auth routes, health, Scalar -- all working |
-| Authentication | **Functional** | Login, register, `/me` profile endpoint, JWT (sub + email only), FluentValidation -- all working |
-| Core | **Functional** (org + ws RBAC + entity CRUD) | Organization management, workspace management, split RBAC, members, invitations, join requests, permissions, entity-type listing (public), and workspace-scoped entity CRUD all implemented |
-| Graph | **Stub** | SignalR hub exists but has no logic |
+| Authentication | **Functional** | Login, register, `/me` read + PATCH + DELETE, email normalization, JWT (sub + email only), FluentValidation -- all working |
+| Core | **Functional** (org + ws RBAC + entity CRUD) | Organization management, workspace management, split RBAC, members, org-scoped user provisioning (`create_org_users` / `edit_other_org_users_profile` / `delete_org_users`), invitations, join requests, permissions, entity-type listing (public), and workspace-scoped entity CRUD all implemented |
+| Graph | **Stub** | SignalR hub + RabbitMQ choreography consumer broadcasts workspace lifecycle payloads; graph projection logic still absent |
 | Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
-| ML | **Stub** | Single endpoint returns hardcoded stub |
+| ML | **Stub** | REST stub unchanged; **`run_domain_consumer`** processes choreography events (stub logging path) beside `runserver` in Docker |
 | Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + members/invitations + entity CRUD UI + dynamic entity-graph rendering, all driven by typed API clients (auth, org, workspace, entity, audit). Persisted state (token, profile, roles, current org/workspace ids) via a shared `localStorage` helper |
-| Persistence | **Functional** | Full EAV entity model (21 entities), fluent configs, ModelBuilderExtensions |
+| Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions |
 
 ---
 
@@ -26,11 +26,13 @@
 
 ### Authentication service
 
-- `POST /api/v1/auth/register` -- creates user, hashes password with bcrypt, returns user DTO with 201 + Location header. Newly registered users have no organization or workspace membership.
-- `POST /api/v1/auth/login` -- validates credentials, issues JWT with claims: `sub`, `email`, `jti`. Role and permissions are **not** included in the JWT -- they are resolved per-request by Core using organization/workspace membership.
+- `POST /api/v1/auth/register` -- creates user, hashes password with bcrypt, stores email lowercase, returns user DTO with 201 + Location header. Newly registered users have no organization or workspace membership.
+- `POST /api/v1/auth/login` -- validates credentials (email compared after lowercase normalization), issues JWT with claims: `sub`, `email`, `jti`. Role and permissions are **not** included in the JWT -- they are resolved per-request by Core using organization/workspace membership.
 - `GET /api/v1/auth/me` -- returns authenticated user's profile (`id`, `email`, `firstName`, `lastName`) from JWT `sub` claim. Requires valid JWT.
-- Full clean-architecture layers: Domain interfaces, Application service + DTOs + FluentValidation validators, Infrastructure (AuthDbContext, UserRepository, JwtTokenService, BcryptPasswordHasher).
-- GlobalExceptionHandler maps ValidationException -> 400, UnauthorizedAccessException -> 401, duplicate email -> 409.
+- `PATCH /api/v1/auth/me` -- updates first and last name for the authenticated user.
+- `DELETE /api/v1/auth/me` -- soft-archives the authenticated user (`users.is_archived`).
+- Full clean-architecture layers: Domain interfaces, Application services (`AuthService`, `UserProvisioningService`) + DTOs + FluentValidation validators, Infrastructure (AuthDbContext, UserRepository, JwtTokenService, BcryptPasswordHasher).
+- GlobalExceptionHandler maps ValidationException -> 400, UnauthorizedAccessException -> 401, KeyNotFoundException -> 404, duplicate email -> 409 (including PostgreSQL unique violation on concurrent register).
 - EF Core health check at `/health`.
 - OpenAPI + Scalar docs.
 - Fire-and-forget audit publishing: register flow writes to `audit_outbox`, dispatcher publishes to RabbitMQ.
@@ -38,7 +40,8 @@
 ### Core service -- Organization management
 
 - **Organization CRUD:** `POST /api/v1/organizations` (create, creator becomes `org_owner`), `GET` (list user's orgs), `GET /search?q=...` (search by name), `GET /{id}` (details, requires org membership), `PUT /{id}` (update, requires `manage_org_settings`).
-- **Organization members:** `GET .../members` (list, requires org membership), `DELETE .../members/{userId}` (remove, requires `remove_org_members`), `PUT .../members/{userId}/role` (change role, requires `assign_org_roles`).
+- **Organization members:** `GET .../members` (list, requires org membership), `DELETE .../members/{userId}` (remove membership, requires `remove_org_members`), `PUT .../members/{userId}/role` (change role, requires `assign_org_roles`).
+- **Organization users (account provisioning):** `POST .../users` (create user + add as `org_member`, requires `create_org_users`), `PATCH .../users/{userId}` (edit another member's name, requires `edit_other_org_users_profile`), `DELETE .../users/{userId}` (archive user account, requires `delete_org_users`). Implemented via Core orchestration + shared `UserProvisioningService` from Authentication.Application.
 - **Join requests:** `POST .../join-requests` (request to join), `GET .../join-requests` (list pending, requires `manage_join_requests`), `PUT .../join-requests/{reqId}` (approve/reject, requires `manage_join_requests`), `GET /api/v1/join-requests/mine` (own requests).
 - **Organization invitations:** `POST .../invitations` (invite by email, requires `invite_to_org`), `GET .../invitations` (list pending), `DELETE .../invitations/{invId}` (cancel), `POST /api/v1/invitations/accept-org` (accept, requires matching email).
 - **Organization roles:** `GET .../roles` (list system + custom, requires org membership), `POST .../roles` (create custom, requires `manage_org_roles`), `PUT .../roles/{roleId}` (update), `DELETE .../roles/{roleId}` (delete). System roles cannot be modified.
@@ -50,7 +53,7 @@
 - **Invitation system:** `POST .../invitations` (invite by email, requires `invite_to_workspace`, returns token in response), `GET .../invitations` (list pending), `DELETE .../invitations/{id}` (cancel), `POST /api/v1/invitations/accept` (accept by token).
 - **Role management:** `GET .../roles` (list system + custom), `POST .../roles` (create custom, requires `manage_ws_roles`), `PUT .../roles/{id}` (update), `DELETE .../roles/{id}` (archive). System roles cannot be modified.
 - **Combined invitations:** `GET /api/v1/invitations/mine` -- lists all pending invitations (both workspace + org) for the authenticated user.
-- **Permission listing:** `GET /api/v1/permissions` -- lists all 16 permissions (both org-scoped and ws-scoped). **Workspace permissions 14 and 15 are `manage_entities` / `view_entities`** (previously `edit_deals` / `view_deals`; re-seeded via `ReseedPermissions` migration).
+- **Permission listing:** `GET /api/v1/permissions` -- lists all permissions in `permissions` (19 rows after migration `AddOrgUserAdminPermissions`: org-scoped includes `create_org_users`, `edit_other_org_users_profile`, `delete_org_users`; workspace-scoped unchanged). **Workspace permissions 14 and 15 are `manage_entities` / `view_entities`** (previously `edit_deals` / `view_deals`; base set re-seeded via `ReseedPermissions` migration).
 - Full clean-architecture layers: Domain (repository interfaces), Application (11 services, DTOs, validators), Infrastructure (repositories, WorkspaceContext).
 - Authorization checked per-request via `UserRoleOrganization` or `UserRoleWorkspace` DB lookup. **Core does not parse JWTs**; it reads the caller identity from the `X-User-Id` header that the Gateway injects after JWT validation (see Gateway entry below). `X-User-Email` is read on invitation-accept flows. Missing headers are treated as a 401.
 
@@ -73,7 +76,7 @@
 - JWT Bearer authentication with full validation (issuer, audience, signing key, lifetime). **Core** does not re-validate tokens (uses forwarded `X-User-Id`). **Authentication** validates its own tokens for `/me`. **Audit** re-validates JWTs for its read API (configuration aligned with Gateway). **Graph/ML** are stubs.
 - **Global authorization via `MapReverseProxy().RequireAuthorization()`.** Every proxied route requires a valid JWT unless it is explicitly marked `AuthorizationPolicy: Anonymous` in `appsettings.json`.
 - **Identity forwarding via YARP request transform:** on every proxied request the Gateway unconditionally strips any incoming `X-User-Id` / `X-User-Email` headers, then re-adds them from the validated `ClaimsPrincipal` (`sub` and `email` claims). **Core** trusts these headers and does not parse JWTs. **Audit** validates JWTs (defense in depth) and still accepts forwarded headers when resolving identity. Client-supplied header values are always overwritten at the Gateway.
-- **Split anonymous/auth routes:** `/login` and `/register` are anonymous; `/me` requires JWT.
+- **Split anonymous/auth routes:** `/login` and `/register` are anonymous; `/me` (GET/PATCH/DELETE) requires JWT.
 - Anonymous exceptions for health endpoints.
 - **CORS:** named-origin allowlist with credentials, reading `Cors:Origins` from config (defaults to `http://localhost:5173` and `http://localhost:3000`).
 - Forwarded headers (`X-Forwarded-For`, `X-Forwarded-Proto`).
@@ -115,6 +118,7 @@
 - Vue 3 + Vite scaffold with TypeScript, Pinia, Vue Router.
 - **UI stack:** PrimeVue 4 (Aura preset) + Tailwind CSS 3 (`tailwindcss-primeui` bridge) + Inter font.
 - **Typed API client** (`src/api/http.ts`): `gatewayFetch` with JWT + `X-Workspace-ID` headers (workspace id read from the workspace store), `ApiError` class, JSON helpers (`api.get/post/put/patch/del`). Auto session clear on `401` is **scoped to auth endpoints only** (`/auth/me`, `/auth/refresh`) — generic `401`s on business endpoints surface as `ApiError` so a transient permission change does not log the user out.
+- **Centralized error handling** (CR-127, `src/api/errors.ts` + `src/api/errorToast.ts`): `normalizeError(err, fallback)` consumes any `ApiError` / `Error` / network failure and returns a `NormalizedError` with friendly `message`, status flags (`isValidation`, `isUnauthorized`, `isForbidden`, `isNotFound`, `isConflict`, `isServer`, `isNetwork`), and a `fieldErrors` map parsed from the backend `{ status, title, detail }` shape (FluentValidation `detail` of the form `"Field: msg; Field2: msg"` is split into per-field arrays; field names are lower-cased to match camelCase form bindings). `useApiErrorHandler()` is a thin composable over PrimeVue's `useToast()` — `notify(err, { fallback, summary, silent })` shows a categorized red error toast and returns the same `NormalizedError` so callers can also react to specific statuses. Forms render server `fieldErrors` inline under the corresponding inputs (red text + `pi pi-exclamation-circle`); each input clears its own server error on `update:model-value`. List/dialog views display non-form errors via toasts (replaces previous silent `catch {}` blocks).
 - **Auth service** (`src/api/auth.ts`): `authApi.register`, `authApi.login`, `authApi.me` (via Gateway, CR-96).
 - **Organization service** (`src/api/organizations.ts`): org CRUD, members, invitations, join requests, roles, combined invitations (`/invitations/mine`).
 - **Workspace service** (`src/api/workspaces.ts`): workspace CRUD, members, roles, invitations.
@@ -139,15 +143,15 @@
 
 **What is missing:**
 - No business rules (BP-01 through BP-06).
-- No domain events.
+- No generalized domain-event catalog beyond workspace choreography pilot + audit payloads.
 - No email notifications for invitations or join request outcomes.
 - No property management endpoints (list/create/update org-scoped custom properties).
 - Relationship management endpoints (`entity_relationship`) deferred — the table and seed data exist but no API surface yet.
 
 ### Graph service
 
-**What exists:** SignalR hub mapped at `/hubs/graph`, service identity endpoint.
-**What is missing:** `OnConnectedAsync` only calls `base`. No graph data queries, no recursive CTE queries, no RBAC filtering, no live update logic, no ML score integration.
+**What exists:** SignalR hub mapped at `/hubs/graph`, identity endpoint, `DomainEventConsumerHostedService` (workspace choreography), DLQ wiring, Postgres idempotency receipts, broadcast event `domain.workspace.lifecycle.v1`.
+**What is missing:** `OnConnectedAsync` only calls `base`. No graph-domain queries, recursive CTE traversal, RBAC-scoped hub groups, or ML score integration.
 
 ### Audit service
 
@@ -156,7 +160,7 @@
 
 ### ML service
 
-**What exists:** `POST /api/ml/recalculate/` endpoint.
+**What exists:** `POST /api/ml/recalculate/` endpoint; `run_domain_consumer` management command (blocking pika loop) started next to Django in Docker Compose; deduplicates via `rabbitmq_processed_delivery`.
 **What is missing:** Returns `{"status":"accepted","detail":"stub"}`. No ML models (closure_score, churn_score). No Celery tasks defined. No Redis broker in Docker Compose. Beat schedule is commented out in `settings.py`.
 
 ### Client
@@ -176,7 +180,7 @@
 | **Gateway README partially outdated** | Low | `Gateway/README.md` says JWT validation is a stub. Gateway now fully validates JWT. |
 | **Unused package reference** | Trivial | `Asp.Versioning.Http` is referenced in `Authentication/src/Relativa.Authentication/Relativa.Authentication.csproj` but never used in code. |
 | **Core CORS is `AllowAnyOrigin`** | Low | Gateway now has a proper named-origin CORS allowlist (reads `Cors:Origins` from config). Core retains `AllowAnyOrigin/Header/Method` as a dev convenience since Core is only reached via the gateway in deployed environments; tighten for production. |
-| **No test projects** | High | Zero test projects across the entire solution. No xUnit, NUnit, or MSTest references anywhere. |
+| **Sparse automated tests** | Medium | Core + Authentication both include xUnit suites; `Messaging/tests/Relativa.Messaging.Tests` validates outbox routing helpers + a Testcontainers RabbitMQ smoke test. Graph, Audit, ML, and Integration/E2E suites are still absent. |
 | **No CI/CD pipeline** | Medium | No `.github/workflows`, no `azure-pipelines.yml`, no CI configuration of any kind. |
 | **Unused Auth dependencies** | Low | `IRoleRepository`, `RoleRepository`, and `AuthOptions` remain in the Auth codebase but are no longer registered in DI or used. Can be removed in a cleanup pass. |
 
@@ -209,7 +213,7 @@
 
 - Recursive CTE queries for entity-relationship traversal using `entity_relationship` and `entity_relationship_type`.
 - Dynamic RBAC-based filtering of graph data (workspace-scoped via `entity_workspace`).
-- Live SignalR push updates when entities change.
+- ~~Live SignalR push updates when workspaces change via choreography envelope.~~ *(partial — choreography consumer broadcasts workspace lifecycle but no entity-graph projection yet)*.
 - ML score integration (display `closure_score` property values on graph nodes — stored as `entity_property_value` rows).
 
 ### Audit service

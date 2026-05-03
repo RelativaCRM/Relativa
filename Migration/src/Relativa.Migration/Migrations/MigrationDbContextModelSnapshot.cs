@@ -273,8 +273,8 @@ namespace Relativa.Migration.Migrations
 
                     b.Property<string>("RoutingKey")
                         .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("routing_key");
 
                     b.HasKey("Id");
@@ -761,6 +761,26 @@ namespace Relativa.Migration.Migrations
                         .HasDatabaseName("ix_property_organization_id");
 
                     b.ToTable("property", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.RabbitMqProcessedDelivery", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
+                    b.Property<string>("ConsumerGroup")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("consumer_group");
+
+                    b.Property<DateTimeOffset>("ProcessedAtUtc")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("processed_at_utc");
+
+                    b.HasKey("MessageId", "ConsumerGroup");
+
+                    b.ToTable("rabbitmq_processed_delivery", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>

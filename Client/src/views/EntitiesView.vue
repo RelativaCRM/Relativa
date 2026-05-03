@@ -6,7 +6,7 @@ import Tag from 'primevue/tag';
 import Message from 'primevue/message';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
 
 const route = useRoute();
 const router = useRouter();
@@ -36,8 +36,7 @@ async function load() {
     wsStore.setCurrentWorkspace(workspaceId.value);
     await entityStore.fetchList(workspaceId.value);
   } catch (err) {
-    errorMessage.value =
-      err instanceof ApiError ? err.message : 'Failed to load entities.';
+    errorMessage.value = normalizeError(err, 'Failed to load entities.').message;
   } finally {
     loading.value = false;
   }

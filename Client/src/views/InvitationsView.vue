@@ -7,7 +7,7 @@ import Tag from 'primevue/tag';
 import { orgApi, type MyInvitationsDto } from '@/api/organizations';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
 
 const router = useRouter();
 const orgStore = useOrganizationStore();
@@ -34,8 +34,7 @@ async function loadInbox() {
   try {
     inbox.value = await orgApi.myInvitations();
   } catch (err) {
-    error.value =
-      err instanceof ApiError ? err.message : 'Failed to load invitations.';
+    error.value = normalizeError(err, 'Failed to load invitations.').message;
   } finally {
     loading.value = false;
   }
@@ -53,8 +52,7 @@ async function acceptOrg(token: string) {
       setTimeout(() => router.push({ name: 'home' }), 600);
     }
   } catch (err) {
-    error.value =
-      err instanceof ApiError ? err.message : 'Failed to accept invitation.';
+    error.value = normalizeError(err, 'Failed to accept invitation.').message;
   } finally {
     processingToken.value = null;
   }
@@ -69,8 +67,7 @@ async function acceptWorkspace(token: string) {
     success.value = 'Workspace invitation accepted.';
     await Promise.all([wsStore.fetchWorkspaces(), loadInbox()]);
   } catch (err) {
-    error.value =
-      err instanceof ApiError ? err.message : 'Failed to accept invitation.';
+    error.value = normalizeError(err, 'Failed to accept invitation.').message;
   } finally {
     processingToken.value = null;
   }

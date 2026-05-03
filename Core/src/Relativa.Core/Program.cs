@@ -1,5 +1,12 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Relativa.Authentication.Application.DTOs;
+using Relativa.Authentication.Application.Interfaces;
+using Relativa.Authentication.Application.Services;
+using Relativa.Authentication.Domain.Interfaces;
+using Relativa.Authentication.Infrastructure.Data;
+using Relativa.Authentication.Infrastructure.Repositories;
+using Relativa.Authentication.Infrastructure.Services;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
@@ -8,6 +15,8 @@ using Relativa.Core.Infrastructure.Data;
 using Relativa.Core.Infrastructure.Repositories;
 using Relativa.Core.Infrastructure.Services.Audit;
 using Relativa.Core.Middleware;
+using Relativa.Messaging;
+using Relativa.Persistence.Contracts;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -28,12 +37,21 @@ try
 
     builder.Services.AddDbContext<RelativaDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-    builder.Services.Configure<RabbitMqAuditOptions>(builder.Configuration.GetSection("RabbitMqAudit"));
+    builder.Services.Configure<RabbitMqPublishingOptions>(
+        builder.Configuration.GetSection(RabbitMqPublishingOptions.ConfigurationSectionKey));
 
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<RelativaDbContext>();
 
     builder.Services.AddValidatorsFromAssemblyContaining<IWorkspaceService>();
+    builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestDto>();
+    builder.Services.AddValidatorsFromAssemblyContaining<IOrganizationUserAdminService>();
+
+    builder.Services.AddDbContext<AuthDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+    builder.Services.AddScoped<IUserProvisioningService, UserProvisioningService>();
 
     builder.Services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
     builder.Services.AddScoped<IUserRoleWorkspaceRepository, UserRoleWorkspaceRepository>();
@@ -50,7 +68,7 @@ try
 
     builder.Services.AddScoped<IEntityTypeService, EntityTypeService>();
     builder.Services.AddScoped<IEntityService, EntityService>();
-    builder.Services.AddScoped<IAuditOutboxWriter, AuditOutboxWriter>();
+    builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
     builder.Services.AddHostedService<AuditOutboxDispatcher>();
 
     builder.Services.AddScoped<IWorkspaceService, WorkspaceService>();
@@ -61,6 +79,7 @@ try
     builder.Services.AddScoped<IOrgRoleService, OrgRoleService>();
     builder.Services.AddScoped<IOrgInvitationService, OrgInvitationService>();
     builder.Services.AddScoped<IJoinRequestService, JoinRequestService>();
+    builder.Services.AddScoped<IOrganizationUserAdminService, OrganizationUserAdminService>();
 
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();
@@ -85,6 +104,7 @@ try
     app.MapJoinRequestEndpoints();
     app.MapOrgInvitationEndpoints();
     app.MapOrgRoleEndpoints();
+    app.MapOrganizationUserEndpoints();
 
     app.Run();
 }

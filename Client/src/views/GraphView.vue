@@ -7,7 +7,7 @@ import { Network } from 'vis-network/standalone';
 import { useGraphStore } from '@/stores/graph';
 import { useEntityStore } from '@/stores/entity';
 import { useWorkspaceStore } from '@/stores/workspace';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
 import type { EntityListItemDto } from '@/api/entities';
 
 const router = useRouter();
@@ -84,12 +84,7 @@ async function load() {
     await render();
   } catch (err) {
     console.error('GraphView load failed:', err);
-    errorMessage.value =
-      err instanceof ApiError
-        ? err.message || `Request failed (${err.status})`
-        : err instanceof Error
-          ? err.message
-          : 'Failed to load graph data.';
+    errorMessage.value = normalizeError(err, 'Failed to load graph data.').message;
   } finally {
     loading.value = false;
   }

@@ -26,7 +26,7 @@ export const useAuditStore = defineStore('audit', () => {
       perPage.value = res.perPage;
       return res;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err);
+      error.value = normalizeError(err, 'Failed to load audit log.').message;
       throw err;
     } finally {
       loading.value = false;

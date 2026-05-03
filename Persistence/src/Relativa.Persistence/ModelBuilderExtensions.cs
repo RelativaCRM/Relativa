@@ -54,6 +54,7 @@ public static class PersistenceModelBuilderExtensions
         modelBuilder.ApplyConfiguration(new OrganizationAuditLogConfiguration());
         modelBuilder.ApplyConfiguration(new AuditOutboxMessageConfiguration());
         modelBuilder.ApplyConfiguration(new AuditProcessedEventConfiguration());
+        modelBuilder.ApplyConfiguration(new RabbitMqProcessedDeliveryConfiguration());
 
         return modelBuilder;
     }

@@ -1,6 +1,6 @@
 # Project Overview -- What is Relativa?
 
-> **Last verified:** 2026-05-01
+> **Last verified:** 2026-05-02
 
 > **Maintenance obligation:** If you change the general purpose, domain model, tech stack, or repo layout, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -57,7 +57,7 @@ The domain model lives entirely in the shared Persistence library (`Persistence/
 | Frontend | Vue 3 + Vite + TypeScript, Pinia, Vue Router, PrimeVue 4 (Aura), Tailwind CSS 3, vis-network (graph placeholder) |
 | Database | PostgreSQL 16 |
 | ORM | Entity Framework Core 10 + Npgsql |
-| Messaging | RabbitMQ (audit events) |
+| Messaging | RabbitMQ (transactional outbox → `audit.events` + choreography `relativa.domain`; shared helpers in `Messaging/`) |
 | Auth | JWT (symmetric key), BCrypt password hashing, FluentValidation |
 | Logging | Serilog (console + rolling file) |
 | API docs | OpenAPI + Scalar |
@@ -92,7 +92,9 @@ Relativa/
 │       ├── Relativa.Core.Application/        # Services, DTOs, validators
 │       ├── Relativa.Core.Domain/             # Repository interfaces
 │       └── Relativa.Core.Infrastructure/     # RelativaDbContext
-├── Graph/                      # SignalR graph service (.NET 10)
+├── Messaging/                  # RabbitMQ helpers for outbox publishers (.NET class library)
+│   └── src/Relativa.Messaging/
+├── Graph/                      # SignalR graph service (.NET 10 + choreography consumer)
 │   └── src/Relativa.Graph/
 ├── Audit/                      # Audit log API (.NET 10)
 │   └── src/Relativa.Audit/
@@ -100,7 +102,8 @@ Relativa/
 │   └── src/Relativa.Migration/
 ├── Persistence/                # Shared EF Core entity library (no .sln)
 │   └── src/Relativa.Persistence/
-│       ├── Entities/           # 21 entity classes
+│       ├── Contracts/          # Audit + choreography envelopes (shared with consumers)
+│       ├── Entities/           # Domain + audit/outbox/support entities (see ARCHITECTURE list)
 │       ├── Configurations/     # Fluent API configs
 │       └── ModelBuilderExtensions.cs
 ├── Client/                     # Vue 3 + Vite SPA
@@ -118,6 +121,7 @@ Relativa/
 | File | Scope | Notes |
 |---|---|---|
 | `DOCKER-BUILD.md` | Operational Docker guide | Current and accurate. |
+| `docs/runbooks/RABBITMQ-CHOREOGRAPHY.md` | Rabbit choreography + DLQ operations | Describes exchanges, purge commands, idempotency table |
 | `SCALAR-GUIDE.md` | Scalar API docs walkthrough | Current and accurate. |
 | `CONTRIBUTORS.md` | Contributor list | -- |
 | `Authentication/README.md` | Auth service | **Outdated** -- claims 501 stubs but login/register/me are implemented. |

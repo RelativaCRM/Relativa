@@ -37,6 +37,7 @@ public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> opti
     public DbSet<OrganizationAuditLog> OrganizationAuditLogs => Set<OrganizationAuditLog>();
     public DbSet<AuditOutboxMessage> AuditOutboxMessages => Set<AuditOutboxMessage>();
     public DbSet<AuditProcessedEvent> AuditProcessedEvents => Set<AuditProcessedEvent>();
+    public DbSet<RabbitMqProcessedDelivery> RabbitMqProcessedDeliveries => Set<RabbitMqProcessedDelivery>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

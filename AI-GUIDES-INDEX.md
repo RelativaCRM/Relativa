@@ -1,6 +1,6 @@
 # Relativa -- AI Agent Context Guides
 
-> **Last verified:** 2026-05-02
+> **Last verified:** 2026-05-02 (Org user admin permissions + Auth profile PATCH/DELETE; guides synced)
 
 Relativa is a multi-tenant CRM / sales-workspace platform built as a microservice monorepo. It includes .NET 10 backend services, a Vue 3 SPA client, a Django ML service, PostgreSQL 16, a YARP API gateway, and SignalR for real-time graph updates. Everything runs locally via Docker Compose.
 
@@ -15,6 +15,7 @@ Relativa is a multi-tenant CRM / sales-workspace platform built as a microservic
 | Added, removed, or changed an **endpoint** | [MICROSERVICES.md](docs/ai-guides/MICROSERVICES.md) |
 | Added or removed a **service** | [MICROSERVICES.md](docs/ai-guides/MICROSERVICES.md), [DOCKER-SETUP.md](docs/ai-guides/DOCKER-SETUP.md), [PROJECT-OVERVIEW.md](docs/ai-guides/PROJECT-OVERVIEW.md) |
 | Changed **Docker Compose, Dockerfiles, networking, or env vars** | [DOCKER-SETUP.md](docs/ai-guides/DOCKER-SETUP.md) |
+| Changed **Rabbit choreography topology / DLQs / ops playbooks** | [RABBITMQ-CHOREOGRAPHY.md](docs/runbooks/RABBITMQ-CHOREOGRAPHY.md), plus [ARCHITECTURE.md](docs/ai-guides/ARCHITECTURE.md) |
 | Changed **architecture patterns, layers, persistence model, validation, or auth flows** | [ARCHITECTURE.md](docs/ai-guides/ARCHITECTURE.md) |
 | **Implemented a feature** that was listed as stub/TODO, or introduced a **new known issue** | [PROJECT-STATUS.md](docs/ai-guides/PROJECT-STATUS.md) |
 | **Added or changed the audit read API** | [AUDIT-LOG-API.md](docs/ai-guides/AUDIT-LOG-API.md), [MICROSERVICES.md](docs/ai-guides/MICROSERVICES.md) |
@@ -39,6 +40,7 @@ Relativa is a multi-tenant CRM / sales-workspace platform built as a microservic
 | **Audit Coverage Matrix** | [docs/ai-guides/AUDIT-COVERAGE-MATRIX.md](docs/ai-guides/AUDIT-COVERAGE-MATRIX.md) | Current auditable-table scope and gap tracking |
 | **Audit Agent Requirements** | [docs/ai-guides/AUDIT-AGENT-REQUIREMENTS.md](docs/ai-guides/AUDIT-AGENT-REQUIREMENTS.md) | Mandatory rules for AI agents when creating/changing DB entities/tables |
 | **Audit log API** | [docs/ai-guides/AUDIT-LOG-API.md](docs/ai-guides/AUDIT-LOG-API.md) | `GET /audit-log` / RBAC, query params, response shape, errors |
+| **RabbitMQ choreography runbook** | [docs/runbooks/RABBITMQ-CHOREOGRAPHY.md](docs/runbooks/RABBITMQ-CHOREOGRAPHY.md) | Exchange names, DLQ purge/idempotency, env keys, automated tests pointer |
 
 ---
 

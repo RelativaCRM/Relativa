@@ -9,7 +9,11 @@ import Select from 'primevue/select';
 import DatePicker from 'primevue/datepicker';
 import ToggleSwitch from 'primevue/toggleswitch';
 import Message from 'primevue/message';
-import { ApiError } from '@/api/http';
+import {
+  normalizeError,
+  firstFieldError,
+  type FieldErrors,
+} from '@/api/errors';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import {
@@ -33,7 +37,40 @@ const values = ref<Record<number, FieldValue>>({});
 const loadingTypes = ref(true);
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
+const fieldErrors = ref<FieldErrors>({});
 const accessDenied = ref(false);
+const submitAttempted = ref(false);
+
+function isPropertyEmpty(prop: EntityTypePropertyDto): boolean {
+  if (prop.dataType === 'Bool') return false;
+  return isEmpty(values.value[prop.propertyId] ?? null);
+}
+
+function propertyFieldError(prop: EntityTypePropertyDto): string | null {
+  if (submitAttempted.value && isPropertyEmpty(prop)) {
+    return 'This field is required.';
+  }
+  return (
+    firstFieldError(fieldErrors.value, prop.name) ??
+    firstFieldError(fieldErrors.value, `properties[${prop.propertyId}]`) ??
+    firstFieldError(fieldErrors.value, `properties.${prop.propertyId}`)
+  );
+}
+
+function clearPropertyFieldError(prop: EntityTypePropertyDto) {
+  if (
+    !fieldErrors.value[prop.name] &&
+    !fieldErrors.value[`properties[${prop.propertyId}]`] &&
+    !fieldErrors.value[`properties.${prop.propertyId}`]
+  ) {
+    return;
+  }
+  const next = { ...fieldErrors.value };
+  delete next[prop.name];
+  delete next[`properties[${prop.propertyId}]`];
+  delete next[`properties.${prop.propertyId}`];
+  fieldErrors.value = next;
+}
 
 const selectedType = computed(
   () => types.value.find((t) => t.id === selectedTypeId.value) ?? null,
@@ -55,10 +92,7 @@ function isEmpty(v: FieldValue): boolean {
 
 const isFormValid = computed(() => {
   if (!selectedType.value) return false;
-  return properties.value.every((p) => {
-    if (!p.isRequired) return true;
-    return !isEmpty(values.value[p.propertyId] ?? null);
-  });
+  return properties.value.every((p) => !isPropertyEmpty(p));
 });
 
 function pad(n: number): string {
@@ -95,6 +129,8 @@ function resetTypeFields() {
   }
   values.value = next;
   errorMessage.value = null;
+  fieldErrors.value = {};
+  submitAttempted.value = false;
 }
 
 function gotoList() {
@@ -134,17 +170,22 @@ async function loadTypes() {
     if (!ok) return;
     await entityStore.fetchTypes();
   } catch (err) {
-    errorMessage.value =
-      err instanceof ApiError ? err.message : 'Failed to load entity types.';
+    const normalized = normalizeError(err, 'Failed to load entity types.');
+    errorMessage.value = normalized.message;
   } finally {
     loadingTypes.value = false;
   }
 }
 
 async function handleSubmit() {
-  if (!isFormValid.value || selectedTypeId.value === null) return;
+  submitAttempted.value = true;
+  if (!isFormValid.value || selectedTypeId.value === null) {
+    errorMessage.value = 'Please fill in all fields before submitting.';
+    return;
+  }
   submitting.value = true;
   errorMessage.value = null;
+  fieldErrors.value = {};
   try {
     const payload = {
       entityTypeId: selectedTypeId.value,
@@ -162,8 +203,9 @@ async function handleSubmit() {
     });
     gotoList();
   } catch (err) {
-    errorMessage.value =
-      err instanceof ApiError ? err.message : 'Failed to create entity.';
+    const normalized = normalizeError(err, 'Failed to create entity.');
+    fieldErrors.value = normalized.fieldErrors;
+    errorMessage.value = normalized.message;
   } finally {
     submitting.value = false;
   }
@@ -254,6 +296,8 @@ onMounted(loadTypes);
             :id="`p-${prop.propertyId}`"
             v-model="values[prop.propertyId] as string"
             class="!h-10"
+            :invalid="!!propertyFieldError(prop)"
+            @update:model-value="clearPropertyFieldError(prop)"
           />
 
           <InputNumber
@@ -262,6 +306,8 @@ onMounted(loadTypes);
             v-model="values[prop.propertyId] as number"
             :min="0"
             :max-fraction-digits="0"
+            :invalid="!!propertyFieldError(prop)"
+            @update:model-value="clearPropertyFieldError(prop)"
           />
 
           <InputNumber
@@ -271,6 +317,8 @@ onMounted(loadTypes);
             :min="0"
             :min-fraction-digits="0"
             :max-fraction-digits="2"
+            :invalid="!!propertyFieldError(prop)"
+            @update:model-value="clearPropertyFieldError(prop)"
           />
 
           <DatePicker
@@ -279,6 +327,8 @@ onMounted(loadTypes);
             v-model="values[prop.propertyId] as Date | null"
             date-format="yy-mm-dd"
             show-icon
+            :invalid="!!propertyFieldError(prop)"
+            @update:model-value="clearPropertyFieldError(prop)"
           />
 
           <ToggleSwitch
@@ -286,6 +336,13 @@ onMounted(loadTypes);
             :input-id="`p-${prop.propertyId}`"
             v-model="values[prop.propertyId] as boolean"
           />
+
+          <small
+            v-if="propertyFieldError(prop)"
+            class="text-xs text-danger"
+          >
+            <i class="pi pi-exclamation-circle mr-1" />{{ propertyFieldError(prop) }}
+          </small>
         </div>
       </template>
 
@@ -309,7 +366,7 @@ onMounted(loadTypes);
         <Button
           type="submit"
           label="Create"
-          :disabled="!isFormValid || submitting"
+          :disabled="submitting"
           :loading="submitting"
         />
       </div>

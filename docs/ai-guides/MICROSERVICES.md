@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-02 (RabbitMQ audit pipeline implemented)
+> **Last verified:** 2026-05-02 (User provisioning: org-scoped admin APIs + email normalization; transactional outbox unchanged)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -13,10 +13,10 @@
 | Gateway | 8080 | .NET 10, YARP | Functional |
 | Authentication | 8081 | .NET 10, JWT, BCrypt, FluentValidation | Functional |
 | Core | 8082 | .NET 10, EF Core | Functional (org + workspace RBAC) |
-| Graph | 8083 | .NET 10, SignalR | Stub |
+| Graph | 8083 | .NET 10, SignalR, RabbitMQ | Stub hub + choreography consumer (broadcasts lifecycle envelope) |
 | Audit | 8086 | .NET 10, EF Core, RabbitMQ | Functional |
 | Migration | -- | .NET 10, EF Core (console) | Functional |
-| ML | 8084 | Django 5.1, DRF | Stub |
+| ML | 8084 | Django 5.1, DRF, pika | Stub API + `run_domain_consumer` choreography subscriber (logs only) |
 | Client | 3000 | Vue 3, Vite | Scaffold |
 
 ---
@@ -51,6 +51,8 @@
 
 **JWT-required auth routes** (not anonymous):
 - `GET /auth/api/v1/auth/me`
+- `PATCH /auth/api/v1/auth/me`
+- `DELETE /auth/api/v1/auth/me`
 
 ### Status: Functional
 
@@ -78,26 +80,29 @@ YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issue
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password, returns user DTO + Location header |
-| POST | `/api/v1/auth/login` | None | Validates credentials, returns `{ accessToken, expiresAt }` |
+| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password (email stored lowercase), returns user DTO + Location header |
+| POST | `/api/v1/auth/login` | None | Validates credentials (email matched lowercase), returns `{ accessToken, expiresAt }` |
 | GET | `/api/v1/auth/me` | JWT | Returns authenticated user's profile `{ id, email, firstName, lastName }` from JWT `sub` claim |
+| PATCH | `/api/v1/auth/me` | JWT | Updates authenticated user's first and last name |
+| DELETE | `/api/v1/auth/me` | JWT | Soft-archives the authenticated user (`is_archived`) |
 | GET | `/health` | None | EF Core DB health check |
 | GET | `/scalar/v1` | None | Scalar interactive API docs |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
 ### Status: Functional
 
-Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, duplicate email to 409.
+Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are normalized to lowercase on register and login. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, `KeyNotFoundException` to 404, duplicate email to 409 (including PostgreSQL unique violations on concurrent insert).
 
 **Not yet implemented:** token refresh, token blacklisting.
 
-**Audit publishing:** Authentication now writes audit events to `audit_outbox` and a background dispatcher publishes them to RabbitMQ (`audit.events`) in fire-and-forget mode.
+**Audit publishing:** Authentication writes payloads to `audit_outbox`; `AuditOutboxDispatcher` multiplexes publishes to **`audit.events`** routing keys prefixed with `audit.*` (`RabbitMqAudit:Exchange`). Domain choreography publishing is delegated to **`relativa.domain`**, but Auth only emits audit payloads today (`IOutboxWriter.EnqueueDomainAsync` intentionally no-op).
 
 ### Key Files
 
 - `Authentication/src/Relativa.Authentication/Program.cs` -- DI, middleware, endpoint mapping
 - `Authentication/src/Relativa.Authentication/Endpoints/AuthEndpoints.cs` -- route definitions
-- `Authentication/src/Relativa.Authentication.Application/Services/AuthService.cs` -- business logic
+- `Authentication/src/Relativa.Authentication.Application/Services/AuthService.cs` -- login/profile; register delegates to `UserProvisioningService`
+- `Authentication/src/Relativa.Authentication.Application/Services/UserProvisioningService.cs` -- shared user create/update/archive + audit
 - `Authentication/src/Relativa.Authentication.Application/DTOs/` -- request/response DTOs (includes `UserProfileDto`)
 - `Authentication/src/Relativa.Authentication.Application/Interfaces/IAuthService.cs`
 - `Authentication/src/Relativa.Authentication.Application/Validators/` -- FluentValidation rules
@@ -106,6 +111,8 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 - `Authentication/src/Relativa.Authentication.Infrastructure/Repositories/UserRepository.cs`
 - `Authentication/src/Relativa.Authentication.Infrastructure/Services/JwtTokenService.cs`
 - `Authentication/src/Relativa.Authentication.Infrastructure/Services/BcryptPasswordHasher.cs`
+- `Authentication/src/Relativa.Authentication.Infrastructure/Services/Audit/OutboxWriter.cs` — transactional outbox enqueue (audit payloads)
+- `Authentication/src/Relativa.Authentication.Infrastructure/Services/Audit/AuditOutboxDispatcher.cs` — RabbitMQ dispatcher using `Messaging/src/Relativa.Messaging` helpers (`RabbitMqPublishingOptions.ConfigurationSectionKey = "RabbitMqAudit"`)
 
 ---
 
@@ -134,6 +141,14 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | GET | `/api/v1/organizations/{id}/members` | JWT + org membership | List organization members |
 | DELETE | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove member from organization |
 | PUT | `/api/v1/organizations/{id}/members/{userId}/role` | JWT + `assign_org_roles` | Change member's organization role |
+
+### Endpoints -- Organization users (admin provisioning)
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` | Create user account (bcrypt password), add as `org_member`; 201 + Location |
+| PATCH | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's first/last name (not self; use Auth `/me`) |
+| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (soft-delete) |
 
 ### Endpoints -- Organization Join Requests
 
@@ -235,9 +250,11 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | GET | `/scalar/v1` | None | Scalar interactive API docs (dev only) |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
-### Status: Functional (organization + workspace RBAC + entity CRUD + audit outbox publishing implemented)
+### Status: Functional (organization + workspace RBAC + entity CRUD + transactional outbox for audit **and choreography** implemented)
 
-Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), the split RBAC permission model, workspace-scoped entity CRUD, and audit outbox publishing are functional.
+Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), the split RBAC permission model, workspace-scoped entity CRUD are functional.
+
+**Outbox choreography pilot:** workspace create/update/archive now fan out **`DomainMessageEnvelope`** + `WorkspaceLifecyclePayloadV1` to routing keys `core.workspace.created|updated|archived`. Audit rows continue to enqueue in parallel (`AuditEventContract`).
 
 **Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`) and no local CORS policy; browser CORS is enforced at Gateway. Core reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway.
 
@@ -251,6 +268,8 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 - `Core/src/Relativa.Core.Domain/Interfaces/` -- repository interfaces
 - `Core/src/Relativa.Core.Infrastructure/Data/RelativaDbContext.cs` -- full DbSet registration
 - `Core/src/Relativa.Core.Infrastructure/Repositories/` -- EF repository implementations
+- `Core/src/Relativa.Core.Infrastructure/Services/Audit/OutboxWriter.cs` — persists `audit_outbox` rows for audit **and choreography**
+- `Core/src/Relativa.Core.Infrastructure/Services/Audit/AuditOutboxDispatcher.cs` — background publisher (uses `Relativa.Messaging`)
 
 ---
 
@@ -270,13 +289,14 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 | WebSocket | `/hubs/graph` | None | SignalR hub (`GraphHub`) |
 | GET | `/scalar/v1` | None | Scalar (dev only) |
 
-### Status: Stub
+### Status: Stub (consumer active)
 
-`GraphHub` exists but `OnConnectedAsync` only calls `base`. No graph data queries, no RBAC filtering, no real-time push logic.
+SignalR lifecycle events are hydrated from choreography: **`DomainEventConsumerHostedService`** binds queue `domain.events.graph.workspace.v1` to **`relativa.domain`** (`core.workspace.*`), deduplicates inserts into `rabbitmq_processed_delivery`, and broadcasts **`domain.workspace.lifecycle.v1`** to all connected hubs. Actual graph-domain projection + RBAC on hub groups remain TODO.
 
 ### Key Files
 
-- `Graph/src/Relativa.Graph/Program.cs`
+- `Graph/src/Relativa.Graph/Program.cs` — configures Postgres `NpgsqlDataSource`, choreography consumer options (`RabbitMqGraph`)
+- `Graph/src/Relativa.Graph/Messaging/` — consumer + options + SignalR constants
 - `Graph/src/Relativa.Graph/Hubs/GraphHub.cs`
 
 ---
@@ -341,7 +361,7 @@ None -- this is a console application, not a web service.
 
 **Purpose:** Machine learning service for scoring deals (closure probability, churn risk). Built on Django + DRF with planned Celery task scheduling.
 
-**Stack:** Python 3.11, Django 5.1, Django REST Framework, scikit-learn (planned), Celery + Redis (configured but inactive)
+**Stack:** Python 3.12, Django 5.1, Django REST Framework, scikit-learn (planned), Celery + Redis (configured but inactive), pika (RabbitMQ choreography consumer)
 **Project:** `ML/`
 **Port:** 8084
 
@@ -351,14 +371,18 @@ None -- this is a console application, not a web service.
 |---|---|---|---|
 | POST | `/api/ml/recalculate/` | None | Returns `{"status":"accepted","detail":"stub"}` |
 
-### Status: Stub
+### Status: Stub (choreography sidecar enabled)
 
-The endpoint exists but returns a hardcoded stub. No ML models, no Celery tasks, no Redis broker in Docker Compose. `settings.py` has Celery config with a commented-out beat schedule for nightly recalculation at 02:00 UTC.
+Docker runs `manage.py run_domain_consumer` concurrently with Django (see `ML/scripts/run_api_and_consumer.sh`). The subscriber binds `domain.events.ml.workspace.v1` to `relativa.domain` for `core.workspace.*`, logs payloads, and uses `rabbitmq_processed_delivery` for idempotency. HTTP API stub remains unchanged.
+
+API endpoint still returns stub body. Celery beat remains commented-out in `settings.py`.
 
 ### Key Files
 
-- `ML/ml_api/views.py` -- stub endpoint
-- `ML/ml_api/urls.py` -- URL routing
+- `ML/ml_api/management/commands/run_domain_consumer.py` — Rabbit consumer (blocking)
+- `ML/ml_api/views.py` — REST stub handlers
+- `ML/ml_api/urls.py` — URL routing
+- `ML/scripts/run_api_and_consumer.sh` — runs consumer + Django server in Docker
 - `ML/relativa_ml/` -- future ML model package
 - `ML/pyproject.toml` -- dependencies
 
