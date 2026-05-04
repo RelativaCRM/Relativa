@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-04 (Auth: register after self-delete / same email reuse documented; duplicate **active** email → 409)
+> **Last verified:** 2026-05-04 (Core org user admin: create supports optional `orgRoleId`; cross-user archive enforces same email domain; org permission denials aligned to 403)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -146,9 +146,9 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` | Create user account (bcrypt password), add as `org_member`; 201 + Location |
+| POST | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` (and `assign_org_roles` when non-default role requested) | Create user account (bcrypt password), add to org with selected role (`orgRoleId?`, default `org_member`); 201 + Location |
 | PATCH | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's first/last name (not self; use Auth `/me`) |
-| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (soft-delete) |
+| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (soft-delete) only when caller and target share the same email domain |
 
 ### Endpoints -- Organization Join Requests
 
@@ -251,7 +251,7 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 
 **Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`) and no local CORS policy; browser CORS is enforced at Gateway. Core reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway.
 
-**Error contract:** `Core/src/Relativa.Core/Middleware/GlobalExceptionHandler.cs` returns JSON `{ status, title, detail }`. Map: `ValidationException` / `ArgumentException` → **400**; `UnauthorizedAccessException` → **401**; `ForbiddenAccessException` → **403**; `KeyNotFoundException` → **404**; `InvalidOperationException` → **409**; other → **500**. Application services (including `WorkspaceMemberService`, `OrgInvitationService`, `JoinRequestService`) throw only those types for handled paths so clients never get opaque 500s for permission or conflict cases. The Vue client uses `normalizeError` / `useApiErrorHandler().notify` and `gatewayFetch` prefers **`detail`** over `title` for the thrown `ApiError.message` so toast text matches the server message.
+**Error contract:** `Core/src/Relativa.Core/Middleware/GlobalExceptionHandler.cs` returns JSON `{ status, title, detail }`. Map: `ValidationException` / `ArgumentException` → **400**; `UnauthorizedAccessException` → **401**; `ForbiddenAccessException` → **403**; `KeyNotFoundException` → **404**; `InvalidOperationException` → **409**; other → **500**. Application services (including `WorkspaceMemberService`, `OrgInvitationService`, `JoinRequestService`, `OrganizationUserAdminService`, `OrganizationService`) throw only those types for handled paths so clients never get opaque 500s for permission or conflict cases. Organization permission denials are now raised as **403** (`ForbiddenAccessException`) rather than **401**. The Vue client uses `normalizeError` / `useApiErrorHandler().notify` and `gatewayFetch` prefers **`detail`** over `title` for the thrown `ApiError.message` so toast text matches the server message.
 
 ### Key Files
 

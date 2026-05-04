@@ -13,6 +13,7 @@ const OnboardingView = () => import('@/views/OnboardingView.vue');
 const WorkspaceSelectorView = () =>
   import('@/views/WorkspaceSelectorView.vue');
 const MembersView = () => import('@/views/MembersView.vue');
+const MemberView = () => import('@/views/MemberView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
 const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
@@ -66,6 +67,12 @@ const router = createRouter({
           path: 'members',
           name: 'members',
           component: MembersView,
+          meta: orgMeta,
+        },
+        {
+          path: 'members/:memberUserId(\\d+)',
+          name: 'member',
+          component: MemberView,
           meta: orgMeta,
         },
         {

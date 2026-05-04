@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import {
   orgApi,
+  type CreateOrgUserRequest,
   type OrganizationDto,
   type OrgMemberDto,
   type OrgRoleDto,
@@ -96,6 +97,19 @@ export const useOrganizationStore = defineStore('organization', () => {
     members.value = members.value.filter((m) => m.userId !== userId);
   }
 
+  async function createOrgUser(payload: CreateOrgUserRequest) {
+    if (!currentOrgId.value) return;
+    const created = await orgApi.createOrgUser(currentOrgId.value, payload);
+    await fetchMembers();
+    return created;
+  }
+
+  async function deleteOrgUser(userId: number) {
+    if (!currentOrgId.value) return;
+    await orgApi.deleteOrgUser(currentOrgId.value, userId);
+    members.value = members.value.filter((m) => m.userId !== userId);
+  }
+
   function clear() {
     organizations.value = [];
     currentOrgId.value = null;
@@ -124,6 +138,8 @@ export const useOrganizationStore = defineStore('organization', () => {
     resendInvitation,
     changeMemberRole,
     removeMember,
+    createOrgUser,
+    deleteOrgUser,
     clear,
   };
 });

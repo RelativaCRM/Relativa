@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-04 (Users: soft-delete + partial unique index on `users.email` where `is_archived = false`; login/profile resolve active users only.)
+> **Last verified:** 2026-05-04 (Core org-user-admin flow: optional role selection on create, same-domain guard for cross-user archive, org permission denials aligned to 403.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -283,6 +283,7 @@ There is **no** global automatic validation filter or minimal-API endpoint filte
 - `InviteToOrgRequestValidator`, `AddWorkspaceMemberRequestValidator`, `ReviewJoinRequestRequestValidator` -- org invitations, workspace member add, org join-request review
 - `CreateRoleRequestValidator` -- role management
 - `UpdateMemberRoleRequestValidator` -- member management
+- `CreateOrgUserRequestValidator`, `UpdateOrgUserProfileRequestValidator` -- org user admin provisioning / profile edits
 - Organization-related validators for org CRUD, join requests, org invitations, org roles
 
 ### Convention for new services
@@ -402,7 +403,7 @@ Authorization for workspace endpoints:
 | Concern | Implementation | Where |
 |---|---|---|
 | **Logging** | Serilog (console + rolling file) | Core, Authentication, Gateway |
-| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. Authentication additionally maps: `KeyNotFoundException` → 404, PostgreSQL unique violations (`DbUpdateException`) → 409. Audit adds `ForbiddenAccessException` → 403. Backend services serialize errors as `{ status, title, detail }` (validation `detail` is `"Field: msg; Field2: msg"`). The Vue client consumes that envelope through `Client/src/api/errors.ts` (`normalizeError` → `NormalizedError` with status flags + parsed `fieldErrors`) and `Client/src/api/errorToast.ts` (`useApiErrorHandler().notify` for toast dispatch). Forms render `fieldErrors` inline under inputs; non-form failures are surfaced via toasts. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
+| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `ForbiddenAccessException` → 403, `InvalidOperationException` → 409. Authentication additionally maps: `KeyNotFoundException` → 404, PostgreSQL unique violations (`DbUpdateException`) → 409. Audit adds `ForbiddenAccessException` → 403. Backend services serialize errors as `{ status, title, detail }` (validation `detail` is `"Field: msg; Field2: msg"`). In Core, organization permission denials now use `ForbiddenAccessException` (403), while auth identity failures remain 401. The Vue client consumes that envelope through `Client/src/api/errors.ts` (`normalizeError` → `NormalizedError` with status flags + parsed `fieldErrors`) and `Client/src/api/errorToast.ts` (`useApiErrorHandler().notify` for toast dispatch). Forms render `fieldErrors` inline under inputs; non-form failures are surfaced via toasts. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
 | **Health checks** | `/health` endpoint, EF Core DB checks on Auth and Core | All .NET services |
 | **API docs** | OpenAPI + Scalar (`/scalar/v1`, `/openapi/v1.json`) | Auth, Core, Gateway, Graph (dev) |
 | **CORS** | Gateway-only policy. Default: named-origin allowlist with credentials (`Cors:Origins`). Optional local dev override: `Cors:AllowAnyOriginForDev=true` enables wildcard origin without credentials. Downstream services do not apply local CORS policies to avoid drift. | Gateway |

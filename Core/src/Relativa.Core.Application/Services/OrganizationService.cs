@@ -1,5 +1,6 @@
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Organization;
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -226,6 +227,6 @@ public sealed class OrganizationService(
         var hasPermission = membership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
-            throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this organization.");
+            throw new ForbiddenAccessException($"You do not have the '{permission}' permission in this organization.");
     }
 }

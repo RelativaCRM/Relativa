@@ -853,9 +853,9 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 
 | Method | Path | Auth | Summary |
 |--------|------|------|---------|
-| `POST` | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` | Create user account and add as org member |
+| `POST` | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` (`assign_org_roles` when non-default role requested) | Create user account and add to org with selected role (`orgRoleId?`, default member) |
 | `PATCH` | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's name |
-| `DELETE` | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account |
+| `DELETE` | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (caller and target must share email domain) |
 
 **Join requests:**
 
@@ -973,6 +973,7 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 **403 / "You do not have the '...' permission" on Core endpoints**
 - Your user does not have the required permission. For org endpoints, check your org role with `GET /api/v1/organizations/{id}/members`. For workspace endpoints, check with `GET /api/v1/workspaces/{id}/members`.
 - The `org_owner` role has all org permissions; `ws_admin` has all **workspace** permissions (not org-only permissions such as `manage_org_workspace_members` unless also granted on an org role).
+- For `DELETE /api/v1/organizations/{id}/users/{userId}`, you also need the same email domain as the target user even with `delete_org_users`.
 
 **"You are not a member of this organization"**
 - The `sub` claim in your JWT does not match any `user_role_organization` row for that org. Create an org, request to join, or accept an invitation first.

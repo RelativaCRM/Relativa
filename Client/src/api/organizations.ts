@@ -26,6 +26,14 @@ export interface OrgRoleDto {
   permissions: { id: number; name: string }[];
 }
 
+export interface CreateOrgUserRequest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  orgRoleId?: number;
+}
+
 export interface OrgInvitationDto {
   id: number;
   organizationId: number;
@@ -88,6 +96,20 @@ export const orgApi = {
       roleId,
     });
   },
+  createOrgUser(
+    orgId: number,
+    payload: CreateOrgUserRequest,
+  ): Promise<UserProfile> {
+    return api.post<UserProfile>(
+      `${CORE}/organizations/${orgId}/users`,
+      payload.orgRoleId ? { ...payload } : {
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        email: payload.email,
+        password: payload.password,
+      },
+    );
+  },
   updateOrgUserProfile(
     orgId: number,
     userId: number,
@@ -97,6 +119,9 @@ export const orgApi = {
       `${CORE}/organizations/${orgId}/users/${userId}`,
       { ...payload },
     );
+  },
+  deleteOrgUser(orgId: number, userId: number): Promise<void> {
+    return api.del(`${CORE}/organizations/${orgId}/users/${userId}`);
   },
 
   /* Invitations */
