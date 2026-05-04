@@ -21,6 +21,16 @@
 - `POST /login` → **501 Not Implemented** (місце під контракт).
 - `POST /refresh` → **501 Not Implemented**.
 
+## Демо-акаунти
+
+Для входу в локальну систему використовуйте наступні заздалегідь згенеровані (seeded) акаунти. Пароль для всіх акаунтів однаковий, він хешується за допомогою BCrypt динамічно під час накатування міграцій:
+
+| Email | Пароль | Роль в Організації | Роль у Workspace |
+| :--- | :--- | :--- | :--- |
+| `admin@relativa.com` | `Demo1234!` | org_owner | ws_admin |
+| `ivan.f@relativa.com` | `Demo1234!` | org_member | ws_manager |
+| `lesya.u@relativa.com` | `Demo1234!` | org_member | ws_analyst |
+
 ## Команди
 
 ```bash
