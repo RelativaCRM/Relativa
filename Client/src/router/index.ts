@@ -18,7 +18,6 @@ const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
 const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
-const InvitationsView = () => import('@/views/InvitationsView.vue');
 const AuditLogView = () => import('@/views/AuditLogView.vue');
 const AccountSettingsView = () => import('@/views/AccountSettingsView.vue');
 
@@ -73,12 +72,6 @@ const router = createRouter({
           path: 'workspaces',
           name: 'workspaces',
           component: WorkspacesView,
-          meta: orgMeta,
-        },
-        {
-          path: 'invitations',
-          name: 'invitations',
-          component: InvitationsView,
           meta: orgMeta,
         },
         {

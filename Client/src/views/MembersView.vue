@@ -302,13 +302,16 @@ async function handleResendInvitation(invId: number) {
 
 /* ── Init ──────────────────────────────────────────────── */
 onMounted(async () => {
-  await Promise.all([
-    orgStore.fetchMembers(),
-    orgStore.fetchRoles(),
-    orgStore.fetchInvitations(),
-  ]);
-  await fetchJoinRequests();
-  loading.value = false;
+  try {
+    await Promise.all([
+      orgStore.fetchMembers(),
+      orgStore.fetchRoles(),
+      orgStore.fetchInvitations(),
+    ]);
+    await fetchJoinRequests();
+  } finally {
+    loading.value = false;
+  }
 });
 </script>
 

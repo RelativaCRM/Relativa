@@ -19,6 +19,7 @@ public sealed class JoinRequestRepository(RelativaDbContext db) : IJoinRequestRe
     {
         return await db.OrganizationJoinRequests
             .Include(r => r.User)
+            .Include(r => r.Organization)
             .Where(r => r.OrganizationId == organizationId && r.Status == "Pending")
             .ToListAsync(ct);
     }

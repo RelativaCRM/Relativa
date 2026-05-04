@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router';
 import Button from 'primevue/button';
-import Badge from 'primevue/badge';
 import Select from 'primevue/select';
 import BrandMark from '@/components/layout/BrandMark.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
-import { orgApi } from '@/api/organizations';
 
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
@@ -17,8 +15,6 @@ const wsStore = useWorkspaceStore();
 const entityStore = useEntityStore();
 const route = useRoute();
 const router = useRouter();
-
-const pendingInvitationsCount = ref(0);
 
 const inWorkspaceShell = computed(() => /\/w\/\d+/.test(route.path));
 
@@ -34,15 +30,6 @@ const canViewAuditLog = computed(() => {
   const orgRole = orgStore.currentOrg?.userRole;
   return orgRole === 'org_owner' || orgRole === 'org_admin';
 });
-
-async function refreshInvitationCount() {
-  try {
-    const orgInv = await orgApi.myOrganizationInvitations();
-    pendingInvitationsCount.value = orgInv.length;
-  } catch {
-    pendingInvitationsCount.value = 0;
-  }
-}
 
 async function handleOrgChange(orgId: number | null) {
   if (orgId == null) return;
@@ -106,7 +93,6 @@ watch(
 );
 
 onMounted(async () => {
-  await refreshInvitationCount();
   if (orgStore.currentOrgId) {
     try {
       await wsStore.fetchWorkspaces(orgStore.currentOrgId);
@@ -205,19 +191,6 @@ onMounted(async () => {
                 active-class="bg-brand-50 text-brand-700 font-medium"
               >
                 <i class="pi pi-folder mr-2" />Workspaces
-              </RouterLink>
-              <RouterLink
-                to="/invitations"
-                class="px-3 py-2 rounded-lg hover:bg-surface flex items-center"
-                active-class="bg-brand-50 text-brand-700 font-medium"
-              >
-                <i class="pi pi-envelope mr-2" />
-                <span class="flex-1">Invitations</span>
-                <Badge
-                  v-if="pendingInvitationsCount > 0"
-                  :value="pendingInvitationsCount"
-                  severity="info"
-                />
               </RouterLink>
               <RouterLink
                 v-if="canViewAuditLog"

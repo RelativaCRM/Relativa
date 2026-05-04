@@ -47,6 +47,8 @@ export interface JoinRequestDto {
   createdAt: string;
   reviewedByName: string | null;
   reviewedAt: string | null;
+  organizationId: number;
+  organizationName: string;
 }
 
 export interface MyInvitationsDto {

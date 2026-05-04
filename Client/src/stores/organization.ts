@@ -56,7 +56,11 @@ export const useOrganizationStore = defineStore('organization', () => {
 
   async function fetchInvitations() {
     if (!currentOrgId.value) return;
-    invitations.value = await orgApi.listInvitations(currentOrgId.value);
+    try {
+      invitations.value = await orgApi.listInvitations(currentOrgId.value);
+    } catch {
+      invitations.value = [];
+    }
   }
 
   async function inviteMember(email: string, orgRoleId?: number) {

@@ -14,6 +14,7 @@ import {
   orgApi,
   type OrganizationDto,
   type OrgInvitationDto,
+  type JoinRequestDto,
 } from '@/api/organizations';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
@@ -30,21 +31,31 @@ const activeTab = ref<Tab>('create');
 
 /* ── Invitations inbox (organization scope only) ───────── */
 const orgInvitations = ref<OrgInvitationDto[]>([]);
+const pendingJoinRequests = ref<JoinRequestDto[]>([]);
 const inboxLoading = ref(true);
 const acceptingToken = ref<string | null>(null);
 const inboxError = ref<string | null>(null);
 
 const pendingOrgInvitations = computed(() => orgInvitations.value);
+const hasInboxItems = computed(
+  () => pendingOrgInvitations.value.length > 0 || pendingJoinRequests.value.length > 0,
+);
 
 async function loadInbox() {
   inboxLoading.value = true;
   try {
-    orgInvitations.value = await orgApi.myOrganizationInvitations();
-    if (pendingOrgInvitations.value.length > 0) {
+    const [invitations, joinReqs] = await Promise.all([
+      orgApi.myOrganizationInvitations(),
+      orgApi.myJoinRequests(),
+    ]);
+    orgInvitations.value = invitations;
+    pendingJoinRequests.value = joinReqs.filter((r) => r.status === 'Pending');
+    if (hasInboxItems.value) {
       activeTab.value = 'invitations';
     }
   } catch {
     orgInvitations.value = [];
+    pendingJoinRequests.value = [];
   } finally {
     inboxLoading.value = false;
   }
@@ -165,8 +176,8 @@ function handleLogout() {
         <template v-if="tab === 'invitations'">
           Invitations
           <Tag
-            v-if="pendingOrgInvitations.length"
-            :value="pendingOrgInvitations.length"
+            v-if="hasInboxItems"
+            :value="pendingOrgInvitations.length + pendingJoinRequests.length"
             severity="info"
             class="!ml-1.5 !text-[10px] !py-0 !px-1.5"
           />
@@ -186,7 +197,7 @@ function handleLogout() {
       </div>
 
       <div
-        v-else-if="!pendingOrgInvitations.length"
+        v-else-if="!hasInboxItems"
         class="text-center text-sm text-ink-500 py-6"
       >
         <i class="pi pi-inbox text-2xl text-ink-400 block mb-2" />
@@ -207,28 +218,50 @@ function handleLogout() {
         to continue.
       </div>
 
-      <ul v-else class="flex flex-col gap-2">
-        <li
-          v-for="inv in pendingOrgInvitations"
-          :key="inv.id"
-          class="flex items-center justify-between rounded-lg border border-line px-4 py-3"
-        >
-          <div class="min-w-0">
-            <p class="text-sm font-medium text-ink-900 truncate">
-              {{ inv.organizationName }}
-            </p>
-            <p class="text-xs text-ink-500">
-              Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
-            </p>
-          </div>
-          <Button
-            size="small"
-            label="Accept"
-            :loading="acceptingToken === inv.token"
-            @click="acceptOrgInvite(inv.token)"
-          />
-        </li>
-      </ul>
+      <div v-else class="flex flex-col gap-2">
+        <!-- Email invitations -->
+        <ul v-if="pendingOrgInvitations.length" class="flex flex-col gap-2">
+          <li
+            v-for="inv in pendingOrgInvitations"
+            :key="inv.id"
+            class="flex items-center justify-between rounded-lg border border-line px-4 py-3"
+          >
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-ink-900 truncate">
+                {{ inv.organizationName }}
+              </p>
+              <p class="text-xs text-ink-500">
+                Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
+              </p>
+            </div>
+            <Button
+              size="small"
+              label="Accept"
+              :loading="acceptingToken === inv.token"
+              @click="acceptOrgInvite(inv.token)"
+            />
+          </li>
+        </ul>
+
+        <!-- Pending join requests -->
+        <ul v-if="pendingJoinRequests.length" class="flex flex-col gap-2">
+          <li
+            v-for="req in pendingJoinRequests"
+            :key="req.id"
+            class="flex items-center justify-between rounded-lg border border-line px-4 py-3"
+          >
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-ink-900 truncate">
+                {{ req.organizationName }}
+              </p>
+              <p class="text-xs text-ink-500">
+                Requested {{ new Date(req.createdAt).toLocaleDateString() }}
+              </p>
+            </div>
+            <Tag value="Pending review" severity="warn" class="!text-[11px]" />
+          </li>
+        </ul>
+      </div>
 
       <Message
         v-if="inboxError"
