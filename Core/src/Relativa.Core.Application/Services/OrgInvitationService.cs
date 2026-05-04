@@ -75,7 +75,7 @@ public sealed class OrgInvitationService(
                 i.Id,
                 i.OrganizationId,
                 i.Email,
-                i.Organization.Name,
+                i.Organization?.Name ?? string.Empty,
                 i.Role?.Name ?? string.Empty,
                 i.Status,
                 i.Token,
@@ -199,6 +199,27 @@ public sealed class OrgInvitationService(
             oldJson: new { Status = "Pending", invitation.Email },
             newJson: new { Status = "Accepted", invitation.Email },
             ct);
+    }
+
+    public async Task<List<OrgInvitationDto>> GetMyPendingInvitationsAsync(string userEmail, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(userEmail))
+            return [];
+
+        var now = DateTime.UtcNow;
+        var orgInvitations = await invitationRepository.GetByEmailAsync(userEmail, ct);
+        return orgInvitations
+            .Where(i => i.Status == "Pending" && i.ExpiresAt > now)
+            .Select(i => new OrgInvitationDto(
+                i.Id,
+                i.OrganizationId,
+                i.Email ?? string.Empty,
+                i.Organization?.Name ?? string.Empty,
+                i.Role?.Name ?? string.Empty,
+                i.Status ?? string.Empty,
+                i.Token ?? string.Empty,
+                i.ExpiresAt))
+            .ToList();
     }
 
     private async Task<OrganizationRole> ResolveInviteRoleAsync(int organizationId, int callerUserId, int? requestedRoleId, CancellationToken ct)

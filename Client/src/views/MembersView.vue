@@ -28,9 +28,15 @@ const reviewingId = ref<number | null>(null);
 
 const EDIT_OTHER_PROFILE_PERM = 'edit_other_org_users_profile';
 
-const isOrgAdmin = computed(() => {
-  const role = orgStore.currentOrg?.userRole;
-  return role === 'org_owner' || role === 'org_admin';
+const MANAGE_JOIN_REQUESTS_PERM = 'manage_join_requests';
+
+const canManageJoinRequests = computed(() => {
+  const roleName = orgStore.currentOrg?.userRole;
+  if (!roleName) return false;
+  const role = orgStore.roles.find((r) => r.name === roleName);
+  return (
+    role?.permissions.some((p) => p.name === MANAGE_JOIN_REQUESTS_PERM) ?? false
+  );
 });
 
 const canEditOtherProfiles = computed(() => {
@@ -47,7 +53,7 @@ const pendingJoinRequests = computed(() =>
 );
 
 async function fetchJoinRequests() {
-  if (!orgStore.currentOrgId || !isOrgAdmin.value) return;
+  if (!orgStore.currentOrgId || !canManageJoinRequests.value) return;
   try {
     joinRequests.value = await orgApi.listJoinRequests(orgStore.currentOrgId);
   } catch (err) {
@@ -300,8 +306,8 @@ onMounted(async () => {
     orgStore.fetchMembers(),
     orgStore.fetchRoles(),
     orgStore.fetchInvitations(),
-    fetchJoinRequests(),
   ]);
+  await fetchJoinRequests();
   loading.value = false;
 });
 </script>
@@ -455,7 +461,7 @@ onMounted(async () => {
 
       <!-- Join requests (admins only) -->
       <div
-        v-if="isOrgAdmin && pendingJoinRequests.length"
+        v-if="canManageJoinRequests && pendingJoinRequests.length"
         class="border-t border-line"
       >
         <div class="px-5 py-3 bg-surface text-xs font-medium text-ink-500 uppercase tracking-wider">

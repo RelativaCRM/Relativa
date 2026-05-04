@@ -37,8 +37,6 @@ public static class PersistenceModelBuilderExtensions
         modelBuilder.ApplyConfiguration(new WorkspaceRoleConfiguration());
         modelBuilder.ApplyConfiguration(new WorkspaceRolePermissionConfiguration());
         modelBuilder.ApplyConfiguration(new UserRoleWorkspaceConfiguration());
-        modelBuilder.ApplyConfiguration(new WorkspaceInvitationConfiguration());
-        modelBuilder.ApplyConfiguration(new WorkspaceJoinRequestConfiguration());
 
         modelBuilder.ApplyConfiguration(new EntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new EntityConfiguration());

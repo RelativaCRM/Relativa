@@ -3,7 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using Relativa.Authentication.Domain.Interfaces;
-using Relativa.Core.Application.DTOs.Invitation;
+using Relativa.Core.Application.DTOs.Member;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.DTOs.Workspace;
 using Relativa.Core.Application.Services;
@@ -29,6 +29,28 @@ public sealed class PermissionGuardTests
             }
         };
 
+    private static UserRoleOrganization OrgMember(int userId, int organizationId, params string[] permissions) =>
+        new()
+        {
+            UserId = userId,
+            OrganizationId = organizationId,
+            User = new User
+            {
+                Id = userId,
+                FirstName = "Test",
+                LastName = "User",
+                Email = $"user{userId}@example.com"
+            },
+            Role = new OrganizationRole
+            {
+                Name = "org_custom",
+                OrganizationId = organizationId,
+                RolePermissions = permissions
+                    .Select(p => new OrganizationRolePermission { Permission = new Permission { Name = p } })
+                    .ToList()
+            }
+        };
+
     private static WorkspaceService BuildWorkspaceService(
         Mock<IUserRoleWorkspaceRepository> memberRepo,
         Mock<IWorkspaceRepository> workspaceRepo,
@@ -40,31 +62,32 @@ public sealed class PermissionGuardTests
             updateValidator.Object);
 
     private static WorkspaceMemberService BuildMemberService(
-        Mock<IUserRoleWorkspaceRepository> memberRepo) =>
-        new(memberRepo.Object,
-            new Mock<IWorkspaceRoleRepository>().Object,
-            new Mock<IUserRoleOrganizationRepository>().Object,
-            new Mock<IWorkspaceRepository>().Object);
-
-    private static InvitationService BuildInvitationService(
         Mock<IUserRoleWorkspaceRepository> memberRepo,
-        Mock<IWorkspaceRoleRepository> roleRepo,
-        Mock<IWorkspaceInvitationRepository> invitationRepo,
-        Mock<IValidator<InviteMemberRequest>> inviteValidator)
+        Mock<IWorkspaceRepository>? workspaceRepo = null,
+        Mock<IUserRoleOrganizationRepository>? orgRepo = null,
+        Mock<IWorkspaceRoleRepository>? roleRepo = null)
     {
-        var workspaceRepo = new Mock<IWorkspaceRepository>();
-        workspaceRepo
-            .Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((int id, CancellationToken _) =>
-                new Workspace { Id = id, OrganizationId = id + 1000, Name = "Test WS" });
+        var wsRepo = workspaceRepo ?? new Mock<IWorkspaceRepository>();
+        if (workspaceRepo is null)
+        {
+            wsRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((int id, CancellationToken _) =>
+                    new Workspace { Id = id, OrganizationId = 10, Name = "Test WS", IsArchived = false });
+        }
 
-        return new(invitationRepo.Object, memberRepo.Object, roleRepo.Object,
-            new Mock<IOrgInvitationRepository>().Object,
-            workspaceRepo.Object,
-            new Mock<IUserRoleOrganizationRepository>().Object,
-            new Mock<IUserRepository>().Object,
-            inviteValidator.Object,
-            new Mock<IValidator<AcceptInvitationRequest>>().Object);
+        var orgMemRepo = orgRepo ?? new Mock<IUserRoleOrganizationRepository>();
+        if (orgRepo is null)
+        {
+            orgMemRepo.Setup(r => r.GetAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((UserRoleOrganization?)null);
+        }
+
+        var roleRepoImpl = roleRepo ?? new Mock<IWorkspaceRoleRepository>();
+
+        return new(memberRepo.Object,
+            roleRepoImpl.Object,
+            orgMemRepo.Object,
+            wsRepo.Object);
     }
 
     private static RoleService BuildRoleService(
@@ -94,9 +117,9 @@ public sealed class PermissionGuardTests
     }
 
     [Theory]
-    [InlineData("ws_manager", "invite_to_workspace")]
+    [InlineData("ws_manager", "add_ws_members")]
     [InlineData("ws_analyst", "view_analytics")]
-    [InlineData("ws_member",  "view_deals")]
+    [InlineData("ws_member", "view_entities")]
     public async Task ManageWsSettings_RoleWithoutPermission_ThrowsUnauthorized(string roleName, string rolePermission)
     {
         var memberRepo = new Mock<IUserRoleWorkspaceRepository>();
@@ -128,66 +151,33 @@ public sealed class PermissionGuardTests
         await act.Should().ThrowAsync<UnauthorizedAccessException>();
     }
 
-    [Theory]
-    [InlineData("ws_admin")]
-    [InlineData("ws_manager")]
-    public async Task InviteToWorkspace_RoleWithPermission_Allowed(string roleName)
-    {
-        var memberRepo = new Mock<IUserRoleWorkspaceRepository>();
-        var roleRepo = new Mock<IWorkspaceRoleRepository>();
-        var invitationRepo = new Mock<IWorkspaceInvitationRepository>();
-        var inviteValidator = new Mock<IValidator<InviteMemberRequest>>();
-        var svc = BuildInvitationService(memberRepo, roleRepo, invitationRepo, inviteValidator);
-
-        inviteValidator.Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<InviteMemberRequest>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult());
-        memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Member(1, 5, roleName, "invite_to_workspace"));
-        roleRepo.Setup(r => r.GetByIdAsync(2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new WorkspaceRole { Id = 2, Name = "analyst", WorkspaceId = null });
-
-        var act = () => svc.InviteAsync(5, 1, new InviteMemberRequest("test@relativa.io", 2));
-        await act.Should().NotThrowAsync();
-    }
-
-    [Theory]
-    [InlineData("ws_analyst", "view_analytics")]
-    [InlineData("ws_member",  "view_deals")]
-    public async Task InviteToWorkspace_RoleWithoutPermission_ThrowsUnauthorized(string roleName, string rolePermission)
-    {
-        var memberRepo = new Mock<IUserRoleWorkspaceRepository>();
-        var inviteValidator = new Mock<IValidator<InviteMemberRequest>>();
-        var svc = BuildInvitationService(memberRepo,
-            new Mock<IWorkspaceRoleRepository>(),
-            new Mock<IWorkspaceInvitationRepository>(),
-            inviteValidator);
-
-        inviteValidator.Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<InviteMemberRequest>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult());
-        memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Member(1, 5, roleName, rolePermission));
-
-        var act = () => svc.InviteAsync(5, 1, new InviteMemberRequest("test@relativa.io", 2));
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
-    }
-
     [Fact]
-    public async Task InviteToWorkspace_NonMember_ThrowsUnauthorized()
+    public async Task AddWorkspaceMember_OrgManageWorkspaceMembers_NotWsMember_Allowed()
     {
         var memberRepo = new Mock<IUserRoleWorkspaceRepository>();
-        var inviteValidator = new Mock<IValidator<InviteMemberRequest>>();
-        var svc = BuildInvitationService(memberRepo,
-            new Mock<IWorkspaceRoleRepository>(),
-            new Mock<IWorkspaceInvitationRepository>(),
-            inviteValidator);
+        var orgRepo = new Mock<IUserRoleOrganizationRepository>();
+        var roleRepo = new Mock<IWorkspaceRoleRepository>();
+        var workspaceRepo = new Mock<IWorkspaceRepository>();
 
-        inviteValidator.Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<InviteMemberRequest>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult());
-        memberRepo.Setup(r => r.GetAsync(9, 5, It.IsAny<CancellationToken>()))
+        memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserRoleWorkspace?)null);
+        workspaceRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Workspace { Id = 5, OrganizationId = 100, Name = "WS", IsArchived = false });
+        orgRepo.Setup(r => r.GetAsync(1, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMember(1, 100, "manage_org_workspace_members"));
+        orgRepo.Setup(r => r.GetAsync(99, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMember(99, 100, "org_member"));
+        memberRepo.Setup(r => r.GetAsync(99, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleWorkspace?)null);
+        roleRepo.Setup(r => r.GetByIdAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkspaceRole { Id = 2, Name = "ws_member", WorkspaceId = null });
+        memberRepo.Setup(r => r.AddAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
-        var act = () => svc.InviteAsync(5, 9, new InviteMemberRequest("test@relativa.io", 2));
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        var svc = BuildMemberService(memberRepo, workspaceRepo, orgRepo, roleRepo);
+
+        var act = () => svc.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(99, 2));
+        await act.Should().NotThrowAsync();
     }
 
     [Fact]
@@ -206,9 +196,9 @@ public sealed class PermissionGuardTests
     }
 
     [Theory]
-    [InlineData("ws_manager", "invite_to_workspace")]
+    [InlineData("ws_manager", "add_ws_members")]
     [InlineData("ws_analyst", "view_analytics")]
-    [InlineData("ws_member",  "view_deals")]
+    [InlineData("ws_member", "view_entities")]
     public async Task RemoveWsMembers_RoleWithoutPermission_ThrowsUnauthorized(string roleName, string rolePermission)
     {
         var memberRepo = new Mock<IUserRoleWorkspaceRepository>();
@@ -248,16 +238,16 @@ public sealed class PermissionGuardTests
         memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Member(1, 5, "ws_admin", "manage_ws_roles"));
         permissionRepo.Setup(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new Permission { Id = 1, Name = "view_deals" }]);
+            .ReturnsAsync([new Permission { Id = 1, Name = "view_entities" }]);
 
         var act = () => svc.CreateAsync(5, 1, new CreateRoleRequest("custom-role", [1]));
         await act.Should().NotThrowAsync();
     }
 
     [Theory]
-    [InlineData("ws_manager", "invite_to_workspace")]
+    [InlineData("ws_manager", "add_ws_members")]
     [InlineData("ws_analyst", "view_analytics")]
-    [InlineData("ws_member",  "view_deals")]
+    [InlineData("ws_member", "view_entities")]
     public async Task ManageWsRoles_RoleWithoutPermission_ThrowsUnauthorized(string roleName, string rolePermission)
     {
         var memberRepo = new Mock<IUserRoleWorkspaceRepository>();

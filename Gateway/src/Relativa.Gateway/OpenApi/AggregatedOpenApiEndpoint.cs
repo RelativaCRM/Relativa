@@ -352,17 +352,6 @@ public static class AggregatedOpenApiEndpoint
             ["name"] = "Sales Q1 2026 (renamed)"
         },
 
-        // ── Workspace invitations ────────────────────────────────────────────────
-        ["Core_InviteMember"] = new JsonObject
-        {
-            ["email"]  = "new.member@example.com",
-            ["roleId"] = 4        // ws_member
-        },
-        ["Core_AcceptInvitation"] = new JsonObject
-        {
-            ["token"] = "paste-workspace-invitation-token-here"
-        },
-
         // ── Members ──────────────────────────────────────────────────────────────
         ["Core_AddMember"] = new JsonObject
         {

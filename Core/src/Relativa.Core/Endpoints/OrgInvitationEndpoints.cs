@@ -51,20 +51,6 @@ public static class OrgInvitationEndpoints
         .WithSummary("Rotate the token and extend the expiry on a pending organization invitation")
         .Produces<OrgInvitationDto>(StatusCodes.Status200OK);
 
-        var acceptGroup = routes.MapGroup("/api/v1/invitations")
-            .WithTags("Invitations");
-
-        acceptGroup.MapPost("/accept-org", async (AcceptOrgInvitationRequest request, IOrgInvitationService service, HttpContext httpContext, CancellationToken ct) =>
-        {
-            var userId = WorkspaceEndpoints.GetUserId(httpContext);
-            var email = WorkspaceEndpoints.GetUserEmail(httpContext);
-            await service.AcceptAsync(userId, email, request.Token, ct);
-            return Results.Ok(new { message = "Organization invitation accepted." });
-        })
-        .WithName("AcceptOrgInvitation")
-        .WithSummary("Accept an organization invitation by token")
-        .Produces(StatusCodes.Status200OK);
-
         return orgGroup;
     }
 }

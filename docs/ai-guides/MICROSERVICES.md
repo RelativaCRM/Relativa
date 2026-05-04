@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-04 (`WorkspaceDto.organizationId`; `GET /workspaces?organizationId=` org-scoped list + **403** if not org member; `InvitationDto` / `OrgInvitationDto` include `workspaceId` / `organizationId` for inbox filtering)
+> **Last verified:** 2026-05-04 (Org-only inbox; workspace invitation flows removed; `manage_org_workspace_members` on members; migration `EnsureOrganizationInvitationOrgRoleColumn` repairs missing `organization_invitations.org_role_id`; Core/client error surfacing as above)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -178,11 +178,12 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 | PUT | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Update custom org role |
 | DELETE | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Delete custom org role |
 
-### Endpoints -- Combined Invitations
+### Endpoints -- Combined Invitations (inbox)
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| GET | `/api/v1/invitations/mine` | JWT | List all pending invitations (workspace + org) for the user. Workspace rows include `workspaceId` and `organizationId`; org rows include `organizationId`. |
+| GET | `/api/v1/invitations/mine` | JWT | Returns `{ organizationInvitations: [...] }` — pending org invitations for the caller's email. |
+| GET | `/api/v1/invitations/mine/organization` | JWT | Same data as flat `OrgInvitationDto[]` (convenience alias). |
 
 ### Endpoints -- Workspaces
 
@@ -199,28 +200,9 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/api/v1/workspaces/{id}/members` | JWT + ws membership | List workspace members |
-| POST | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` | Add an org member directly to the workspace |
+| POST | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` **or** org `manage_org_workspace_members` on parent org | Add an existing org member to the workspace (`{ userId, roleId }`). Caller need not be a workspace member when using the org-level permission. |
 | PUT | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `assign_ws_roles` | Change a member's workspace role |
-| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` (or self) | Remove a member |
-
-### Endpoints -- Workspace Invitations
-
-| Method | Path | Auth | Behavior |
-|---|---|---|---|
-| POST | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | Invite user by email + `roleId` (returns token in response). **409** if the invitee already exists and is not a member of the workspace's parent organization. |
-| GET | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | List pending, non-expired invitations |
-| DELETE | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `invite_to_workspace` | Cancel invitation (sets status `Cancelled`) |
-| POST | `/api/v1/workspaces/{id}/invitations/{invId}/resend` | JWT + `invite_to_workspace` | Rotate the token and extend `expires_at` on a pending invitation; returns the refreshed DTO |
-| POST | `/api/v1/invitations/accept` | JWT + matching email + org membership | Accept workspace invitation by token. **409** if the caller is not a member of the workspace's parent organization. |
-
-### Endpoints -- Workspace Join Requests
-
-| Method | Path | Auth | Behavior |
-|---|---|---|---|
-| POST | `/api/v1/workspaces/{id}/join-requests` | JWT + org membership of parent org | Submit a request to join the workspace. Body: `{ message? }`. **401** if not an org member, **409** if already a ws member or has a pending request. |
-| GET | `/api/v1/workspaces/{id}/join-requests` | JWT + `manage_ws_join_requests` | List pending join requests for the workspace |
-| PUT | `/api/v1/workspaces/{id}/join-requests/{reqId}` | JWT + `manage_ws_join_requests` | Approve or reject. Approval re-checks the requester's org membership and adds them as `ws_member`; if org membership was revoked in-flight, the request is automatically rejected and **409** is returned. |
-| GET | `/api/v1/workspace-join-requests/mine` | JWT | List own workspace join requests |
+| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` **or** org `manage_org_workspace_members` (or self) | Remove a member |
 
 ### Endpoints -- Workspace Roles
 
@@ -263,17 +245,20 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 ### Status: Functional (organization + workspace RBAC + entity CRUD + transactional outbox for audit **and choreography** implemented)
 
-Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), the split RBAC permission model, workspace-scoped entity CRUD are functional.
+Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, roles), the split RBAC permission model, workspace-scoped entity CRUD are functional.
 
 **Outbox choreography pilot:** workspace create/update/archive now fan out **`DomainMessageEnvelope`** + `WorkspaceLifecyclePayloadV1` to routing keys `core.workspace.created|updated|archived`. Audit rows continue to enqueue in parallel (`AuditEventContract`).
 
 **Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`) and no local CORS policy; browser CORS is enforced at Gateway. Core reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway.
 
+**Error contract:** `Core/src/Relativa.Core/Middleware/GlobalExceptionHandler.cs` returns JSON `{ status, title, detail }`. Map: `ValidationException` / `ArgumentException` → **400**; `UnauthorizedAccessException` → **401**; `ForbiddenAccessException` → **403**; `KeyNotFoundException` → **404**; `InvalidOperationException` → **409**; other → **500**. Application services (including `WorkspaceMemberService`, `OrgInvitationService`, `JoinRequestService`) throw only those types for handled paths so clients never get opaque 500s for permission or conflict cases. The Vue client uses `normalizeError` / `useApiErrorHandler().notify` and `gatewayFetch` prefers **`detail`** over `title` for the thrown `ApiError.message` so toast text matches the server message.
+
 ### Key Files
 
 - `Core/src/Relativa.Core/Program.cs` -- DI wiring, endpoint mapping
-- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `WsJoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
-- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `WsJoinRequestService`, `EntityTypeService`, `EntityService`
+- `Core/src/Relativa.Core/Middleware/GlobalExceptionHandler.cs` — maps application exceptions to HTTP status + `{ status, title, detail }` JSON
+- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints` (accept-org + my inbox only), `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
+- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `EntityTypeService`, `EntityService`
 - `Core/src/Relativa.Core.Application/DTOs/` -- request/response DTOs organized by feature
 - `Core/src/Relativa.Core.Application/Validators/` -- FluentValidation rules
 - `Core/src/Relativa.Core.Domain/Interfaces/` -- repository interfaces

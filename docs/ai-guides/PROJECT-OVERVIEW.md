@@ -1,6 +1,6 @@
 # Project Overview -- What is Relativa?
 
-> **Last verified:** 2026-05-02
+> **Last verified:** 2026-05-04
 
 > **Maintenance obligation:** If you change the general purpose, domain model, tech stack, or repo layout, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -22,11 +22,10 @@ Relativa is a **multi-tenant CRM / sales-workspace platform**. It lets organizat
 | **UserRoleWorkspace** | Join between User, Workspace, and WorkspaceRole. A user can be in multiple workspaces with different roles. Must be an org member first. |
 | **OrganizationJoinRequest** | Tracks pending/approved/rejected requests from users wanting to join an organization. |
 | **OrganizationInvitation** | Email-based invitation to join an organization. Carries an email, a target org role, and an expiry date. |
-| **WorkspaceInvitation** | Email-based invitation to join a workspace. Carries an email, a target ws role, and an expiry date. |
 | **User** | A person with credentials. Has no global role -- roles are scoped to each organization and workspace membership. |
 | **OrganizationRole** | Named role scoped to an organization (e.g. `org_owner`, `org_admin`, `org_member`). Linked to permissions via `OrganizationRolePermission`. `OrganizationId` is nullable: `null` for system roles, set for custom org-specific roles. |
 | **WorkspaceRole** | Named role scoped to a workspace (e.g. `ws_admin`, `ws_manager`, `ws_analyst`, `ws_member`). Linked to permissions via `WorkspaceRolePermission`. `WorkspaceId` is nullable: `null` for system roles, set for custom workspace-specific roles. |
-| **Permission** | Granular capability shared by both org and ws role hierarchies. 16 total: 7 org-scoped (e.g. `manage_org_settings`, `create_workspaces`) and 9 ws-scoped (e.g. `manage_ws_settings`, `edit_deals`, `view_analytics`). |
+| **Permission** | Granular capability shared by both org and ws role hierarchies. Includes org `manage_org_workspace_members` (add/remove users in any workspace of that org) and workspace `add_ws_members` / `remove_ws_members` for workspace-local admins. |
 | **EntityType** | Named type discriminator (`client`, `deal`). Extensible — new types can be added by inserting a row. |
 | **Entity** | A business record typed by `EntityType`. Lives in workspaces via `EntityWorkspace`. All entity types share the same EAV storage — no per-type tables. |
 | **Property** | A named attribute definition with a data type (`String`, `Int`, `Decimal`, `Bool`, `Date`). Global (`organization_id = NULL`) or org-specific (`organization_id` set). |

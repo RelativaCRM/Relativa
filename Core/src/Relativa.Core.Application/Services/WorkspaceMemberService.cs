@@ -13,6 +13,7 @@ public sealed class WorkspaceMemberService(
     IWorkspaceRepository workspaceRepository,
     IOutboxWriter? auditOutboxWriter = null) : IWorkspaceMemberService
 {
+    private const string ManageOrgWorkspaceMembers = "manage_org_workspace_members";
     public async Task<List<WorkspaceMemberDto>> GetMembersAsync(int workspaceId, int userId, CancellationToken ct = default)
     {
         await RequireMembership(userId, workspaceId, ct);
@@ -68,7 +69,7 @@ public sealed class WorkspaceMemberService(
     public async Task RemoveAsync(int workspaceId, int targetUserId, int callerUserId, CancellationToken ct = default)
     {
         if (targetUserId != callerUserId)
-            await RequirePermission(callerUserId, workspaceId, "remove_ws_members", ct);
+            await RequireRemoveMemberPermissionAsync(callerUserId, workspaceId, ct);
 
         var member = await memberRepository.GetAsync(targetUserId, workspaceId, ct)
             ?? throw new KeyNotFoundException("Target user is not a member of this workspace.");
@@ -96,7 +97,7 @@ public sealed class WorkspaceMemberService(
 
     public async Task<WorkspaceMemberDto> AddMemberAsync(int workspaceId, int callerUserId, AddWorkspaceMemberRequest request, CancellationToken ct = default)
     {
-        await RequirePermission(callerUserId, workspaceId, "add_ws_members", ct);
+        await RequireAddMemberPermissionAsync(callerUserId, workspaceId, ct);
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
             ?? throw new KeyNotFoundException("Workspace not found.");
@@ -166,5 +167,41 @@ public sealed class WorkspaceMemberService(
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
             throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this workspace.");
+    }
+
+    private async Task RequireAddMemberPermissionAsync(int callerUserId, int workspaceId, CancellationToken ct)
+    {
+        var wsMembership = await memberRepository.GetAsync(callerUserId, workspaceId, ct);
+        if (wsMembership?.Role?.RolePermissions.Any(rp => rp.Permission?.Name == "add_ws_members") == true)
+            return;
+
+        var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
+            ?? throw new KeyNotFoundException("Workspace not found.");
+
+        var orgMembership = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
+            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+
+        var hasOrg = orgMembership.Role?.RolePermissions
+            .Any(rp => rp.Permission?.Name == ManageOrgWorkspaceMembers) ?? false;
+        if (!hasOrg)
+            throw new UnauthorizedAccessException("You do not have the 'add_ws_members' permission in this workspace.");
+    }
+
+    private async Task RequireRemoveMemberPermissionAsync(int callerUserId, int workspaceId, CancellationToken ct)
+    {
+        var wsMembership = await memberRepository.GetAsync(callerUserId, workspaceId, ct);
+        if (wsMembership?.Role?.RolePermissions.Any(rp => rp.Permission?.Name == "remove_ws_members") == true)
+            return;
+
+        var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
+            ?? throw new KeyNotFoundException("Workspace not found.");
+
+        var orgMembership = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
+            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+
+        var hasOrg = orgMembership.Role?.RolePermissions
+            .Any(rp => rp.Permission?.Name == ManageOrgWorkspaceMembers) ?? false;
+        if (!hasOrg)
+            throw new UnauthorizedAccessException("You do not have the 'remove_ws_members' permission in this workspace.");
     }
 }

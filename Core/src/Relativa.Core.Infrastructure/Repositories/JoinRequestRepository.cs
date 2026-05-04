@@ -27,6 +27,8 @@ public sealed class JoinRequestRepository(RelativaDbContext db) : IJoinRequestRe
     {
         return await db.OrganizationJoinRequests
             .Include(r => r.Organization)
+            .Include(r => r.User)
+            .Include(r => r.ReviewedBy)
             .Where(r => r.UserId == userId)
             .ToListAsync(ct);
     }

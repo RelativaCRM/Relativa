@@ -49,20 +49,7 @@ export interface JoinRequestDto {
   reviewedAt: string | null;
 }
 
-export interface MyWorkspaceInvitationDto {
-  id: number;
-  email: string;
-  workspaceId: number;
-  organizationId: number;
-  workspaceName: string;
-  roleName: string;
-  status: string;
-  token: string;
-  expiresAt: string;
-}
-
 export interface MyInvitationsDto {
-  workspaceInvitations: MyWorkspaceInvitationDto[];
   organizationInvitations: OrgInvitationDto[];
 }
 
@@ -137,9 +124,6 @@ export const orgApi = {
   acceptOrgInvitation(token: string): Promise<void> {
     return api.post(`${CORE}/invitations/accept-org`, { token });
   },
-  acceptWorkspaceInvitation(token: string): Promise<void> {
-    return api.post(`${CORE}/invitations/accept`, { token });
-  },
 
   /* Join requests */
   submitJoinRequest(orgId: number, message: string): Promise<JoinRequestDto> {
@@ -174,5 +158,8 @@ export const orgApi = {
   /* Combined invitations (my inbox) */
   myInvitations(): Promise<MyInvitationsDto> {
     return api.get<MyInvitationsDto>(`${CORE}/invitations/mine`);
+  },
+  myOrganizationInvitations(): Promise<OrgInvitationDto[]> {
+    return api.get<OrgInvitationDto[]>(`${CORE}/invitations/mine/organization`);
   },
 };

@@ -37,10 +37,8 @@ const canViewAuditLog = computed(() => {
 
 async function refreshInvitationCount() {
   try {
-    const inbox = await orgApi.myInvitations();
-    pendingInvitationsCount.value =
-      inbox.organizationInvitations.length +
-      inbox.workspaceInvitations.length;
+    const orgInv = await orgApi.myOrganizationInvitations();
+    pendingInvitationsCount.value = orgInv.length;
   } catch {
     pendingInvitationsCount.value = 0;
   }

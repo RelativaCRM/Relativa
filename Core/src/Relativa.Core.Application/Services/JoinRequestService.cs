@@ -177,12 +177,12 @@ public sealed class JoinRequestService(
             .Select(r => new JoinRequestDto(
                 r.Id,
                 r.UserId,
-                r.User.FirstName + " " + r.User.LastName,
-                r.User.Email,
+                r.User is not null ? $"{r.User.FirstName} {r.User.LastName}".Trim() : string.Empty,
+                r.User?.Email ?? string.Empty,
                 r.Message,
                 r.Status,
                 r.CreatedAt,
-                r.ReviewedBy is not null ? r.ReviewedBy.FirstName + " " + r.ReviewedBy.LastName : null,
+                r.ReviewedBy is not null ? $"{r.ReviewedBy.FirstName} {r.ReviewedBy.LastName}".Trim() : null,
                 r.ReviewedAt))
             .ToList();
     }

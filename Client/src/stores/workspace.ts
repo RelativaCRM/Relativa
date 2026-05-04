@@ -5,8 +5,6 @@ import {
   type WorkspaceDto,
   type WorkspaceMemberDto,
   type WorkspaceRoleDto,
-  type WorkspaceInvitationDto,
-  type WsJoinRequestDto,
 } from '@/api/workspaces';
 import { loadNumber, saveNumber } from '@/api/persistence';
 
@@ -17,8 +15,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentWorkspaceId = ref<number | null>(loadNumber(WS_KEY));
   const members = ref<WorkspaceMemberDto[]>([]);
   const roles = ref<WorkspaceRoleDto[]>([]);
-  const invitations = ref<WorkspaceInvitationDto[]>([]);
-  const joinRequests = ref<WsJoinRequestDto[]>([]);
 
   const currentWorkspace = computed(
     () =>
@@ -70,39 +66,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     roles.value = await workspaceApi.listRoles(wsId);
   }
 
-  async function fetchInvitations(wsId: number) {
-    invitations.value = await workspaceApi.listInvitations(wsId);
-  }
-
-  async function inviteMember(wsId: number, email: string, roleId: number) {
-    const inv = await workspaceApi.invite(wsId, email, roleId);
-    invitations.value.push(inv);
-    return inv;
-  }
-
-  async function cancelInvitation(wsId: number, invId: number) {
-    await workspaceApi.cancelInvitation(wsId, invId);
-    invitations.value = invitations.value.filter((i) => i.id !== invId);
-  }
-
-  async function resendInvitation(wsId: number, invId: number) {
-    const refreshed = await workspaceApi.resendInvitation(wsId, invId);
-    const idx = invitations.value.findIndex((i) => i.id === invId);
-    if (idx >= 0) invitations.value[idx] = refreshed;
-    return refreshed;
-  }
-
-  async function fetchJoinRequests(wsId: number) {
-    joinRequests.value = await workspaceApi.listJoinRequests(wsId);
-  }
-
-  async function reviewJoinRequest(
-    wsId: number,
-    reqId: number,
-    decision: 'Approved' | 'Rejected',
-  ) {
-    await workspaceApi.reviewJoinRequest(wsId, reqId, decision);
-    joinRequests.value = joinRequests.value.filter((r) => r.id !== reqId);
+  async function addMember(wsId: number, userId: number, roleId: number) {
+    const added = await workspaceApi.addMember(wsId, userId, roleId);
+    members.value.push(added);
+    return added;
   }
 
   async function changeMemberRole(
@@ -124,8 +91,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     currentWorkspaceId.value = null;
     members.value = [];
     roles.value = [];
-    invitations.value = [];
-    joinRequests.value = [];
     saveNumber(WS_KEY, null);
   }
 
@@ -135,8 +100,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     currentWorkspace,
     members,
     roles,
-    invitations,
-    joinRequests,
     setCurrentWorkspace,
     fetchWorkspaces,
     createWorkspace,
@@ -144,12 +107,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     archiveWorkspace,
     fetchMembers,
     fetchRoles,
-    fetchInvitations,
-    inviteMember,
-    cancelInvitation,
-    resendInvitation,
-    fetchJoinRequests,
-    reviewJoinRequest,
+    addMember,
     changeMemberRole,
     removeMember,
     clear,

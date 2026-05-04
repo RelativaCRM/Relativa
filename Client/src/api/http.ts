@@ -49,7 +49,14 @@ async function parseResponse<T>(res: Response): Promise<T> {
   const body = text ? safeJson(text) : undefined;
 
   if (!res.ok) {
+    const detail =
+      body &&
+      typeof body === 'object' &&
+      typeof (body as { detail?: unknown }).detail === 'string'
+        ? String((body as { detail: string }).detail).trim()
+        : '';
     const message =
+      (detail.length > 0 ? detail : undefined) ??
       (body && typeof body === 'object' && 'title' in body
         ? String((body as { title: unknown }).title)
         : undefined) ??

@@ -13,7 +13,7 @@ import { useEntityStore } from '@/stores/entity';
 import {
   orgApi,
   type OrganizationDto,
-  type MyInvitationsDto,
+  type OrgInvitationDto,
 } from '@/api/organizations';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
@@ -28,28 +28,23 @@ const { notify } = useApiErrorHandler();
 type Tab = 'invitations' | 'create' | 'join';
 const activeTab = ref<Tab>('create');
 
-/* ── Invitations inbox ─────────────────────────────────── */
-const inbox = ref<MyInvitationsDto>({
-  organizationInvitations: [],
-  workspaceInvitations: [],
-});
+/* ── Invitations inbox (organization scope only) ───────── */
+const orgInvitations = ref<OrgInvitationDto[]>([]);
 const inboxLoading = ref(true);
 const acceptingToken = ref<string | null>(null);
 const inboxError = ref<string | null>(null);
 
-const pendingOrgInvitations = computed(
-  () => inbox.value.organizationInvitations,
-);
+const pendingOrgInvitations = computed(() => orgInvitations.value);
 
 async function loadInbox() {
   inboxLoading.value = true;
   try {
-    inbox.value = await orgApi.myInvitations();
+    orgInvitations.value = await orgApi.myOrganizationInvitations();
     if (pendingOrgInvitations.value.length > 0) {
       activeTab.value = 'invitations';
     }
   } catch {
-    inbox.value = { organizationInvitations: [], workspaceInvitations: [] };
+    orgInvitations.value = [];
   } finally {
     inboxLoading.value = false;
   }

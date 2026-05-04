@@ -34,6 +34,9 @@ public sealed class OrgInvitationRepository(RelativaDbContext db) : IOrgInvitati
 
     public async Task<List<OrganizationInvitation>> GetByEmailAsync(string email, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(email))
+            return [];
+
         var normalized = email.Trim().ToLowerInvariant();
         return await db.OrganizationInvitations
             .Include(i => i.Organization)
