@@ -1,6 +1,6 @@
 # Relativa -- AI Agent Context Guides
 
-> **Last verified:** 2026-05-04 (Core: org-only invitation inbox; workspace invitation/join-request removed; `manage_org_workspace_members`; MICROSERVICES + ARCHITECTURE synced)
+> **Last verified:** 2026-05-04 (Users: partial unique `users.email` + `ExistsAsync` active-only; PROJECT-STATUS + ARCHITECTURE + MICROSERVICES synced)
 
 Relativa is a multi-tenant CRM / sales-workspace platform built as a microservice monorepo. It includes .NET 10 backend services, a Vue 3 SPA client, a Django ML service, PostgreSQL 16, a YARP API gateway, and SignalR for real-time graph updates. Everything runs locally via Docker Compose.
 

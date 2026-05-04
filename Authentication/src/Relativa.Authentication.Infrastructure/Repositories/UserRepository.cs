@@ -21,7 +21,7 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
 
     public async Task<bool> ExistsAsync(string email, CancellationToken ct = default)
     {
-        return await db.Users.AnyAsync(u => u.Email == email, ct);
+        return await db.Users.AnyAsync(u => u.Email == email && !u.IsArchived, ct);
     }
 
     public async Task AddAsync(User user, CancellationToken ct = default)

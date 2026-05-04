@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-04 (Org-only inbox; workspace invitation flows removed; `manage_org_workspace_members` on members; migration `EnsureOrganizationInvitationOrgRoleColumn` repairs missing `organization_invitations.org_role_id`; Core/client error surfacing as above)
+> **Last verified:** 2026-05-04 (Auth: register after self-delete / same email reuse documented; duplicate **active** email → 409)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -80,7 +80,7 @@ YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issue
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password (email stored lowercase), returns user DTO + Location header |
+| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password (email stored lowercase), returns user DTO + Location header. Same normalized email is allowed if the only prior row is soft-archived (`is_archived`). |
 | POST | `/api/v1/auth/login` | None | Validates credentials (email matched lowercase), returns `{ accessToken, expiresAt }` |
 | GET | `/api/v1/auth/me` | JWT | Returns authenticated user's profile `{ id, email, firstName, lastName }` from JWT `sub` claim |
 | PATCH | `/api/v1/auth/me` | JWT | Updates authenticated user's first and last name |
@@ -91,7 +91,7 @@ YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issue
 
 ### Status: Functional
 
-Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are normalized to lowercase on register and login. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, `KeyNotFoundException` to 404, duplicate email to 409 (including PostgreSQL unique violations on concurrent insert).
+Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are normalized to lowercase on register and login. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, `KeyNotFoundException` to 404, duplicate **active** user email to 409 (including PostgreSQL unique violations on concurrent insert of two non-archived rows with the same email).
 
 **Not yet implemented:** token refresh, token blacklisting.
 

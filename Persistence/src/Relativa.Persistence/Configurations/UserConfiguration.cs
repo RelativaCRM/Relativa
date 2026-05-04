@@ -14,7 +14,9 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(e => e.FirstName).HasColumnName("first_name").IsRequired();
         builder.Property(e => e.LastName).HasColumnName("last_name").IsRequired();
         builder.Property(e => e.Email).HasColumnName("email").IsRequired();
-        builder.HasIndex(e => e.Email).IsUnique();
+        builder.HasIndex(e => e.Email)
+            .IsUnique()
+            .HasFilter("\"is_archived\" = FALSE");
         builder.Property(e => e.Password).HasColumnName("password").IsRequired();
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(e => e.IsArchived).HasColumnName("is_archived").HasDefaultValue(false);

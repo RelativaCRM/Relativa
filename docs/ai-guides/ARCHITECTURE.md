@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-04 (Org-only invitations; workspace invitation/join-request tables removed; org permission `manage_org_workspace_members` for cross-workspace member add/remove; `invite_to_workspace` / `manage_ws_join_requests` removed)
+> **Last verified:** 2026-05-04 (Users: soft-delete + partial unique index on `users.email` where `is_archived = false`; login/profile resolve active users only.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -111,11 +111,15 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 | `Configurations/` | EF Fluent API `IEntityTypeConfiguration<T>` classes for each entity |
 | `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full model for Core/Migration contexts) |
 
+### Soft delete (`is_archived`) vs. uniqueness (users)
+
+Several tables use `is_archived` instead of hard deletes for domain records. For **`users`**, email must stay unique among **active** accounts only: EF maps a **filtered** unique index on `email` with `HasFilter("\"is_archived\" = FALSE")`, and `IUserRepository.ExistsAsync` / `GetByEmailAsync` / `GetByIdAsync` treat archived rows as absent for registration and login. Archived rows remain for audit history; a new row may reuse the same normalized email after archive.
+
 ### Entity list (domain + infra)
 
 | Entity | Table name | Notes |
 |---|---|---|
-| `User` | `users` | Credentials and profile. No `role_id` column (dropped). |
+| `User` | `users` | Credentials and profile. No `role_id` column (dropped). Partial unique index on `email` where `is_archived = false`. |
 | `Organization` | `organizations` | Top-level tenant boundary. |
 | `Workspace` | `workspaces` | Has `organization_id` FK (direct, no join table). |
 | `OrganizationRole` | `organization_roles` | Org-scoped roles (system + custom). |

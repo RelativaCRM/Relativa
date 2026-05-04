@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-04 (Org-only invitations: workspace invitation + workspace join-request APIs and tables removed; org permission `manage_org_workspace_members`; `invite_to_workspace` / `manage_ws_join_requests` removed.)
+> **Last verified:** 2026-05-04 (Users: partial unique index on `users.email` where `is_archived = false`; `ExistsAsync` ignores archived rows so register / org user create can reuse an email after soft-delete.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -18,7 +18,7 @@
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
 | ML | **Stub** | REST stub unchanged; **`run_domain_consumer`** processes choreography events (stub logging path) beside `runserver` in Docker |
 | Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + account/profile + org members (invite, roles, join-request review by `manage_join_requests`) + invitations inbox (org only) + workspace members (**add** existing org user with `add_ws_members` or org `manage_org_workspace_members`) + entity CRUD UI + graph placeholder, typed API clients. Persisted state via `localStorage` |
-| Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions; performance indexes on membership/org invitations/audit logs/outbox + unique `entity_workspace (entity_id, workspace_id)` |
+| Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions; performance indexes on membership/org invitations/audit logs/outbox + unique `entity_workspace (entity_id, workspace_id)` + partial unique `users.email` where not archived |
 
 ---
 
@@ -26,13 +26,13 @@
 
 ### Authentication service
 
-- `POST /api/v1/auth/register` -- creates user, hashes password with bcrypt, stores email lowercase, returns user DTO with 201 + Location header. Newly registered users have no organization or workspace membership.
+- `POST /api/v1/auth/register` -- creates user, hashes password with bcrypt, stores email lowercase, returns user DTO with 201 + Location header. Newly registered users have no organization or workspace membership. **Re-registration:** after an account was soft-archived (`DELETE /me` or org admin delete), the same normalized email may be used again (new `users` row); uniqueness applies only to non-archived rows.
 - `POST /api/v1/auth/login` -- validates credentials (email compared after lowercase normalization), issues JWT with claims: `sub`, `email`, `jti`. Role and permissions are **not** included in the JWT -- they are resolved per-request by Core using organization/workspace membership.
 - `GET /api/v1/auth/me` -- returns authenticated user's profile (`id`, `email`, `firstName`, `lastName`) from JWT `sub` claim. Requires valid JWT.
 - `PATCH /api/v1/auth/me` -- updates first and last name for the authenticated user.
-- `DELETE /api/v1/auth/me` -- soft-archives the authenticated user (`users.is_archived`).
+- `DELETE /api/v1/auth/me` -- soft-archives the authenticated user (`users.is_archived`); the email is then free for a new registration subject to the partial unique index and `IUserRepository.ExistsAsync` (active users only).
 - Full clean-architecture layers: Domain interfaces, Application services (`AuthService`, `UserProvisioningService`) + DTOs + FluentValidation validators, Infrastructure (AuthDbContext, UserRepository, JwtTokenService, BcryptPasswordHasher).
-- GlobalExceptionHandler maps ValidationException -> 400, UnauthorizedAccessException -> 401, KeyNotFoundException -> 404, duplicate email -> 409 (including PostgreSQL unique violation on concurrent register).
+- GlobalExceptionHandler maps ValidationException -> 400, UnauthorizedAccessException -> 401, KeyNotFoundException -> 404, duplicate **active** email -> 409 (including PostgreSQL unique violation on concurrent register of two non-archived users with the same email).
 - EF Core health check at `/health`.
 - OpenAPI + Scalar docs.
 - Fire-and-forget audit publishing: register flow writes to `audit_outbox`, dispatcher publishes to RabbitMQ.
@@ -41,7 +41,7 @@
 
 - **Organization CRUD:** `POST /api/v1/organizations` (create, creator becomes `org_owner`), `GET` (list user's orgs), `GET /search?q=...` (search by name), `GET /{id}` (details, requires org membership), `PUT /{id}` (update, requires `manage_org_settings`).
 - **Organization members:** `GET .../members` (list, requires org membership), `DELETE .../members/{userId}` (remove membership, requires `remove_org_members`), `PUT .../members/{userId}/role` (change role, requires `assign_org_roles`).
-- **Organization users (account provisioning):** `POST .../users` (create user + add as `org_member`, requires `create_org_users`), `PATCH .../users/{userId}` (edit another member's name, requires `edit_other_org_users_profile`), `DELETE .../users/{userId}` (archive user account, requires `delete_org_users`). Implemented via Core orchestration + shared `UserProvisioningService` from Authentication.Application.
+- **Organization users (account provisioning):** `POST .../users` (create user + add as `org_member`, requires `create_org_users`), `PATCH .../users/{userId}` (edit another member's name, requires `edit_other_org_users_profile`), `DELETE .../users/{userId}` (archive user account, requires `delete_org_users`). Implemented via Core orchestration + shared `UserProvisioningService` from Authentication.Application. Creating a user with an email that exists only on archived accounts succeeds (same rules as self-register).
 - **Join requests:** `POST .../join-requests` (request to join), `GET .../join-requests` (list pending, requires `manage_join_requests`), `PUT .../join-requests/{reqId}` (approve/reject, requires `manage_join_requests`), `GET /api/v1/join-requests/mine` (own requests). Protected by a partial unique index `(organization_id, user_id) WHERE status='Pending'` so a user cannot file two simultaneous requests for the same org.
 - **Organization invitations:** `POST .../invitations` (invite by email + optional `orgRoleId`, requires `invite_to_org`; non-default role additionally requires `assign_org_roles`), `GET .../invitations` (list pending, non-expired, includes `roleName`), `DELETE .../invitations/{invId}` (cancel), `POST .../invitations/{invId}/resend` (rotate token + extend expiry), `POST /api/v1/invitations/accept-org` (accept — adds user with the invitation's recorded role). Protected by a partial unique index `(organization_id, lower(email)) WHERE status='Pending'` and an in-service check that the email does not already resolve to an existing org member.
 - **Organization roles:** `GET .../roles` (list system + custom, requires org membership), `POST .../roles` (create custom, requires `manage_org_roles`), `PUT .../roles/{roleId}` (update), `DELETE .../roles/{roleId}` (delete). System roles cannot be modified.
