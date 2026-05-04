@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-02 (User provisioning: org-scoped admin APIs + email normalization; transactional outbox unchanged)
+> **Last verified:** 2026-05-04 (Core org user admin: create supports optional `orgRoleId`; cross-user archive enforces same email domain; org permission denials aligned to 403)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -80,7 +80,7 @@ YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issue
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password (email stored lowercase), returns user DTO + Location header |
+| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password (email stored lowercase), returns user DTO + Location header. Same normalized email is allowed if the only prior row is soft-archived (`is_archived`). |
 | POST | `/api/v1/auth/login` | None | Validates credentials (email matched lowercase), returns `{ accessToken, expiresAt }` |
 | GET | `/api/v1/auth/me` | JWT | Returns authenticated user's profile `{ id, email, firstName, lastName }` from JWT `sub` claim |
 | PATCH | `/api/v1/auth/me` | JWT | Updates authenticated user's first and last name |
@@ -91,7 +91,7 @@ YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issue
 
 ### Status: Functional
 
-Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are normalized to lowercase on register and login. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, `KeyNotFoundException` to 404, duplicate email to 409 (including PostgreSQL unique violations on concurrent insert).
+Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are normalized to lowercase on register and login. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, `KeyNotFoundException` to 404, duplicate **active** user email to 409 (including PostgreSQL unique violations on concurrent insert of two non-archived rows with the same email).
 
 **Not yet implemented:** token refresh, token blacklisting.
 
@@ -146,9 +146,9 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` | Create user account (bcrypt password), add as `org_member`; 201 + Location |
+| POST | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` (and `assign_org_roles` when non-default role requested) | Create user account (bcrypt password), add to org with selected role (`orgRoleId?`, default `org_member`); 201 + Location |
 | PATCH | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's first/last name (not self; use Auth `/me`) |
-| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (soft-delete) |
+| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (soft-delete) only when caller and target share the same email domain |
 
 ### Endpoints -- Organization Join Requests
 
@@ -163,10 +163,11 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | Invite user to organization by email |
-| GET | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | List pending org invitations |
-| DELETE | `/api/v1/organizations/{id}/invitations/{invId}` | JWT + `invite_to_org` | Cancel org invitation |
-| POST | `/api/v1/invitations/accept-org` | JWT + matching email | Accept organization invitation |
+| POST | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` (+ `assign_org_roles` for non-default role) | Invite user by email. Body: `{ email, orgRoleId? }`. Default role is `org_member`; specifying any other role additionally requires `assign_org_roles`. Token returned in response (no real email). |
+| GET | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | List pending, non-expired org invitations (includes `roleName`) |
+| DELETE | `/api/v1/organizations/{id}/invitations/{invId}` | JWT + `invite_to_org` | Cancel org invitation (sets status `Cancelled`) |
+| POST | `/api/v1/organizations/{id}/invitations/{invId}/resend` | JWT + `invite_to_org` | Rotate the token and extend `expires_at` on a pending invitation; returns the refreshed DTO |
+| POST | `/api/v1/invitations/accept-org` | JWT + matching email | Accept organization invitation. Adds user with the `OrgRoleId` recorded on the invitation. |
 
 ### Endpoints -- Organization Roles
 
@@ -177,18 +178,19 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 | PUT | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Update custom org role |
 | DELETE | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Delete custom org role |
 
-### Endpoints -- Combined Invitations
+### Endpoints -- Combined Invitations (inbox)
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| GET | `/api/v1/invitations/mine` | JWT | List all pending invitations (both workspace + org) for the user |
+| GET | `/api/v1/invitations/mine` | JWT | Returns `{ organizationInvitations: [...] }` — pending org invitations for the caller's email. |
+| GET | `/api/v1/invitations/mine/organization` | JWT | Same data as flat `OrgInvitationDto[]` (convenience alias). |
 
 ### Endpoints -- Workspaces
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | POST | `/api/v1/workspaces` | JWT + `create_workspaces` (org perm) | Create workspace within an organization (requires `organizationId`) |
-| GET | `/api/v1/workspaces` | JWT | List workspaces for authenticated user |
+| GET | `/api/v1/workspaces` | JWT | List workspaces for the authenticated user (each item includes `organizationId`). Optional query **`organizationId`**: restrict to workspaces in that org; caller must be an org member or **403 Forbidden**. Omit the query to list all workspaces the user belongs to (any org). |
 | GET | `/api/v1/workspaces/{id}` | JWT + ws membership | Get workspace details |
 | PUT | `/api/v1/workspaces/{id}` | JWT + `manage_ws_settings` | Update workspace name |
 | DELETE | `/api/v1/workspaces/{id}` | JWT + ws_admin role | Archive workspace |
@@ -198,18 +200,9 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/api/v1/workspaces/{id}/members` | JWT + ws membership | List workspace members |
-| POST | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` | Add an org member directly to the workspace |
+| POST | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` **or** org `manage_org_workspace_members` on parent org | Add an existing org member to the workspace (`{ userId, roleId }`). Caller need not be a workspace member when using the org-level permission. |
 | PUT | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `assign_ws_roles` | Change a member's workspace role |
-| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` (or self) | Remove a member |
-
-### Endpoints -- Workspace Invitations
-
-| Method | Path | Auth | Behavior |
-|---|---|---|---|
-| POST | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | Invite user by email (returns token in response) |
-| GET | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | List pending invitations |
-| DELETE | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `invite_to_workspace` | Cancel invitation |
-| POST | `/api/v1/invitations/accept` | JWT + matching email | Accept workspace invitation by token |
+| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` **or** org `manage_org_workspace_members` (or self) | Remove a member |
 
 ### Endpoints -- Workspace Roles
 
@@ -252,17 +245,20 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 ### Status: Functional (organization + workspace RBAC + entity CRUD + transactional outbox for audit **and choreography** implemented)
 
-Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), the split RBAC permission model, workspace-scoped entity CRUD are functional.
+Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, roles), the split RBAC permission model, workspace-scoped entity CRUD are functional.
 
 **Outbox choreography pilot:** workspace create/update/archive now fan out **`DomainMessageEnvelope`** + `WorkspaceLifecyclePayloadV1` to routing keys `core.workspace.created|updated|archived`. Audit rows continue to enqueue in parallel (`AuditEventContract`).
 
 **Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`) and no local CORS policy; browser CORS is enforced at Gateway. Core reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway.
 
+**Error contract:** `Core/src/Relativa.Core/Middleware/GlobalExceptionHandler.cs` returns JSON `{ status, title, detail }`. Map: `ValidationException` / `ArgumentException` → **400**; `UnauthorizedAccessException` → **401**; `ForbiddenAccessException` → **403**; `KeyNotFoundException` → **404**; `InvalidOperationException` → **409**; other → **500**. Application services (including `WorkspaceMemberService`, `OrgInvitationService`, `JoinRequestService`, `OrganizationUserAdminService`, `OrganizationService`) throw only those types for handled paths so clients never get opaque 500s for permission or conflict cases. Organization permission denials are now raised as **403** (`ForbiddenAccessException`) rather than **401**. The Vue client uses `normalizeError` / `useApiErrorHandler().notify` and `gatewayFetch` prefers **`detail`** over `title` for the thrown `ApiError.message` so toast text matches the server message.
+
 ### Key Files
 
 - `Core/src/Relativa.Core/Program.cs` -- DI wiring, endpoint mapping
-- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
-- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `EntityTypeService`, `EntityService`
+- `Core/src/Relativa.Core/Middleware/GlobalExceptionHandler.cs` — maps application exceptions to HTTP status + `{ status, title, detail }` JSON
+- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints` (accept-org + my inbox only), `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
+- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `EntityTypeService`, `EntityService`
 - `Core/src/Relativa.Core.Application/DTOs/` -- request/response DTOs organized by feature
 - `Core/src/Relativa.Core.Application/Validators/` -- FluentValidation rules
 - `Core/src/Relativa.Core.Domain/Interfaces/` -- repository interfaces

@@ -55,7 +55,6 @@ try
 
     builder.Services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
     builder.Services.AddScoped<IUserRoleWorkspaceRepository, UserRoleWorkspaceRepository>();
-    builder.Services.AddScoped<IWorkspaceInvitationRepository, WorkspaceInvitationRepository>();
     builder.Services.AddScoped<IWorkspaceRoleRepository, WorkspaceRoleRepository>();
     builder.Services.AddScoped<IPermissionRepository, PermissionRepository>();
     builder.Services.AddScoped<IUserRoleOrganizationRepository, UserRoleOrganizationRepository>();
@@ -73,7 +72,6 @@ try
 
     builder.Services.AddScoped<IWorkspaceService, WorkspaceService>();
     builder.Services.AddScoped<IWorkspaceMemberService, WorkspaceMemberService>();
-    builder.Services.AddScoped<IInvitationService, InvitationService>();
     builder.Services.AddScoped<IRoleService, RoleService>();
     builder.Services.AddScoped<IOrganizationService, OrganizationService>();
     builder.Services.AddScoped<IOrgRoleService, OrgRoleService>();

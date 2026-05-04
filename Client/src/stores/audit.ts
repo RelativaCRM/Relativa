@@ -6,6 +6,7 @@ import {
   type AuditLogListResponse,
   type AuditLogQuery,
 } from '@/api/audit';
+import { normalizeError } from '@/api/errors';
 
 export const useAuditStore = defineStore('audit', () => {
   const rows = ref<AuditLogEntryDto[]>([]);

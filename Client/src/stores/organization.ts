@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import {
   orgApi,
+  type CreateOrgUserRequest,
   type OrganizationDto,
   type OrgMemberDto,
   type OrgRoleDto,
@@ -56,12 +57,16 @@ export const useOrganizationStore = defineStore('organization', () => {
 
   async function fetchInvitations() {
     if (!currentOrgId.value) return;
-    invitations.value = await orgApi.listInvitations(currentOrgId.value);
+    try {
+      invitations.value = await orgApi.listInvitations(currentOrgId.value);
+    } catch {
+      invitations.value = [];
+    }
   }
 
-  async function inviteMember(email: string) {
+  async function inviteMember(email: string, orgRoleId?: number) {
     if (!currentOrgId.value) return;
-    const inv = await orgApi.invite(currentOrgId.value, email);
+    const inv = await orgApi.invite(currentOrgId.value, email, orgRoleId);
     invitations.value.push(inv);
     return inv;
   }
@@ -70,6 +75,14 @@ export const useOrganizationStore = defineStore('organization', () => {
     if (!currentOrgId.value) return;
     await orgApi.cancelInvitation(currentOrgId.value, invId);
     invitations.value = invitations.value.filter((i) => i.id !== invId);
+  }
+
+  async function resendInvitation(invId: number) {
+    if (!currentOrgId.value) return;
+    const refreshed = await orgApi.resendInvitation(currentOrgId.value, invId);
+    const idx = invitations.value.findIndex((i) => i.id === invId);
+    if (idx >= 0) invitations.value[idx] = refreshed;
+    return refreshed;
   }
 
   async function changeMemberRole(userId: number, roleId: number) {
@@ -81,6 +94,19 @@ export const useOrganizationStore = defineStore('organization', () => {
   async function removeMember(userId: number) {
     if (!currentOrgId.value) return;
     await orgApi.removeMember(currentOrgId.value, userId);
+    members.value = members.value.filter((m) => m.userId !== userId);
+  }
+
+  async function createOrgUser(payload: CreateOrgUserRequest) {
+    if (!currentOrgId.value) return;
+    const created = await orgApi.createOrgUser(currentOrgId.value, payload);
+    await fetchMembers();
+    return created;
+  }
+
+  async function deleteOrgUser(userId: number) {
+    if (!currentOrgId.value) return;
+    await orgApi.deleteOrgUser(currentOrgId.value, userId);
     members.value = members.value.filter((m) => m.userId !== userId);
   }
 
@@ -109,8 +135,11 @@ export const useOrganizationStore = defineStore('organization', () => {
     fetchInvitations,
     inviteMember,
     cancelInvitation,
+    resendInvitation,
     changeMemberRole,
     removeMember,
+    createOrgUser,
+    deleteOrgUser,
     clear,
   };
 });

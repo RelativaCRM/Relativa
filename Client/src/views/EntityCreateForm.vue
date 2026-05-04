@@ -14,6 +14,7 @@ import {
   firstFieldError,
   type FieldErrors,
 } from '@/api/errors';
+import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import {
@@ -26,10 +27,11 @@ type FieldValue = string | number | boolean | Date | null;
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
 const entityStore = useEntityStore();
 
-const workspaceId = computed(() => Number(route.params.id));
+const workspaceId = computed(() => Number(route.params.workspaceId));
 
 const types = computed<EntityTypeDto[]>(() => entityStore.types);
 const selectedTypeId = ref<number | null>(null);
@@ -136,7 +138,7 @@ function resetTypeFields() {
 function gotoList() {
   router.push({
     name: 'workspace-entities',
-    params: { id: String(workspaceId.value) },
+    params: { workspaceId: String(workspaceId.value) },
   });
 }
 
@@ -151,7 +153,7 @@ async function ensureWorkspaceAccess(): Promise<boolean> {
     return false;
   }
   if (!wsStore.workspaces.length) {
-    await wsStore.fetchWorkspaces();
+    await wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined);
   }
   const belongs = wsStore.workspaces.some((w) => w.id === workspaceId.value);
   if (!belongs) {

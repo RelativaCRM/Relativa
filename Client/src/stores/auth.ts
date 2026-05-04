@@ -4,6 +4,7 @@ import {
   authApi,
   type LoginRequest,
   type RegisterRequest,
+  type UpdateProfilePayload,
   type UserProfile,
 } from '@/api/auth';
 import {
@@ -76,6 +77,16 @@ export const useAuthStore = defineStore('auth', () => {
     return authApi.register(payload);
   }
 
+  async function updateProfile(payload: UpdateProfilePayload) {
+    user.value = await authApi.updateMe(payload);
+    return user.value;
+  }
+
+  async function deleteAccount() {
+    await authApi.deleteMe();
+    clearSession();
+  }
+
   function logout() {
     clearSession();
   }
@@ -103,6 +114,8 @@ export const useAuthStore = defineStore('auth', () => {
     setRoles,
     clearSession,
     fetchProfile,
+    updateProfile,
+    deleteAccount,
     login,
     register,
     logout,

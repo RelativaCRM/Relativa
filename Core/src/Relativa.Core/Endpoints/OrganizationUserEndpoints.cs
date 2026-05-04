@@ -12,14 +12,14 @@ public static class OrganizationUserEndpoints
         var group = routes.MapGroup("/api/v1/organizations/{organizationId:int}/users")
             .WithTags("Organization Users");
 
-        group.MapPost("/", async (int organizationId, RegisterRequestDto request, IOrganizationUserAdminService service, HttpContext httpContext, CancellationToken ct) =>
+        group.MapPost("/", async (int organizationId, CreateOrgUserRequest request, IOrganizationUserAdminService service, HttpContext httpContext, CancellationToken ct) =>
         {
             var callerUserId = WorkspaceEndpoints.GetUserId(httpContext);
             var result = await service.CreateOrgUserAsync(organizationId, callerUserId, request, ct);
             return Results.Created($"/api/v1/organizations/{organizationId}/users/{result.Id}", result);
         })
         .WithName("CreateOrgUser")
-        .WithSummary("Create a user account and add them to the organization as a member")
+        .WithSummary("Create a user account and add them to the organization with a selected role (defaults to member)")
         .Produces<RegisterResponseDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status409Conflict);

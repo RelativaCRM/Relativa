@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
 import { Network } from 'vis-network/standalone';
@@ -10,6 +10,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { normalizeError } from '@/api/errors';
 import type { EntityListItemDto } from '@/api/entities';
 
+const route = useRoute();
 const router = useRouter();
 const graphStore = useGraphStore();
 const entityStore = useEntityStore();
@@ -20,7 +21,11 @@ const network = shallowRef<Network | null>(null);
 const loading = ref(false);
 const errorMessage = ref<string | null>(null);
 
-const workspaceId = computed(() => wsStore.currentWorkspaceId);
+const workspaceId = computed(() => {
+  const fromRoute = Number(route.params.workspaceId);
+  if (Number.isFinite(fromRoute) && fromRoute > 0) return fromRoute;
+  return wsStore.currentWorkspaceId;
+});
 const entities = computed(() =>
   workspaceId.value ? entityStore.entitiesFor(workspaceId.value) : [],
 );
@@ -166,7 +171,7 @@ onUnmounted(() => {
         @click="
           router.push({
             name: 'workspace-entity-create',
-            params: { id: String(workspaceId) },
+            params: { workspaceId: String(workspaceId) },
           })
         "
       />

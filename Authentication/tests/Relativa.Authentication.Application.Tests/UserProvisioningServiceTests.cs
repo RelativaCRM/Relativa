@@ -69,4 +69,35 @@ public sealed class UserProvisioningServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("A user with this email already exists.");
     }
+
+    /// <summary>
+    /// When the only row with an email is archived, <see cref="IUserRepository.ExistsAsync"/> must be false
+    /// so registration can insert a new active user (DB partial unique index allows same email on archived rows).
+    /// </summary>
+    [Fact]
+    public async Task CreateUserAsync_WhenRepositoryReportsEmailFree_AllowsCreate()
+    {
+        var request = new RegisterRequestDto("Olena", "Koval", "Olena@Relativa.io", "Secur3P@ss");
+
+        _registerValidator
+            .Setup(v => v.ValidateAsync(
+                It.IsAny<ValidationContext<RegisterRequestDto>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+
+        _userRepo.Setup(r => r.ExistsAsync("olena@relativa.io", It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _passwordHasher.Setup(h => h.Hash(request.Password)).Returns("bcrypt-result");
+
+        User? captured = null;
+        _userRepo
+            .Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, _) => captured = u);
+
+        var result = await _sut.CreateUserAsync(request, auditActorUserId: null, CancellationToken.None);
+
+        result.Email.Should().Be("olena@relativa.io");
+        captured.Should().NotBeNull();
+        captured!.IsArchived.Should().BeFalse();
+        _userRepo.Verify(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

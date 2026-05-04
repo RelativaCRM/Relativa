@@ -1,38 +1,191 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Select from 'primevue/select';
 import Dialog from 'primevue/dialog';
+import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
+import Select from 'primevue/select';
 import Tag from 'primevue/tag';
-import { useAuthStore } from '@/stores/auth';
-import { useOrganizationStore } from '@/stores/organization';
-import { orgApi, type JoinRequestDto } from '@/api/organizations';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
+import { orgApi, type JoinRequestDto } from '@/api/organizations';
+import { useOrganizationStore } from '@/stores/organization';
 
-const auth = useAuthStore();
-const orgStore = useOrganizationStore();
+const router = useRouter();
 const toast = useToast();
+const orgStore = useOrganizationStore();
 const { notify } = useApiErrorHandler();
 
 const loading = ref(true);
 const joinRequests = ref<JoinRequestDto[]>([]);
 const reviewingId = ref<number | null>(null);
+const resendingInvId = ref<number | null>(null);
 
-const isOrgAdmin = computed(() => {
-  const role = orgStore.currentOrg?.userRole;
-  return role === 'org_owner' || role === 'org_admin';
-});
+const MANAGE_JOIN_REQUESTS_PERM = 'manage_join_requests';
+const ASSIGN_ORG_ROLES_PERM = 'assign_org_roles';
+const CREATE_ORG_USERS_PERM = 'create_org_users';
+
+function hasPermission(permission: string): boolean {
+  const roleName = orgStore.currentOrg?.userRole;
+  if (!roleName) return false;
+  const role = orgStore.roles.find((r) => r.name === roleName);
+  return role?.permissions.some((p) => p.name === permission) ?? false;
+}
+
+const canManageJoinRequests = computed(() =>
+  hasPermission(MANAGE_JOIN_REQUESTS_PERM),
+);
+const canAssignOrgRoles = computed(() =>
+  hasPermission(ASSIGN_ORG_ROLES_PERM),
+);
+const canCreateOrgUsers = computed(() =>
+  hasPermission(CREATE_ORG_USERS_PERM),
+);
 
 const pendingJoinRequests = computed(() =>
   joinRequests.value.filter((r) => r.status === 'Pending'),
 );
 
+function displayRole(roleName: string): string {
+  if (roleName === 'org_owner') return 'Owner';
+  if (roleName === 'org_admin') return 'Admin';
+  return 'Member';
+}
+
+function roleSeverity(roleName: string): string {
+  if (roleName === 'org_owner') return 'warn';
+  if (roleName === 'org_admin') return 'info';
+  return 'secondary';
+}
+
+/* ── Create user dialog ─────────────────────────────── */
+const showCreateUser = ref(false);
+const createSubmitting = ref(false);
+const createError = ref<string | null>(null);
+const createForm = ref({
+  firstName: '',
+  lastName: '',
+  email: '',
+  password: '',
+  orgRoleId: null as number | null,
+});
+
+const orgRoleOptions = computed(() =>
+  orgStore.roles
+    .filter((r) => r.name === 'org_member' || r.name === 'org_admin')
+    .map((r) => ({
+      label: r.name === 'org_admin' ? 'Admin' : 'Member',
+      value: r.id,
+      name: r.name,
+    })),
+);
+const inviteRoleOptions = orgRoleOptions;
+
+const defaultMemberRoleId = computed(
+  () => orgRoleOptions.value.find((r) => r.name === 'org_member')?.value ?? null,
+);
+
+function openCreateUserDialog() {
+  createForm.value = {
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    orgRoleId: defaultMemberRoleId.value,
+  };
+  createError.value = null;
+  showCreateUser.value = true;
+}
+
+function closeCreateUserDialog() {
+  showCreateUser.value = false;
+}
+
+const canSubmitCreate = computed(() => {
+  const f = createForm.value;
+  return (
+    f.firstName.trim().length > 0 &&
+    f.lastName.trim().length > 0 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim()) &&
+    f.password.length >= 8 &&
+    !createSubmitting.value
+  );
+});
+
+async function handleCreateUser() {
+  if (!canSubmitCreate.value) return;
+  createSubmitting.value = true;
+  createError.value = null;
+  try {
+    const payload = {
+      firstName: createForm.value.firstName.trim(),
+      lastName: createForm.value.lastName.trim(),
+      email: createForm.value.email.trim(),
+      password: createForm.value.password,
+      orgRoleId: canAssignOrgRoles.value
+        ? (createForm.value.orgRoleId ?? undefined)
+        : (defaultMemberRoleId.value ?? undefined),
+    };
+    await orgStore.createOrgUser(payload);
+    toast.add({
+      severity: 'success',
+      summary: 'User created',
+      detail: 'The new organization account has been created.',
+      life: 4000,
+    });
+    showCreateUser.value = false;
+  } catch (err) {
+    createError.value = normalizeError(err, 'Failed to create user.').message;
+  } finally {
+    createSubmitting.value = false;
+  }
+}
+
+/* ── Invite dialog ───────────────────────────────────── */
+const showInvite = ref(false);
+const inviteEmail = ref('');
+const inviteRoleId = ref<number | null>(null);
+const inviteSending = ref(false);
+const inviteSuccess = ref<string | null>(null);
+const inviteError = ref<string | null>(null);
+
+const canInvite = computed(
+  () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.value) && !inviteSending.value,
+);
+
+function openInviteDialog() {
+  inviteRoleId.value = defaultMemberRoleId.value;
+  inviteEmail.value = '';
+  inviteError.value = null;
+  inviteSuccess.value = null;
+  showInvite.value = true;
+}
+
+function closeInviteDialog() {
+  showInvite.value = false;
+}
+
+async function handleInvite() {
+  if (!canInvite.value) return;
+  inviteSending.value = true;
+  inviteSuccess.value = null;
+  inviteError.value = null;
+  try {
+    await orgStore.inviteMember(inviteEmail.value.trim(), inviteRoleId.value ?? undefined);
+    inviteSuccess.value = `Invitation sent to ${inviteEmail.value.trim()}`;
+    inviteEmail.value = '';
+  } catch (err) {
+    inviteError.value = normalizeError(err, 'Failed to send invitation.').message;
+  } finally {
+    inviteSending.value = false;
+  }
+}
+
+/* ── Join requests + invitations ─────────────────────── */
 async function fetchJoinRequests() {
-  if (!orgStore.currentOrgId || !isOrgAdmin.value) return;
+  if (!orgStore.currentOrgId || !canManageJoinRequests.value) return;
   try {
     joinRequests.value = await orgApi.listJoinRequests(orgStore.currentOrgId);
   } catch (err) {
@@ -41,10 +194,7 @@ async function fetchJoinRequests() {
   }
 }
 
-async function handleReviewRequest(
-  reqId: number,
-  decision: 'Approved' | 'Rejected',
-) {
+async function handleReviewRequest(reqId: number, decision: 'Approved' | 'Rejected') {
   if (!orgStore.currentOrgId) return;
   reviewingId.value = reqId;
   try {
@@ -60,118 +210,6 @@ async function handleReviewRequest(
   }
 }
 
-/* ── Invite dialog ─────────────────────────────────────── */
-const showInvite = ref(false);
-const inviteEmail = ref('');
-const inviteSending = ref(false);
-const inviteSuccess = ref<string | null>(null);
-const inviteError = ref<string | null>(null);
-
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const canInvite = computed(
-  () => emailPattern.test(inviteEmail.value) && !inviteSending.value,
-);
-
-async function handleInvite() {
-  if (!canInvite.value) return;
-  inviteSending.value = true;
-  inviteSuccess.value = null;
-  inviteError.value = null;
-  try {
-    await orgStore.inviteMember(inviteEmail.value.trim());
-    inviteSuccess.value = `Invitation sent to ${inviteEmail.value}`;
-    inviteEmail.value = '';
-  } catch (err) {
-    inviteError.value = normalizeError(err, 'Failed to send invitation.').message;
-  } finally {
-    inviteSending.value = false;
-  }
-}
-
-function closeInviteDialog() {
-  showInvite.value = false;
-  inviteEmail.value = '';
-  inviteSuccess.value = null;
-  inviteError.value = null;
-}
-
-/* ── Role change ───────────────────────────────────────── */
-const changingRole = ref<number | null>(null);
-const roleSelectVersion = ref(0);
-
-const roleOptions = computed(() =>
-  orgStore.roles
-    .filter((r) => r.name === 'org_admin' || r.name === 'org_member')
-    .map((r) => ({
-      label: r.name === 'org_admin' ? 'Admin' : 'Member',
-      value: r.id,
-    })),
-);
-
-function displayRole(roleName: string): string {
-  if (roleName === 'org_owner') return 'Owner';
-  if (roleName === 'org_admin') return 'Admin';
-  return 'Member';
-}
-
-function roleSeverity(roleName: string): string {
-  if (roleName === 'org_owner') return 'warn';
-  if (roleName === 'org_admin') return 'info';
-  return 'secondary';
-}
-
-function roleIdByName(roleName: string): number | undefined {
-  return orgStore.roles.find((r) => r.name === roleName)?.id;
-}
-
-async function handleRoleChange(userId: number, newRoleId: number) {
-  const target = orgStore.members.find((m) => m.userId === userId);
-  const newRoleName = orgStore.roles.find((r) => r.id === newRoleId)?.name;
-
-  if (target && target.roleName === 'org_owner' && newRoleName !== 'org_owner') {
-    const ownerCount = orgStore.members.filter(
-      (m) => m.roleName === 'org_owner',
-    ).length;
-    if (ownerCount <= 1) {
-      toast.add({
-        severity: 'error',
-        summary: 'Conflict',
-        detail: 'Cannot remove the last organization owner.',
-        life: 5000,
-      });
-      await orgStore.fetchMembers();
-      roleSelectVersion.value++;
-      return;
-    }
-  }
-
-  changingRole.value = userId;
-  try {
-    await orgStore.changeMemberRole(userId, newRoleId);
-  } catch (err) {
-    notify(err, { fallback: 'Failed to update role.' });
-  } finally {
-    await orgStore.fetchMembers();
-    roleSelectVersion.value++;
-    changingRole.value = null;
-  }
-}
-
-/* ── Remove ────────────────────────────────────────────── */
-const removingId = ref<number | null>(null);
-
-async function handleRemove(userId: number) {
-  removingId.value = userId;
-  try {
-    await orgStore.removeMember(userId);
-  } catch (err) {
-    notify(err, { fallback: 'Failed to remove member.' });
-  } finally {
-    removingId.value = null;
-  }
-}
-
-/* ── Cancel invitation ─────────────────────────────────── */
 async function handleCancelInvitation(invId: number) {
   try {
     await orgStore.cancelInvitation(invId);
@@ -180,35 +218,70 @@ async function handleCancelInvitation(invId: number) {
   }
 }
 
-/* ── Init ──────────────────────────────────────────────── */
+async function handleResendInvitation(invId: number) {
+  resendingInvId.value = invId;
+  try {
+    await orgStore.resendInvitation(invId);
+    toast.add({
+      severity: 'success',
+      summary: 'Invitation resent',
+      detail: 'Token rotated and expiry extended.',
+      life: 4000,
+    });
+  } catch (err) {
+    notify(err, { fallback: 'Failed to resend invitation.' });
+  } finally {
+    resendingInvId.value = null;
+  }
+}
+
+function openMember(userId: number) {
+  router.push({ name: 'member', params: { memberUserId: userId } });
+}
+
 onMounted(async () => {
-  await Promise.all([
-    orgStore.fetchMembers(),
-    orgStore.fetchRoles(),
-    orgStore.fetchInvitations(),
-    fetchJoinRequests(),
-  ]);
-  loading.value = false;
+  try {
+    await Promise.all([
+      orgStore.fetchMembers(),
+      orgStore.fetchRoles(),
+      orgStore.fetchInvitations(),
+    ]);
+    await fetchJoinRequests();
+  } finally {
+    loading.value = false;
+  }
 });
 </script>
 
 <template>
-  <section class="max-w-4xl">
+  <section class="max-w-5xl">
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold text-ink-900">Members</h1>
         <p class="mt-1 text-sm text-ink-500">
-          Manage members of
+          Click a row to open the member details view.
+        </p>
+        <p class="mt-1 text-sm text-ink-500">
+          Organization:
           <span class="font-medium text-ink-700">{{
             orgStore.currentOrg?.name ?? 'organization'
           }}</span>
         </p>
       </div>
-      <Button
-        icon="pi pi-user-plus"
-        label="Invite member"
-        @click="showInvite = true"
-      />
+      <div class="flex gap-2">
+        <Button
+          v-if="canCreateOrgUsers"
+          icon="pi pi-id-card"
+          label="Create user"
+          @click="openCreateUserDialog"
+        />
+        <Button
+          icon="pi pi-user-plus"
+          label="Invite member"
+          severity="secondary"
+          @click="openInviteDialog"
+        />
+      </div>
     </div>
 
     <!-- Loading -->
@@ -223,57 +296,27 @@ onMounted(async () => {
             <th class="px-5 py-3">Email</th>
             <th class="px-5 py-3">Role</th>
             <th class="px-5 py-3">Joined</th>
-            <th class="px-5 py-3 w-20"></th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="member in orgStore.members"
             :key="member.userId"
-            class="border-b border-line last:border-0 hover:bg-surface/50"
+            class="border-b border-line last:border-0 hover:bg-surface/70 cursor-pointer"
+            @click="openMember(member.userId)"
           >
             <td class="px-5 py-3 font-medium text-ink-900">
               {{ member.firstName }} {{ member.lastName }}
             </td>
             <td class="px-5 py-3 text-ink-600">{{ member.email }}</td>
             <td class="px-5 py-3">
-              <!-- Owner is not editable -->
               <Tag
-                v-if="member.roleName === 'org_owner'"
-                :value="displayRole(member.roleName)"
-                :severity="roleSeverity(member.roleName)"
-              />
-              <!-- Other roles — editable via select -->
-              <Select
-                v-else-if="member.userId !== auth.user?.id"
-                :key="`role-${member.userId}-${member.roleName}-${roleSelectVersion}`"
-                :model-value="roleIdByName(member.roleName)"
-                :options="roleOptions"
-                option-label="label"
-                option-value="value"
-                :disabled="changingRole === member.userId"
-                class="!h-8 !text-xs !min-w-[110px]"
-                @update:model-value="handleRoleChange(member.userId, $event)"
-              />
-              <Tag
-                v-else
                 :value="displayRole(member.roleName)"
                 :severity="roleSeverity(member.roleName)"
               />
             </td>
             <td class="px-5 py-3 text-ink-500">
               {{ new Date(member.joinedAt).toLocaleDateString() }}
-            </td>
-            <td class="px-5 py-3">
-              <Button
-                v-if="member.roleName !== 'org_owner' && member.userId !== auth.user?.id"
-                icon="pi pi-trash"
-                severity="danger"
-                text
-                rounded
-                :loading="removingId === member.userId"
-                @click="handleRemove(member.userId)"
-              />
             </td>
           </tr>
         </tbody>
@@ -289,26 +332,46 @@ onMounted(async () => {
           :key="inv.id"
           class="flex items-center justify-between px-5 py-3 border-b border-line last:border-0"
         >
-          <div>
-            <p class="text-sm text-ink-700">{{ inv.email }}</p>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <p class="text-sm text-ink-700 truncate">{{ inv.email }}</p>
+              <Tag
+                v-if="inv.roleName"
+                :value="displayRole(inv.roleName)"
+                :severity="roleSeverity(inv.roleName)"
+              />
+            </div>
             <p class="text-xs text-ink-400">
               Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
             </p>
           </div>
-          <Button
-            icon="pi pi-times"
-            severity="secondary"
-            text
-            rounded
-            size="small"
-            @click="handleCancelInvitation(inv.id)"
-          />
+          <div class="flex items-center gap-1 shrink-0">
+            <Button
+              icon="pi pi-refresh"
+              severity="secondary"
+              text
+              rounded
+              size="small"
+              title="Resend (rotate token and extend expiry)"
+              :loading="resendingInvId === inv.id"
+              @click="handleResendInvitation(inv.id)"
+            />
+            <Button
+              icon="pi pi-times"
+              severity="secondary"
+              text
+              rounded
+              size="small"
+              title="Cancel invitation"
+              @click="handleCancelInvitation(inv.id)"
+            />
+          </div>
         </div>
       </div>
 
       <!-- Join requests (admins only) -->
       <div
-        v-if="isOrgAdmin && pendingJoinRequests.length"
+        v-if="canManageJoinRequests && pendingJoinRequests.length"
         class="border-t border-line"
       >
         <div class="px-5 py-3 bg-surface text-xs font-medium text-ink-500 uppercase tracking-wider">
@@ -352,6 +415,54 @@ onMounted(async () => {
       </div>
     </div>
 
+    <Dialog
+      v-model:visible="showCreateUser"
+      header="Create user"
+      modal
+      :style="{ width: '460px' }"
+      @hide="closeCreateUserDialog"
+    >
+      <form class="flex flex-col gap-4" @submit.prevent="handleCreateUser">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label for="createFirst" class="text-xs font-medium text-ink-600">First name</label>
+            <InputText id="createFirst" v-model="createForm.firstName" maxlength="100" class="!h-10" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="createLast" class="text-xs font-medium text-ink-600">Last name</label>
+            <InputText id="createLast" v-model="createForm.lastName" maxlength="100" class="!h-10" />
+          </div>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="createEmail" class="text-xs font-medium text-ink-600">Email</label>
+          <InputText id="createEmail" v-model="createForm.email" type="email" class="!h-10" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="createPassword" class="text-xs font-medium text-ink-600">Temporary password</label>
+          <InputText id="createPassword" v-model="createForm.password" type="password" class="!h-10" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="createRole" class="text-xs font-medium text-ink-600">Role</label>
+          <Select
+            id="createRole"
+            v-model="createForm.orgRoleId"
+            :options="orgRoleOptions"
+            option-label="label"
+            option-value="value"
+            :disabled="!canAssignOrgRoles"
+            class="!h-10"
+          />
+        </div>
+        <Message v-if="createError" severity="error" :closable="false" class="!my-0">
+          {{ createError }}
+        </Message>
+        <div class="flex justify-end gap-2">
+          <Button type="button" label="Cancel" severity="secondary" text @click="closeCreateUserDialog" />
+          <Button type="submit" label="Create user" :loading="createSubmitting" :disabled="!canSubmitCreate" />
+        </div>
+      </form>
+    </Dialog>
+
     <!-- Invite dialog -->
     <Dialog
       v-model:visible="showInvite"
@@ -376,6 +487,25 @@ onMounted(async () => {
             placeholder="colleague@example.com"
             class="!h-10"
           />
+        </div>
+
+        <div v-if="canAssignOrgRoles" class="flex flex-col gap-1.5">
+          <label for="inviteRole" class="text-xs font-medium text-ink-600">
+            Role
+          </label>
+          <Select
+            id="inviteRole"
+            v-model="inviteRoleId"
+            :options="inviteRoleOptions"
+            option-label="label"
+            option-value="value"
+            class="!h-10"
+          />
+          <p class="text-xs text-ink-400">
+            Defaults to Member. Requires the
+            <code class="text-ink-600">assign_org_roles</code> permission to
+            invite as Admin.
+          </p>
         </div>
 
         <Message v-if="inviteSuccess" severity="success" :closable="false" class="!my-0">

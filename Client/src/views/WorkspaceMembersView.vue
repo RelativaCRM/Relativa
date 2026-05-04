@@ -3,49 +3,95 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import Dialog from 'primevue/dialog';
 import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import { useAuthStore } from '@/stores/auth';
+import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { ApiError } from '@/api/http';
-import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const auth = useAuthStore();
+const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
 const { notify } = useApiErrorHandler();
 
 const ROLE_ORDER = ['ws_admin', 'ws_manager', 'ws_analyst', 'ws_member'];
 
-const workspaceId = computed(() => Number(route.params.id));
+const workspaceId = computed(() => Number(route.params.workspaceId));
 const loading = ref(true);
 
-/* ── Invite dialog ─────────────────────────────────────── */
-const showInvite = ref(false);
-const inviteEmail = ref('');
-const inviteRoleId = ref<number | null>(null);
-const inviteSending = ref(false);
-const inviteSuccess = ref<string | null>(null);
-const inviteError = ref<string | null>(null);
+const ADD_WS_MEMBERS = 'add_ws_members';
+const REMOVE_WS_MEMBERS = 'remove_ws_members';
+const ASSIGN_WS_ROLES = 'assign_ws_roles';
+const MANAGE_ORG_WS_MEMBERS = 'manage_org_workspace_members';
 
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const canInvite = computed(
+const hasWsPermission = (perm: string) => {
+  const roleName = wsStore.members.find((m) => m.userId === auth.user?.id)
+    ?.roleName;
+  if (!roleName) return false;
+  const role = wsStore.roles.find((r) => r.name === roleName);
+  return role?.permissions.some((p) => p.name === perm) ?? false;
+};
+
+const hasOrgPermission = (perm: string) => {
+  const roleName = orgStore.currentOrg?.userRole;
+  if (!roleName) return false;
+  const role = orgStore.roles.find((r) => r.name === roleName);
+  return role?.permissions.some((p) => p.name === perm) ?? false;
+};
+
+const canAddMember = computed(
   () =>
-    emailPattern.test(inviteEmail.value) &&
-    inviteRoleId.value !== null &&
-    !inviteSending.value,
+    hasWsPermission(ADD_WS_MEMBERS) || hasOrgPermission(MANAGE_ORG_WS_MEMBERS),
+);
+
+const canRemoveOther = computed(
+  () =>
+    hasWsPermission(REMOVE_WS_MEMBERS) ||
+    hasOrgPermission(MANAGE_ORG_WS_MEMBERS),
+);
+
+const canAssignRoles = computed(() => hasWsPermission(ASSIGN_WS_ROLES));
+
+/* ── Add member dialog (org members not yet in workspace) ─ */
+const showAddMember = ref(false);
+const addMemberUserId = ref<number | null>(null);
+const addMemberRoleId = ref<number | null>(null);
+const addMemberSending = ref(false);
+const addMemberSuccess = ref<string | null>(null);
+
+const wsMemberUserIds = computed(
+  () => new Set(wsStore.members.map((m) => m.userId)),
+);
+
+const eligibleOrgMembers = computed(() =>
+  orgStore.members.filter((m) => !wsMemberUserIds.value.has(m.userId)),
+);
+
+const orgMemberOptions = computed(() =>
+  eligibleOrgMembers.value.map((m) => ({
+    label: `${m.firstName} ${m.lastName} (${m.email})`,
+    value: m.userId,
+  })),
 );
 
 const roleOptions = computed(() =>
   ROLE_ORDER.map((name) => wsStore.roles.find((r) => r.name === name))
     .filter((r): r is NonNullable<typeof r> => !!r)
     .map((r) => ({ label: displayRole(r.name), value: r.id })),
+);
+
+const canSubmitAdd = computed(
+  () =>
+    addMemberUserId.value !== null &&
+    addMemberRoleId.value !== null &&
+    !addMemberSending.value,
 );
 
 function displayRole(roleName: string): string {
@@ -67,31 +113,47 @@ function roleIdByName(roleName: string): number | undefined {
   return wsStore.roles.find((r) => r.name === roleName)?.id;
 }
 
-async function handleInvite() {
-  if (!canInvite.value || inviteRoleId.value === null) return;
-  inviteSending.value = true;
-  inviteSuccess.value = null;
-  inviteError.value = null;
-  try {
-    await wsStore.inviteMember(
-      workspaceId.value,
-      inviteEmail.value.trim(),
-      inviteRoleId.value,
-    );
-    inviteSuccess.value = `Invitation sent to ${inviteEmail.value}`;
-    inviteEmail.value = '';
-  } catch (err) {
-    inviteError.value = normalizeError(err, 'Failed to send invitation.').message;
-  } finally {
-    inviteSending.value = false;
+async function openAddMemberDialog() {
+  addMemberUserId.value = null;
+  addMemberRoleId.value = null;
+  addMemberSuccess.value = null;
+  showAddMember.value = true;
+  if (orgStore.currentOrgId) {
+    try {
+      await orgStore.fetchMembers();
+    } catch (err) {
+      notify(err, { fallback: 'Could not load organization members.' });
+    }
   }
 }
 
-function closeInviteDialog() {
-  showInvite.value = false;
-  inviteEmail.value = '';
-  inviteSuccess.value = null;
-  inviteError.value = null;
+function closeAddMemberDialog() {
+  showAddMember.value = false;
+  addMemberUserId.value = null;
+  addMemberRoleId.value = null;
+  addMemberSuccess.value = null;
+}
+
+async function handleAddMember() {
+  if (!canSubmitAdd.value || addMemberUserId.value == null || addMemberRoleId.value == null)
+    return;
+  addMemberSending.value = true;
+  addMemberSuccess.value = null;
+  try {
+    await wsStore.addMember(
+      workspaceId.value,
+      addMemberUserId.value,
+      addMemberRoleId.value,
+    );
+    addMemberSuccess.value = 'Member added to workspace.';
+    addMemberUserId.value = null;
+    addMemberRoleId.value = null;
+    await orgStore.fetchMembers();
+  } catch (err) {
+    notify(err, { fallback: 'Failed to add member.' });
+  } finally {
+    addMemberSending.value = false;
+  }
 }
 
 /* ── Role change ───────────────────────────────────────── */
@@ -149,24 +211,17 @@ async function handleRemove(userId: number) {
   }
 }
 
-/* ── Cancel invitation ─────────────────────────────────── */
-async function handleCancelInvitation(invId: number) {
-  try {
-    await wsStore.cancelInvitation(workspaceId.value, invId);
-  } catch (err) {
-    notify(err, { fallback: 'Failed to cancel invitation.' });
-  }
-}
-
 async function loadAll() {
   loading.value = true;
   try {
     await Promise.all([
       wsStore.fetchMembers(workspaceId.value),
       wsStore.fetchRoles(workspaceId.value),
-      wsStore.fetchInvitations(workspaceId.value),
       wsStore.workspaces.length === 0
-        ? wsStore.fetchWorkspaces()
+        ? wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined)
+        : Promise.resolve(),
+      orgStore.currentOrgId
+        ? orgStore.fetchRoles()
         : Promise.resolve(),
     ]);
     wsStore.setCurrentWorkspace(workspaceId.value);
@@ -214,14 +269,15 @@ onMounted(loadAll);
           @click="
             router.push({
               name: 'workspace-entities',
-              params: { id: workspaceId },
+              params: { workspaceId: String(workspaceId) },
             })
           "
         />
         <Button
+          v-if="canAddMember"
           icon="pi pi-user-plus"
-          label="Invite member"
-          @click="showInvite = true"
+          label="Add member"
+          @click="openAddMemberDialog"
         />
       </div>
     </div>
@@ -253,7 +309,7 @@ onMounted(loadAll);
             <td class="px-5 py-3 text-ink-600">{{ member.email }}</td>
             <td class="px-5 py-3">
               <Select
-                v-if="roleOptions.length"
+                v-if="roleOptions.length && canAssignRoles"
                 :key="`role-${member.userId}-${member.roleName}-${roleSelectVersion}`"
                 :model-value="roleIdByName(member.roleName)"
                 :options="roleOptions"
@@ -274,7 +330,7 @@ onMounted(loadAll);
             </td>
             <td class="px-5 py-3">
               <Button
-                v-if="member.userId !== auth.user?.id"
+                v-if="member.userId !== auth.user?.id && canRemoveOther"
                 icon="pi pi-trash"
                 severity="danger"
                 text
@@ -293,73 +349,46 @@ onMounted(loadAll);
       >
         No members yet.
       </div>
-
-      <div v-if="wsStore.invitations.length" class="border-t border-line">
-        <div
-          class="px-5 py-3 bg-surface text-xs font-medium text-ink-500 uppercase tracking-wider"
-        >
-          Pending invitations
-        </div>
-        <div
-          v-for="inv in wsStore.invitations"
-          :key="inv.id"
-          class="flex items-center justify-between px-5 py-3 border-b border-line last:border-0"
-        >
-          <div>
-            <p class="text-sm text-ink-700">
-              {{ inv.email }}
-              <span class="text-xs text-ink-400 ml-2"
-                >as {{ displayRole(inv.roleName) }}</span
-              >
-            </p>
-            <p class="text-xs text-ink-400">
-              Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
-            </p>
-          </div>
-          <Button
-            icon="pi pi-times"
-            severity="secondary"
-            text
-            rounded
-            size="small"
-            @click="handleCancelInvitation(inv.id)"
-          />
-        </div>
-      </div>
     </div>
 
     <Dialog
-      v-model:visible="showInvite"
-      header="Invite to workspace"
+      v-model:visible="showAddMember"
+      header="Add organization member to workspace"
       modal
-      :style="{ width: '420px' }"
-      @hide="closeInviteDialog"
+      :style="{ width: '460px' }"
+      @hide="closeAddMemberDialog"
     >
       <form
         class="flex flex-col gap-4"
         novalidate
-        @submit.prevent="handleInvite"
+        @submit.prevent="handleAddMember"
       >
+        <p class="text-xs text-ink-500">
+          Only users who are already in the parent organization can be added.
+          Invite them to the organization first if they are not listed.
+        </p>
+
         <div class="flex flex-col gap-1.5">
-          <label for="wsInviteEmail" class="text-xs font-medium text-ink-600">
-            Email address <span class="text-danger">*</span>
+          <label class="text-xs font-medium text-ink-600">
+            Member <span class="text-danger">*</span>
           </label>
-          <InputText
-            id="wsInviteEmail"
-            v-model="inviteEmail"
-            type="email"
-            placeholder="colleague@example.com"
+          <Select
+            v-model="addMemberUserId"
+            :options="orgMemberOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="Select user"
             class="!h-10"
+            :filter="true"
           />
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <label for="wsInviteRole" class="text-xs font-medium text-ink-600">
-            Role <span class="text-danger">*</span>
+          <label class="text-xs font-medium text-ink-600">
+            Workspace role <span class="text-danger">*</span>
           </label>
           <Select
-            id="wsInviteRole"
-            v-model="inviteRoleId"
+            v-model="addMemberRoleId"
             :options="roleOptions"
             option-label="label"
             option-value="value"
@@ -369,35 +398,27 @@ onMounted(loadAll);
         </div>
 
         <Message
-          v-if="inviteSuccess"
+          v-if="addMemberSuccess"
           severity="success"
           :closable="false"
           class="!my-0"
         >
-          {{ inviteSuccess }}
-        </Message>
-        <Message
-          v-if="inviteError"
-          severity="error"
-          :closable="false"
-          class="!my-0"
-        >
-          {{ inviteError }}
+          {{ addMemberSuccess }}
         </Message>
 
         <div class="flex justify-end gap-2">
           <Button
             type="button"
-            label="Cancel"
+            label="Close"
             severity="secondary"
             text
-            @click="closeInviteDialog"
+            @click="closeAddMemberDialog"
           />
           <Button
             type="submit"
-            label="Send invitation"
-            :disabled="!canInvite"
-            :loading="inviteSending"
+            label="Add to workspace"
+            :disabled="!canSubmitAdd"
+            :loading="addMemberSending"
           />
         </div>
       </form>

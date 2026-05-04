@@ -45,7 +45,10 @@ function displayRole(roleName: string | null): string {
 
 function chooseWorkspace(ws: WorkspaceDto) {
   wsStore.setCurrentWorkspace(ws.id);
-  router.push({ name: 'home' });
+  router.push({
+    name: 'workspace-entities',
+    params: { workspaceId: String(ws.id) },
+  });
 }
 
 async function handleCreate() {
@@ -53,11 +56,14 @@ async function handleCreate() {
   creating.value = true;
   createError.value = null;
   try {
-    await wsStore.createWorkspace(
+    const ws = await wsStore.createWorkspace(
       newWorkspaceName.value.trim(),
       orgStore.currentOrgId,
     );
-    router.push({ name: 'home' });
+    router.push({
+      name: 'workspace-entities',
+      params: { workspaceId: String(ws.id) },
+    });
   } catch (err) {
     createError.value = normalizeError(err, 'Failed to create workspace.').message;
   } finally {
@@ -75,11 +81,14 @@ function handleLogout() {
 
 onMounted(async () => {
   try {
-    await wsStore.fetchWorkspaces();
+    await wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined);
     const only = wsStore.workspaces.length === 1 ? wsStore.workspaces[0] : null;
     if (only) {
       wsStore.setCurrentWorkspace(only.id);
-      router.replace({ name: 'home' });
+      router.replace({
+        name: 'workspace-entities',
+        params: { workspaceId: String(only.id) },
+      });
       return;
     }
   } catch (err) {

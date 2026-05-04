@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Workspace;
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -81,12 +82,30 @@ public sealed class WorkspaceService(
                 ct);
         }
 
-        return new WorkspaceDto(workspace.Id, workspace.Name, 1, adminRole.Name);
+        return new WorkspaceDto(workspace.Id, workspace.OrganizationId, workspace.Name, 1, adminRole.Name);
     }
 
-    public async Task<List<WorkspaceDto>> GetByUserAsync(int userId, CancellationToken ct = default)
+    public async Task<List<WorkspaceDto>> GetByUserAsync(int userId, int? organizationId, CancellationToken ct = default)
     {
-        var workspaces = await workspaceRepository.GetByUserIdAsync(userId, ct);
+        List<Workspace> workspaces;
+        if (organizationId.HasValue)
+        {
+            var orgMembership = await orgMemberRepository.GetAsync(userId, organizationId.Value, ct);
+            if (orgMembership is null)
+            {
+                throw new ForbiddenAccessException("You are not a member of this organization.");
+            }
+
+            workspaces = await workspaceRepository.GetByUserIdAndOrganizationIdAsync(
+                userId,
+                organizationId.Value,
+                ct);
+        }
+        else
+        {
+            workspaces = await workspaceRepository.GetByUserIdAsync(userId, ct);
+        }
+
         var result = new List<WorkspaceDto>();
 
         foreach (var ws in workspaces)
@@ -94,7 +113,7 @@ public sealed class WorkspaceService(
             var membership = await memberRepository.GetAsync(userId, ws.Id, ct);
             var members = await memberRepository.GetByWorkspaceIdAsync(ws.Id, ct);
             var memberCount = members.Count(m => !m.IsArchived);
-            result.Add(new WorkspaceDto(ws.Id, ws.Name, memberCount, membership?.Role?.Name));
+            result.Add(new WorkspaceDto(ws.Id, ws.OrganizationId, ws.Name, memberCount, membership?.Role?.Name));
         }
 
         return result;
@@ -110,7 +129,12 @@ public sealed class WorkspaceService(
         var membership = await memberRepository.GetAsync(userId, workspaceId, ct);
         var members = await memberRepository.GetByWorkspaceIdAsync(workspaceId, ct);
 
-        return new WorkspaceDto(workspace.Id, workspace.Name, members.Count(m => !m.IsArchived), membership?.Role?.Name);
+        return new WorkspaceDto(
+            workspace.Id,
+            workspace.OrganizationId,
+            workspace.Name,
+            members.Count(m => !m.IsArchived),
+            membership?.Role?.Name);
     }
 
     public async Task UpdateAsync(int workspaceId, int userId, UpdateWorkspaceRequest request, CancellationToken ct = default)

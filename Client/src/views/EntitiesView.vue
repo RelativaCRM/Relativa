@@ -4,16 +4,18 @@ import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
 import Message from 'primevue/message';
+import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import { normalizeError } from '@/api/errors';
 
 const route = useRoute();
 const router = useRouter();
+const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
 const entityStore = useEntityStore();
 
-const workspaceId = computed(() => Number(route.params.id));
+const workspaceId = computed(() => Number(route.params.workspaceId));
 const entities = computed(() => entityStore.entitiesFor(workspaceId.value));
 const loading = ref(true);
 const errorMessage = ref<string | null>(null);
@@ -24,7 +26,7 @@ async function load() {
   errorMessage.value = null;
   try {
     if (!wsStore.workspaces.length) {
-      await wsStore.fetchWorkspaces();
+      await wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined);
     }
     const belongs = wsStore.workspaces.some((w) => w.id === workspaceId.value);
     if (!belongs) {
@@ -45,7 +47,7 @@ async function load() {
 function goCreate() {
   router.push({
     name: 'workspace-entity-create',
-    params: { id: String(workspaceId.value) },
+    params: { workspaceId: String(workspaceId.value) },
   });
 }
 
