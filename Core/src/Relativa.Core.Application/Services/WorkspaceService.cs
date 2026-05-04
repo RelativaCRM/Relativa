@@ -1,5 +1,7 @@
+using System.Text.Json;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Workspace;
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -14,7 +16,7 @@ public sealed class WorkspaceService(
     IUserRoleOrganizationRepository orgMemberRepository,
     IValidator<CreateWorkspaceRequest> createValidator,
     IValidator<UpdateWorkspaceRequest> updateValidator,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IWorkspaceService
+    IOutboxWriter? auditOutboxWriter = null) : IWorkspaceService
 {
     public async Task<WorkspaceDto> CreateAsync(int userId, CreateWorkspaceRequest request, CancellationToken ct = default)
     {
@@ -54,7 +56,7 @@ public sealed class WorkspaceService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -67,16 +69,43 @@ public sealed class WorkspaceService(
                 FieldName: null,
                 EntityType: null,
                 OldValueJson: null,
-                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { workspace.Id, workspace.Name, workspace.OrganizationId })),
+                NewValueJson: JsonSerializer.Serialize(new { workspace.Id, workspace.Name, workspace.OrganizationId })),
             ct);
+            await PublishWorkspaceDomainAsync(
+                auditOutboxWriter,
+                DomainRouting.CoreWorkspaceVerbCreated,
+                "created",
+                workspace.Id,
+                workspace.OrganizationId,
+                userId,
+                workspace.Name,
+                ct);
         }
 
-        return new WorkspaceDto(workspace.Id, workspace.Name, 1, adminRole.Name);
+        return new WorkspaceDto(workspace.Id, workspace.OrganizationId, workspace.Name, 1, adminRole.Name);
     }
 
-    public async Task<List<WorkspaceDto>> GetByUserAsync(int userId, CancellationToken ct = default)
+    public async Task<List<WorkspaceDto>> GetByUserAsync(int userId, int? organizationId, CancellationToken ct = default)
     {
-        var workspaces = await workspaceRepository.GetByUserIdAsync(userId, ct);
+        List<Workspace> workspaces;
+        if (organizationId.HasValue)
+        {
+            var orgMembership = await orgMemberRepository.GetAsync(userId, organizationId.Value, ct);
+            if (orgMembership is null)
+            {
+                throw new ForbiddenAccessException("You are not a member of this organization.");
+            }
+
+            workspaces = await workspaceRepository.GetByUserIdAndOrganizationIdAsync(
+                userId,
+                organizationId.Value,
+                ct);
+        }
+        else
+        {
+            workspaces = await workspaceRepository.GetByUserIdAsync(userId, ct);
+        }
+
         var result = new List<WorkspaceDto>();
 
         foreach (var ws in workspaces)
@@ -84,7 +113,7 @@ public sealed class WorkspaceService(
             var membership = await memberRepository.GetAsync(userId, ws.Id, ct);
             var members = await memberRepository.GetByWorkspaceIdAsync(ws.Id, ct);
             var memberCount = members.Count(m => !m.IsArchived);
-            result.Add(new WorkspaceDto(ws.Id, ws.Name, memberCount, membership?.Role?.Name));
+            result.Add(new WorkspaceDto(ws.Id, ws.OrganizationId, ws.Name, memberCount, membership?.Role?.Name));
         }
 
         return result;
@@ -100,7 +129,12 @@ public sealed class WorkspaceService(
         var membership = await memberRepository.GetAsync(userId, workspaceId, ct);
         var members = await memberRepository.GetByWorkspaceIdAsync(workspaceId, ct);
 
-        return new WorkspaceDto(workspace.Id, workspace.Name, members.Count(m => !m.IsArchived), membership?.Role?.Name);
+        return new WorkspaceDto(
+            workspace.Id,
+            workspace.OrganizationId,
+            workspace.Name,
+            members.Count(m => !m.IsArchived),
+            membership?.Role?.Name);
     }
 
     public async Task UpdateAsync(int workspaceId, int userId, UpdateWorkspaceRequest request, CancellationToken ct = default)
@@ -117,7 +151,7 @@ public sealed class WorkspaceService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -129,9 +163,18 @@ public sealed class WorkspaceService(
                 Action: "workspace_updated",
                 FieldName: "name",
                 EntityType: null,
-                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Name = previousName }),
-                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Name = request.Name })),
+                OldValueJson: JsonSerializer.Serialize(new { Name = previousName }),
+                NewValueJson: JsonSerializer.Serialize(new { Name = request.Name })),
             ct);
+            await PublishWorkspaceDomainAsync(
+                auditOutboxWriter,
+                DomainRouting.CoreWorkspaceVerbUpdated,
+                "updated",
+                workspace.Id,
+                workspace.OrganizationId,
+                userId,
+                workspace.Name,
+                ct);
         }
     }
 
@@ -149,7 +192,7 @@ public sealed class WorkspaceService(
 
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
             new AuditEventContract(
                 EventId: Guid.NewGuid(),
                 SchemaVersion: 1,
@@ -161,10 +204,52 @@ public sealed class WorkspaceService(
                 Action: "workspace_archived",
                 FieldName: "is_archived",
                 EntityType: null,
-                OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = false }),
-                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = true })),
+                OldValueJson: JsonSerializer.Serialize(new { IsArchived = false }),
+                NewValueJson: JsonSerializer.Serialize(new { IsArchived = true })),
             ct);
+            await PublishWorkspaceDomainAsync(
+                auditOutboxWriter,
+                DomainRouting.CoreWorkspaceVerbArchived,
+                "archived",
+                workspace.Id,
+                workspace.OrganizationId,
+                userId,
+                workspace.Name,
+                ct);
         }
+    }
+
+    private static Task PublishWorkspaceDomainAsync(
+        IOutboxWriter outboxWriter,
+        string routingVerb,
+        string lifecycleAction,
+        int workspaceId,
+        int organizationId,
+        int actorUserId,
+        string? workspaceName,
+        CancellationToken ct)
+    {
+        var sagaInstanceId = Guid.NewGuid();
+        var envelope = new DomainMessageEnvelope(
+            SchemaVersion: MessagingSchemaVersions.V1,
+            MessageId: Guid.NewGuid(),
+            CorrelationId: sagaInstanceId,
+            SagaInstanceId: sagaInstanceId,
+            CausationId: null,
+            OccurredAtUtc: DateTimeOffset.UtcNow,
+            SourceService: "core",
+            PayloadTypeName: DomainPayloadTypes.WorkspaceLifecycleV1,
+            PayloadJson: JsonSerializer.Serialize(new WorkspaceLifecyclePayloadV1(
+                lifecycleAction,
+                workspaceId,
+                organizationId,
+                actorUserId,
+                workspaceName)));
+
+        return outboxWriter.EnqueueDomainAsync(
+            DomainRouting.RoutingKeyCoreWorkspace(routingVerb),
+            envelope,
+            ct);
     }
 
     private async Task<UserRoleWorkspace> RequireMembership(int userId, int workspaceId, CancellationToken ct)

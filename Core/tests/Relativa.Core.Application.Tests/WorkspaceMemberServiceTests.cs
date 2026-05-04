@@ -21,6 +21,14 @@ public sealed class WorkspaceMemberServiceTests
 
     public WorkspaceMemberServiceTests()
     {
+        _workspaceRepo
+            .Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) =>
+                new Workspace { Id = id, OrganizationId = 1, Name = "Test WS", IsArchived = false });
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleOrganization?)null);
+
         _sut = new WorkspaceMemberService(
             _memberRepo.Object,
             _roleRepo.Object,

@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\Authentication\src\Relativa.Authentication.Application\Relativa.Authentication.Application.csproj" />
     <ProjectReference Include="..\Relativa.Core.Domain\Relativa.Core.Domain.csproj" />
     <ProjectReference Include="..\..\..\Persistence\src\Relativa.Persistence\Relativa.Persistence.csproj" />
   </ItemGroup>

@@ -1,4 +1,5 @@
 import { api } from '@/api/http';
+import type { UserProfile } from '@/api/auth';
 
 /* ── DTOs ───────────────────────────────────────────────── */
 
@@ -25,10 +26,20 @@ export interface OrgRoleDto {
   permissions: { id: number; name: string }[];
 }
 
+export interface CreateOrgUserRequest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  orgRoleId?: number;
+}
+
 export interface OrgInvitationDto {
   id: number;
+  organizationId: number;
   email: string;
   organizationName: string;
+  roleName: string;
   status: string;
   token: string;
   expiresAt: string;
@@ -44,20 +55,11 @@ export interface JoinRequestDto {
   createdAt: string;
   reviewedByName: string | null;
   reviewedAt: string | null;
-}
-
-export interface MyWorkspaceInvitationDto {
-  id: number;
-  email: string;
-  workspaceName: string;
-  roleName: string;
-  status: string;
-  token: string;
-  expiresAt: string;
+  organizationId: number;
+  organizationName: string;
 }
 
 export interface MyInvitationsDto {
-  workspaceInvitations: MyWorkspaceInvitationDto[];
   organizationInvitations: OrgInvitationDto[];
 }
 
@@ -94,12 +96,43 @@ export const orgApi = {
       roleId,
     });
   },
+  createOrgUser(
+    orgId: number,
+    payload: CreateOrgUserRequest,
+  ): Promise<UserProfile> {
+    return api.post<UserProfile>(
+      `${CORE}/organizations/${orgId}/users`,
+      payload.orgRoleId ? { ...payload } : {
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        email: payload.email,
+        password: payload.password,
+      },
+    );
+  },
+  updateOrgUserProfile(
+    orgId: number,
+    userId: number,
+    payload: { firstName: string; lastName: string },
+  ): Promise<UserProfile> {
+    return api.patch<UserProfile>(
+      `${CORE}/organizations/${orgId}/users/${userId}`,
+      { ...payload },
+    );
+  },
+  deleteOrgUser(orgId: number, userId: number): Promise<void> {
+    return api.del(`${CORE}/organizations/${orgId}/users/${userId}`);
+  },
 
   /* Invitations */
-  invite(orgId: number, email: string): Promise<OrgInvitationDto> {
+  invite(
+    orgId: number,
+    email: string,
+    orgRoleId?: number,
+  ): Promise<OrgInvitationDto> {
     return api.post<OrgInvitationDto>(
       `${CORE}/organizations/${orgId}/invitations`,
-      { email },
+      orgRoleId ? { email, orgRoleId } : { email },
     );
   },
   listInvitations(orgId: number): Promise<OrgInvitationDto[]> {
@@ -110,11 +143,13 @@ export const orgApi = {
   cancelInvitation(orgId: number, invId: number): Promise<void> {
     return api.del(`${CORE}/organizations/${orgId}/invitations/${invId}`);
   },
+  resendInvitation(orgId: number, invId: number): Promise<OrgInvitationDto> {
+    return api.post<OrgInvitationDto>(
+      `${CORE}/organizations/${orgId}/invitations/${invId}/resend`,
+    );
+  },
   acceptOrgInvitation(token: string): Promise<void> {
     return api.post(`${CORE}/invitations/accept-org`, { token });
-  },
-  acceptWorkspaceInvitation(token: string): Promise<void> {
-    return api.post(`${CORE}/invitations/accept`, { token });
   },
 
   /* Join requests */
@@ -150,5 +185,8 @@ export const orgApi = {
   /* Combined invitations (my inbox) */
   myInvitations(): Promise<MyInvitationsDto> {
     return api.get<MyInvitationsDto>(`${CORE}/invitations/mine`);
+  },
+  myOrganizationInvitations(): Promise<OrgInvitationDto[]> {
+    return api.get<OrgInvitationDto[]>(`${CORE}/invitations/mine/organization`);
   },
 };

@@ -4,6 +4,7 @@ import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 
 const MainLayout = () => import('@/layouts/MainLayout.vue');
+const WorkspaceLayout = () => import('@/layouts/WorkspaceLayout.vue');
 const LoginView = () => import('@/views/LoginView.vue');
 const RegisterView = () => import('@/views/RegisterView.vue');
 const HomeView = () => import('@/views/HomeView.vue');
@@ -12,12 +13,18 @@ const OnboardingView = () => import('@/views/OnboardingView.vue');
 const WorkspaceSelectorView = () =>
   import('@/views/WorkspaceSelectorView.vue');
 const MembersView = () => import('@/views/MembersView.vue');
+const MemberView = () => import('@/views/MemberView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
 const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
 const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
-const InvitationsView = () => import('@/views/InvitationsView.vue');
+const AuditLogView = () => import('@/views/AuditLogView.vue');
+const AccountSettingsView = () => import('@/views/AccountSettingsView.vue');
+
+const orgMeta = { navScope: 'org' as const, skipWorkspaceCheck: true };
+const userMeta = { navScope: 'user' as const, skipWorkspaceCheck: true };
+const workspaceMeta = { navScope: 'workspace' as const, skipWorkspaceCheck: true };
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -50,42 +57,72 @@ const router = createRouter({
       path: '/',
       component: MainLayout,
       children: [
-        { path: '', name: 'home', component: HomeView, meta: { roles: [] } },
+        {
+          path: '',
+          name: 'home',
+          component: HomeView,
+          meta: { ...orgMeta, roles: [] },
+        },
         {
           path: 'members',
           name: 'members',
           component: MembersView,
+          meta: orgMeta,
+        },
+        {
+          path: 'members/:memberUserId(\\d+)',
+          name: 'member',
+          component: MemberView,
+          meta: orgMeta,
         },
         {
           path: 'workspaces',
           name: 'workspaces',
           component: WorkspacesView,
+          meta: orgMeta,
         },
         {
-          path: 'workspaces/:id/members',
-          name: 'workspace-members',
-          component: WorkspaceMembersView,
+          path: 'audit-log',
+          name: 'audit-log',
+          component: AuditLogView,
+          meta: orgMeta,
         },
         {
-          path: 'workspaces/:id/entities',
-          name: 'workspace-entities',
-          component: EntitiesView,
+          path: 'account',
+          name: 'account',
+          component: AccountSettingsView,
+          meta: userMeta,
         },
         {
-          path: 'workspaces/:id/entities/new',
-          name: 'workspace-entity-create',
-          component: EntityCreateForm,
-        },
-        {
-          path: 'invitations',
-          name: 'invitations',
-          component: InvitationsView,
-        },
-        {
-          path: 'graph',
-          name: 'graph',
-          component: GraphView,
-          meta: { roles: ['User', 'Admin', 'Analyst'] },
+          path: 'w/:workspaceId(\\d+)',
+          component: WorkspaceLayout,
+          meta: workspaceMeta,
+          children: [
+            {
+              path: 'entities',
+              name: 'workspace-entities',
+              component: EntitiesView,
+              meta: workspaceMeta,
+            },
+            {
+              path: 'entities/new',
+              name: 'workspace-entity-create',
+              component: EntityCreateForm,
+              meta: workspaceMeta,
+            },
+            {
+              path: 'members',
+              name: 'workspace-members',
+              component: WorkspaceMembersView,
+              meta: workspaceMeta,
+            },
+            {
+              path: 'graph',
+              name: 'graph',
+              component: GraphView,
+              meta: { ...workspaceMeta, roles: ['User', 'Admin', 'Analyst'] },
+            },
+          ],
         },
       ],
     },
@@ -123,20 +160,22 @@ router.beforeEach(async (to) => {
     }
   }
 
-  if (
-    auth.isAuthenticated &&
-    !to.meta.public &&
-    !to.meta.skipWorkspaceCheck &&
-    !wsStore.currentWorkspaceId
-  ) {
-    await wsStore.fetchWorkspaces();
-    const only =
-      wsStore.workspaces.length === 1 ? wsStore.workspaces[0] : null;
-    if (only) {
-      wsStore.setCurrentWorkspace(only.id);
-    } else {
-      return { name: 'workspace-select' };
+  if (auth.isAuthenticated && !to.meta.public && to.params.workspaceId) {
+    const wsId = Number(to.params.workspaceId);
+    if (!Number.isFinite(wsId) || wsId <= 0) {
+      return { name: 'workspaces' };
     }
+    if (!orgStore.organizations.length) {
+      await orgStore.fetchOrganizations();
+    }
+    if (!orgStore.currentOrgId) {
+      return { name: 'onboarding' };
+    }
+    await wsStore.fetchWorkspaces(orgStore.currentOrgId);
+    if (!wsStore.workspaces.some((w) => w.id === wsId)) {
+      return { name: 'workspaces' };
+    }
+    wsStore.setCurrentWorkspace(wsId);
   }
 
   const required = (to.meta.roles as string[] | undefined) ?? [];

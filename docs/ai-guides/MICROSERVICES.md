@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline implemented)
+> **Last verified:** 2026-05-04 (Core org user admin: create supports optional `orgRoleId`; cross-user archive enforces same email domain; org permission denials aligned to 403)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -13,10 +13,10 @@
 | Gateway | 8080 | .NET 10, YARP | Functional |
 | Authentication | 8081 | .NET 10, JWT, BCrypt, FluentValidation | Functional |
 | Core | 8082 | .NET 10, EF Core | Functional (org + workspace RBAC) |
-| Graph | 8083 | .NET 10, SignalR | Stub |
+| Graph | 8083 | .NET 10, SignalR, RabbitMQ | Stub hub + choreography consumer (broadcasts lifecycle envelope) |
 | Audit | 8086 | .NET 10, EF Core, RabbitMQ | Functional |
 | Migration | -- | .NET 10, EF Core (console) | Functional |
-| ML | 8084 | Django 5.1, DRF | Stub |
+| ML | 8084 | Django 5.1, DRF, pika | Stub API + `run_domain_consumer` choreography subscriber (logs only) |
 | Client | 3000 | Vue 3, Vite | Scaffold |
 
 ---
@@ -51,12 +51,14 @@
 
 **JWT-required auth routes** (not anonymous):
 - `GET /auth/api/v1/auth/me`
+- `PATCH /auth/api/v1/auth/me`
+- `DELETE /auth/api/v1/auth/me`
 
 ### Status: Functional
 
 YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issuer, audience, signing key, lifetime), and gateway-owned CORS all working. Gateway CORS is configured via `Cors:Origins` (allowlist + credentials by default) with optional local dev override `Cors:AllowAnyOriginForDev=true` (wildcard origin without credentials). Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
 
-**Identity forwarding:** a YARP request transform runs on every proxied request. It unconditionally removes any incoming `X-User-Id` / `X-User-Email` (so clients cannot spoof identity), then, if the request is authenticated, re-adds them from the validated `ClaimsPrincipal` (`sub` → `X-User-Id`, `email` → `X-User-Email`). Downstream services (Core today; Graph/ML/Audit in the future) trust these headers and do **not** re-validate JWTs. This keeps JWT handling centralized in the Gateway (single-responsibility) and avoids duplicating JWT config across every service.
+**Identity forwarding:** a YARP request transform runs on every proxied request. It unconditionally removes any incoming `X-User-Id` / `X-User-Email` (so clients cannot spoof identity), then, if the request is authenticated, re-adds them from the validated `ClaimsPrincipal` (`sub` → `X-User-Id`, `email` → `X-User-Email`). **Core** trusts these headers and does **not** parse JWTs. The **Audit** service validates JWTs independently (same issuer/audience/key as Gateway) and resolves the caller from `sub` or `X-User-Id`. Graph/ML may follow either pattern.
 
 ### Key Files
 
@@ -78,26 +80,29 @@ YARP routing with global `.RequireAuthorization()`, JWT Bearer validation (issue
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password, returns user DTO + Location header |
-| POST | `/api/v1/auth/login` | None | Validates credentials, returns `{ accessToken, expiresAt }` |
+| POST | `/api/v1/auth/register` | None | Creates user with bcrypt-hashed password (email stored lowercase), returns user DTO + Location header. Same normalized email is allowed if the only prior row is soft-archived (`is_archived`). |
+| POST | `/api/v1/auth/login` | None | Validates credentials (email matched lowercase), returns `{ accessToken, expiresAt }` |
 | GET | `/api/v1/auth/me` | JWT | Returns authenticated user's profile `{ id, email, firstName, lastName }` from JWT `sub` claim |
+| PATCH | `/api/v1/auth/me` | JWT | Updates authenticated user's first and last name |
+| DELETE | `/api/v1/auth/me` | JWT | Soft-archives the authenticated user (`is_archived`) |
 | GET | `/health` | None | EF Core DB health check |
 | GET | `/scalar/v1` | None | Scalar interactive API docs |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
 ### Status: Functional
 
-Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, duplicate email to 409.
+Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are normalized to lowercase on register and login. JWT includes `sub`, `email`, and `jti` claims (role and permissions are **not** embedded -- they are resolved per-request by Core using organization/workspace membership). FluentValidation on login and register endpoints. GlobalExceptionHandler maps `ValidationException` to 400, `UnauthorizedAccessException` to 401, `KeyNotFoundException` to 404, duplicate **active** user email to 409 (including PostgreSQL unique violations on concurrent insert of two non-archived rows with the same email).
 
 **Not yet implemented:** token refresh, token blacklisting.
 
-**Audit publishing:** Authentication now writes audit events to `audit_outbox` and a background dispatcher publishes them to RabbitMQ (`audit.events`) in fire-and-forget mode.
+**Audit publishing:** Authentication writes payloads to `audit_outbox`; `AuditOutboxDispatcher` multiplexes publishes to **`audit.events`** routing keys prefixed with `audit.*` (`RabbitMqAudit:Exchange`). Domain choreography publishing is delegated to **`relativa.domain`**, but Auth only emits audit payloads today (`IOutboxWriter.EnqueueDomainAsync` intentionally no-op).
 
 ### Key Files
 
 - `Authentication/src/Relativa.Authentication/Program.cs` -- DI, middleware, endpoint mapping
 - `Authentication/src/Relativa.Authentication/Endpoints/AuthEndpoints.cs` -- route definitions
-- `Authentication/src/Relativa.Authentication.Application/Services/AuthService.cs` -- business logic
+- `Authentication/src/Relativa.Authentication.Application/Services/AuthService.cs` -- login/profile; register delegates to `UserProvisioningService`
+- `Authentication/src/Relativa.Authentication.Application/Services/UserProvisioningService.cs` -- shared user create/update/archive + audit
 - `Authentication/src/Relativa.Authentication.Application/DTOs/` -- request/response DTOs (includes `UserProfileDto`)
 - `Authentication/src/Relativa.Authentication.Application/Interfaces/IAuthService.cs`
 - `Authentication/src/Relativa.Authentication.Application/Validators/` -- FluentValidation rules
@@ -106,6 +111,8 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 - `Authentication/src/Relativa.Authentication.Infrastructure/Repositories/UserRepository.cs`
 - `Authentication/src/Relativa.Authentication.Infrastructure/Services/JwtTokenService.cs`
 - `Authentication/src/Relativa.Authentication.Infrastructure/Services/BcryptPasswordHasher.cs`
+- `Authentication/src/Relativa.Authentication.Infrastructure/Services/Audit/OutboxWriter.cs` — transactional outbox enqueue (audit payloads)
+- `Authentication/src/Relativa.Authentication.Infrastructure/Services/Audit/AuditOutboxDispatcher.cs` — RabbitMQ dispatcher using `Messaging/src/Relativa.Messaging` helpers (`RabbitMqPublishingOptions.ConfigurationSectionKey = "RabbitMqAudit"`)
 
 ---
 
@@ -135,6 +142,14 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | DELETE | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove member from organization |
 | PUT | `/api/v1/organizations/{id}/members/{userId}/role` | JWT + `assign_org_roles` | Change member's organization role |
 
+### Endpoints -- Organization users (admin provisioning)
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` (and `assign_org_roles` when non-default role requested) | Create user account (bcrypt password), add to org with selected role (`orgRoleId?`, default `org_member`); 201 + Location |
+| PATCH | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's first/last name (not self; use Auth `/me`) |
+| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (soft-delete) only when caller and target share the same email domain |
+
 ### Endpoints -- Organization Join Requests
 
 | Method | Path | Auth | Behavior |
@@ -148,10 +163,11 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | Invite user to organization by email |
-| GET | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | List pending org invitations |
-| DELETE | `/api/v1/organizations/{id}/invitations/{invId}` | JWT + `invite_to_org` | Cancel org invitation |
-| POST | `/api/v1/invitations/accept-org` | JWT + matching email | Accept organization invitation |
+| POST | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` (+ `assign_org_roles` for non-default role) | Invite user by email. Body: `{ email, orgRoleId? }`. Default role is `org_member`; specifying any other role additionally requires `assign_org_roles`. Token returned in response (no real email). |
+| GET | `/api/v1/organizations/{id}/invitations` | JWT + `invite_to_org` | List pending, non-expired org invitations (includes `roleName`) |
+| DELETE | `/api/v1/organizations/{id}/invitations/{invId}` | JWT + `invite_to_org` | Cancel org invitation (sets status `Cancelled`) |
+| POST | `/api/v1/organizations/{id}/invitations/{invId}/resend` | JWT + `invite_to_org` | Rotate the token and extend `expires_at` on a pending invitation; returns the refreshed DTO |
+| POST | `/api/v1/invitations/accept-org` | JWT + matching email | Accept organization invitation. Adds user with the `OrgRoleId` recorded on the invitation. |
 
 ### Endpoints -- Organization Roles
 
@@ -162,18 +178,19 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | PUT | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Update custom org role |
 | DELETE | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Delete custom org role |
 
-### Endpoints -- Combined Invitations
+### Endpoints -- Combined Invitations (inbox)
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| GET | `/api/v1/invitations/mine` | JWT | List all pending invitations (both workspace + org) for the user |
+| GET | `/api/v1/invitations/mine` | JWT | Returns `{ organizationInvitations: [...] }` — pending org invitations for the caller's email. |
+| GET | `/api/v1/invitations/mine/organization` | JWT | Same data as flat `OrgInvitationDto[]` (convenience alias). |
 
 ### Endpoints -- Workspaces
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | POST | `/api/v1/workspaces` | JWT + `create_workspaces` (org perm) | Create workspace within an organization (requires `organizationId`) |
-| GET | `/api/v1/workspaces` | JWT | List workspaces for authenticated user |
+| GET | `/api/v1/workspaces` | JWT | List workspaces for the authenticated user (each item includes `organizationId`). Optional query **`organizationId`**: restrict to workspaces in that org; caller must be an org member or **403 Forbidden**. Omit the query to list all workspaces the user belongs to (any org). |
 | GET | `/api/v1/workspaces/{id}` | JWT + ws membership | Get workspace details |
 | PUT | `/api/v1/workspaces/{id}` | JWT + `manage_ws_settings` | Update workspace name |
 | DELETE | `/api/v1/workspaces/{id}` | JWT + ws_admin role | Archive workspace |
@@ -183,18 +200,9 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/api/v1/workspaces/{id}/members` | JWT + ws membership | List workspace members |
-| POST | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` | Add an org member directly to the workspace |
+| POST | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` **or** org `manage_org_workspace_members` on parent org | Add an existing org member to the workspace (`{ userId, roleId }`). Caller need not be a workspace member when using the org-level permission. |
 | PUT | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `assign_ws_roles` | Change a member's workspace role |
-| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` (or self) | Remove a member |
-
-### Endpoints -- Workspace Invitations
-
-| Method | Path | Auth | Behavior |
-|---|---|---|---|
-| POST | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | Invite user by email (returns token in response) |
-| GET | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | List pending invitations |
-| DELETE | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `invite_to_workspace` | Cancel invitation |
-| POST | `/api/v1/invitations/accept` | JWT + matching email | Accept workspace invitation by token |
+| DELETE | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` **or** org `manage_org_workspace_members` (or self) | Remove a member |
 
 ### Endpoints -- Workspace Roles
 
@@ -235,22 +243,29 @@ Login, register, and `/me` work end-to-end. JWT includes `sub`, `email`, and `jt
 | GET | `/scalar/v1` | None | Scalar interactive API docs (dev only) |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
 
-### Status: Functional (organization + workspace RBAC + entity CRUD + audit outbox publishing implemented)
+### Status: Functional (organization + workspace RBAC + entity CRUD + transactional outbox for audit **and choreography** implemented)
 
-Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, invitations, roles), the split RBAC permission model, workspace-scoped entity CRUD, and audit outbox publishing are functional.
+Full clean-architecture layers are implemented: Domain (repository interfaces), Application (services, DTOs, validators), Infrastructure (EF repositories, contexts). Organization management (CRUD, members, join requests, invitations, roles), workspace management (CRUD, members, roles), the split RBAC permission model, workspace-scoped entity CRUD are functional.
+
+**Outbox choreography pilot:** workspace create/update/archive now fan out **`DomainMessageEnvelope`** + `WorkspaceLifecyclePayloadV1` to routing keys `core.workspace.created|updated|archived`. Audit rows continue to enqueue in parallel (`AuditEventContract`).
 
 **Identity handling:** Core has no JWT/authentication middleware (no `AddJwtBearer`, no `UseAuthentication`) and no local CORS policy; browser CORS is enforced at Gateway. Core reads the caller's user id from the `X-User-Id` request header that the Gateway injects after validating the JWT, and the email from `X-User-Email` on invitation-accept flows. `WorkspaceEndpoints.GetUserId(HttpContext)` / `GetUserEmail(HttpContext)` are the shared helpers; a missing header throws `UnauthorizedAccessException` → 401. Core must therefore only be reachable through the Gateway.
+
+**Error contract:** `Core/src/Relativa.Core/Middleware/GlobalExceptionHandler.cs` returns JSON `{ status, title, detail }`. Map: `ValidationException` / `ArgumentException` → **400**; `UnauthorizedAccessException` → **401**; `ForbiddenAccessException` → **403**; `KeyNotFoundException` → **404**; `InvalidOperationException` → **409**; other → **500**. Application services (including `WorkspaceMemberService`, `OrgInvitationService`, `JoinRequestService`, `OrganizationUserAdminService`, `OrganizationService`) throw only those types for handled paths so clients never get opaque 500s for permission or conflict cases. Organization permission denials are now raised as **403** (`ForbiddenAccessException`) rather than **401**. The Vue client uses `normalizeError` / `useApiErrorHandler().notify` and `gatewayFetch` prefers **`detail`** over `title` for the thrown `ApiError.message` so toast text matches the server message.
 
 ### Key Files
 
 - `Core/src/Relativa.Core/Program.cs` -- DI wiring, endpoint mapping
-- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints`, `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
-- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `InvitationService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `EntityTypeService`, `EntityService`
+- `Core/src/Relativa.Core/Middleware/GlobalExceptionHandler.cs` — maps application exceptions to HTTP status + `{ status, title, detail }` JSON
+- `Core/src/Relativa.Core/Endpoints/` -- `WorkspaceEndpoints`, `MemberEndpoints`, `InvitationEndpoints` (accept-org + my inbox only), `RoleEndpoints`, `OrganizationEndpoints`, `OrgMemberEndpoints`, `OrgInvitationEndpoints`, `OrgRoleEndpoints`, `JoinRequestEndpoints`, `EntityTypeEndpoints`, `EntityEndpoints`
+- `Core/src/Relativa.Core.Application/Services/` -- `WorkspaceService`, `WorkspaceMemberService`, `RoleService`, `OrganizationService`, `OrgMemberService`, `OrgInvitationService`, `OrgRoleService`, `JoinRequestService`, `EntityTypeService`, `EntityService`
 - `Core/src/Relativa.Core.Application/DTOs/` -- request/response DTOs organized by feature
 - `Core/src/Relativa.Core.Application/Validators/` -- FluentValidation rules
 - `Core/src/Relativa.Core.Domain/Interfaces/` -- repository interfaces
 - `Core/src/Relativa.Core.Infrastructure/Data/RelativaDbContext.cs` -- full DbSet registration
 - `Core/src/Relativa.Core.Infrastructure/Repositories/` -- EF repository implementations
+- `Core/src/Relativa.Core.Infrastructure/Services/Audit/OutboxWriter.cs` — persists `audit_outbox` rows for audit **and choreography**
+- `Core/src/Relativa.Core.Infrastructure/Services/Audit/AuditOutboxDispatcher.cs` — background publisher (uses `Relativa.Messaging`)
 
 ---
 
@@ -270,13 +285,14 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 | WebSocket | `/hubs/graph` | None | SignalR hub (`GraphHub`) |
 | GET | `/scalar/v1` | None | Scalar (dev only) |
 
-### Status: Stub
+### Status: Stub (consumer active)
 
-`GraphHub` exists but `OnConnectedAsync` only calls `base`. No graph data queries, no RBAC filtering, no real-time push logic.
+SignalR lifecycle events are hydrated from choreography: **`DomainEventConsumerHostedService`** binds queue `domain.events.graph.workspace.v1` to **`relativa.domain`** (`core.workspace.*`), deduplicates inserts into `rabbitmq_processed_delivery`, and broadcasts **`domain.workspace.lifecycle.v1`** to all connected hubs. Actual graph-domain projection + RBAC on hub groups remain TODO.
 
 ### Key Files
 
-- `Graph/src/Relativa.Graph/Program.cs`
+- `Graph/src/Relativa.Graph/Program.cs` — configures Postgres `NpgsqlDataSource`, choreography consumer options (`RabbitMqGraph`)
+- `Graph/src/Relativa.Graph/Messaging/` — consumer + options + SignalR constants
 - `Graph/src/Relativa.Graph/Hubs/GraphHub.cs`
 
 ---
@@ -294,17 +310,20 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/` | None | Returns `{"service":"relativa-audit"}` |
-| GET | `/audit-log` | Policy `AuditReaders` (role = Admin or Analyst) | Returns empty array `[]` |
+| GET | `/audit-log` | JWT + policy `AuditReaders` | Paginated audit rows + `filterContext`; workspace/org RBAC (see [AUDIT-LOG-API.md](AUDIT-LOG-API.md)) |
+| GET | `/entities/{entityId}/audit-log` | JWT + policy `AuditReaders` | Same as `entity_type=entity` with fixed `entity_id`; **`workspace_id`** query required |
 
 ### Status: Functional
 
-JWT Bearer is registered (stub validation settings retained for now), Audit now consumes RabbitMQ audit events (`audit.#`) and persists them into `entity_audit_log`, `workspace_audit_log`, `organization_audit_log`, and `user_audit_log` with idempotency tracking (`audit_processed_event`). `/audit-log` now supports filtered reads by `scope`, `targetId`, `actorUserId`, and date range.
+JWT Bearer uses full validation (issuer, audience, signing key, lifetime) aligned with the Gateway. The service also consumes RabbitMQ audit events (`audit.#`) and persists to `entity_audit_log`, `workspace_audit_log`, `organization_audit_log`, and `user_audit_log` with idempotency (`audit_processed_event`). Reads use EF-only queries, FluentValidation, and `GlobalExceptionHandler` (same error shape as Core).
 
 ### Key Files
 
-- `Audit/src/Relativa.Audit/Program.cs` -- JWT config, authorization policy, endpoints
-- `Audit/src/Relativa.Audit/Services/AuditEventConsumer.cs` -- RabbitMQ consumer + persistence mapping
-- `Audit/src/Relativa.Audit/Data/AuditDbContext.cs` -- audit persistence context
+- `Audit/src/Relativa.Audit/Program.cs` -- JWT, DI, exception handler, endpoint mapping
+- `Audit/src/Relativa.Audit/Endpoints/AuditEndpoints.cs` -- `/audit-log` + entity-scoped route
+- `Audit/src/Relativa.Audit/Services/AuditLogReadService.cs` -- list + RBAC + enriched DTOs
+- `Audit/src/Relativa.Audit/Services/AuditEventConsumer.cs` -- RabbitMQ consumer + persistence
+- `Audit/src/Relativa.Audit/Data/AuditDbContext.cs` -- shared persistence model
 
 ---
 
@@ -338,7 +357,7 @@ None -- this is a console application, not a web service.
 
 **Purpose:** Machine learning service for scoring deals (closure probability, churn risk). Built on Django + DRF with planned Celery task scheduling.
 
-**Stack:** Python 3.11, Django 5.1, Django REST Framework, scikit-learn (planned), Celery + Redis (configured but inactive)
+**Stack:** Python 3.12, Django 5.1, Django REST Framework, scikit-learn (planned), Celery + Redis (configured but inactive), pika (RabbitMQ choreography consumer)
 **Project:** `ML/`
 **Port:** 8084
 
@@ -348,14 +367,18 @@ None -- this is a console application, not a web service.
 |---|---|---|---|
 | POST | `/api/ml/recalculate/` | None | Returns `{"status":"accepted","detail":"stub"}` |
 
-### Status: Stub
+### Status: Stub (choreography sidecar enabled)
 
-The endpoint exists but returns a hardcoded stub. No ML models, no Celery tasks, no Redis broker in Docker Compose. `settings.py` has Celery config with a commented-out beat schedule for nightly recalculation at 02:00 UTC.
+Docker runs `manage.py run_domain_consumer` concurrently with Django (see `ML/scripts/run_api_and_consumer.sh`). The subscriber binds `domain.events.ml.workspace.v1` to `relativa.domain` for `core.workspace.*`, logs payloads, and uses `rabbitmq_processed_delivery` for idempotency. HTTP API stub remains unchanged.
+
+API endpoint still returns stub body. Celery beat remains commented-out in `settings.py`.
 
 ### Key Files
 
-- `ML/ml_api/views.py` -- stub endpoint
-- `ML/ml_api/urls.py` -- URL routing
+- `ML/ml_api/management/commands/run_domain_consumer.py` — Rabbit consumer (blocking)
+- `ML/ml_api/views.py` — REST stub handlers
+- `ML/ml_api/urls.py` — URL routing
+- `ML/scripts/run_api_and_consumer.sh` — runs consumer + Django server in Docker
 - `ML/relativa_ml/` -- future ML model package
 - `ML/pyproject.toml` -- dependencies
 

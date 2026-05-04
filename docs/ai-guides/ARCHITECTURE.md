@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-01 (RabbitMQ audit pipeline + outbox dispatchers added)
+> **Last verified:** 2026-05-04 (Core org-user-admin flow: optional role selection on create, same-domain guard for cross-user archive, org permission denials aligned to 403.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -18,6 +18,7 @@ flowchart LR
     ML["ML\n(Django)"]
     Audit["Audit"]
     PG["PostgreSQL 16"]
+    RMQ["RabbitMQ"]
 
     Browser -->|"HTTP / WS"| Gateway
     Gateway -->|"/auth/*"| Auth
@@ -27,9 +28,16 @@ flowchart LR
     Gateway -->|"/audit/*"| Audit
     Auth --> PG
     Core --> PG
+    Auth -->|outbox publish| RMQ
+    Core -->|outbox publish| RMQ
+    RMQ -->|audit.topic| Audit
+    RMQ -->|domain.topic| Graph
+    RMQ -->|domain.topic| ML
 ```
 
-All client traffic flows through the **Gateway**. Backend services do not call each other directly -- there is no message bus, no gRPC, no service-to-service HTTP. The Gateway strips path prefixes and forwards requests to upstream services by internal Docker DNS.
+All **browser** traffic flows through the **Gateway**. There is **no synchronous service-to-service HTTP**: backends do not call each other directly for domain work.
+
+**Relativa.Messaging (`Messaging/src/Relativa.Messaging/`)** is a tiny shared helper library (.NET): `RabbitMqPublishingOptions`, `RabbitMqExchangeRouter`, and `OutboxRabbitMqPublisher` for declaring the audit/domain topic exchanges and opening AMQP connections. Core and Authentication **publish** audit + choreography rows from the transactional `audit_outbox` table; Audit, Graph, and ML **consume** asynchronously (see Inter-Service Communication).
 
 ---
 
@@ -48,10 +56,10 @@ The project uses a **ports-and-adapters (Clean Architecture)** pattern. Each ser
 
 | Service | Host | Application | Domain | Infrastructure |
 |---|---|---|---|---|
-| **Authentication** | Implemented | Implemented (AuthService, DTOs, validators) | Implemented (interfaces only) | Implemented (AuthDbContext, repos, JWT, bcrypt) |
-| **Core** | Implemented (org, workspace, member, invitation, role, join-request, permission endpoints) | Implemented (OrganizationService, OrgMemberService, OrgInvitationService, OrgRoleService, JoinRequestService, WorkspaceService, WorkspaceMemberService, InvitationService, RoleService, DTOs, validators) | Implemented (repository interfaces, IWorkspaceContext) | Implemented (RelativaDbContext, repos, WorkspaceContext) |
+| **Authentication** | Implemented | Implemented (AuthService, UserProvisioningService, DTOs, validators) | Implemented (interfaces only) | Implemented (AuthDbContext, repos, JWT, bcrypt) |
+| **Core** | Implemented (org, workspace, member, invitation, role, join-request, permission, org-user-admin endpoints) | Implemented (+ `OrganizationUserAdminService`; references Authentication.Application for shared user writes) | Implemented (repository interfaces, IWorkspaceContext) | Implemented (RelativaDbContext, repos, WorkspaceContext, AuthDbContext + Auth repos for provisioning) |
 | **Gateway** | Implemented | N/A (single project) | N/A | N/A |
-| **Graph** | Implemented (stub hub) | N/A (single project) | N/A | N/A |
+| **Graph** | Implemented (stub hub + RabbitMQ choreography consumer) | N/A (single project) | N/A | Uses Postgres + Persistence contracts for idempotent inbox |
 | **Audit** | Implemented (stub) | N/A (single project) | N/A | N/A |
 
 Gateway, Graph, and Audit are single-project services with no layered split. When they grow, they should follow the same four-layer convention as Authentication.
@@ -91,33 +99,38 @@ All tables must satisfy **Third Normal Form**:
 
 **Path:** `Persistence/src/Relativa.Persistence/`
 
-This is a **.NET class library** (no solution, no runnable host) that holds the EF Core entity model shared across services. It is referenced via `ProjectReference` by Core, Authentication, and Migration.
+This is a **.NET class library** (no solution, no runnable host) that holds the EF Core entity model shared across services. It is referenced via `ProjectReference` by Core, Authentication, Migration, and Graph (Graph consumes only the Contracts + entity metadata it needs alongside SignalR choreography).
+
+**Related shared library:** `Messaging/src/Relativa.Messaging/` — RabbitMQ connection helpers reused by Authentication + Core infrastructure dispatchers.
 
 ### Contents
 
 | Directory / File | What it contains |
 |---|---|
-| `Entities/` | 21 entity classes (see list below) |
+| `Entities/` | Domain entities plus audit/outbox/choreography support types (see list below). |
 | `Configurations/` | EF Fluent API `IEntityTypeConfiguration<T>` classes for each entity |
-| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full 21-entity model) |
+| `ModelBuilderExtensions.cs` | Extension methods: `ApplyAuthEntityConfigurations` (applies `UserConfiguration` and ignores the two direct navigation targets `UserRoleWorkspace` + `UserRoleOrganization` to prevent EF Core convention from discovering the full RBAC graph) and `ApplyAllEntityConfigurations` (full model for Core/Migration contexts) |
 
-### Entity list (25 entities)
+### Soft delete (`is_archived`) vs. uniqueness (users)
+
+Several tables use `is_archived` instead of hard deletes for domain records. For **`users`**, email must stay unique among **active** accounts only: EF maps a **filtered** unique index on `email` with `HasFilter("\"is_archived\" = FALSE")`, and `IUserRepository.ExistsAsync` / `GetByEmailAsync` / `GetByIdAsync` treat archived rows as absent for registration and login. Archived rows remain for audit history; a new row may reuse the same normalized email after archive.
+
+### Entity list (domain + infra)
 
 | Entity | Table name | Notes |
 |---|---|---|
-| `User` | `users` | Credentials and profile. No `role_id` column (dropped). |
+| `User` | `users` | Credentials and profile. No `role_id` column (dropped). Partial unique index on `email` where `is_archived = false`. |
 | `Organization` | `organizations` | Top-level tenant boundary. |
 | `Workspace` | `workspaces` | Has `organization_id` FK (direct, no join table). |
 | `OrganizationRole` | `organization_roles` | Org-scoped roles (system + custom). |
 | `OrganizationRolePermission` | `organization_role_permissions` | Join between org roles and permissions. |
 | `UserRoleOrganization` | `user_role_organization` | Org membership: user + org + org role. |
-| `OrganizationJoinRequest` | `organization_join_requests` | Pending/approved/rejected requests to join an org. |
-| `OrganizationInvitation` | `organization_invitations` | Email-based invitations to join an org. |
+| `OrganizationJoinRequest` | `organization_join_requests` | Pending/approved/rejected requests to join an org. Partial unique index on `(organization_id, user_id) WHERE status='Pending'`. |
+| `OrganizationInvitation` | `organization_invitations` | Email-based invitations to join an org, targeting a specific `OrgRoleId`. Partial unique index on `(organization_id, lower(email)) WHERE status='Pending'`. |
 | `WorkspaceRole` | `workspace_roles` | Ws-scoped roles (system + custom). |
 | `WorkspaceRolePermission` | `workspace_role_permissions` | Join between ws roles and permissions. |
 | `UserRoleWorkspace` | `user_role_workspace` | Ws membership: user + workspace + ws role. |
-| `Permission` | `permissions` | Shared by both org and ws role-permission joins. 16 granular permissions. |
-| `WorkspaceInvitation` | `workspace_invitations` | Email-based invitations to join a workspace. |
+| `Permission` | `permissions` | Shared by both org and ws role-permission joins. Org-scoped includes `manage_org_workspace_members`; workspace-scoped excludes removed `invite_to_workspace` / `manage_ws_join_requests`. |
 | `EntityType` | `entity_type` | Named type discriminator (`client`, `deal`). Singular table name. |
 | `Entity` | `entity` | Business record typed by EntityType. Singular table name. |
 | `EntityWorkspace` | `entity_workspace` | Join between Entity and Workspace. Singular table name. |
@@ -130,6 +143,9 @@ This is a **.NET class library** (no solution, no runnable host) that holds the 
 | `WorkspaceAuditLog` | `workspace_audit_log` | Polymorphic audit log base class specialized for workspaces. |
 | `UserAuditLog` | `user_audit_log` | Polymorphic audit log base class specialized for users. |
 | `OrganizationAuditLog` | `organization_audit_log` | Polymorphic audit log base class specialized for organizations. |
+| `AuditOutboxMessage` | `audit_outbox` | Pending + published payloads for transactional outbox (audit + choreography). |
+| `AuditProcessedEvent` | `audit_processed_event` | Idempotency receipts for inbound audit payloads on the Audit consumer. |
+| `RabbitMqProcessedDelivery` | `rabbitmq_processed_delivery` | Idempotency receipts for choreography consumers keyed by Rabbit `MessageId` + `consumer_group`. |
 
 **Dropped in EAV migration:** `EntityProperty` (polymorphic hub), `PersonalDataPropertyValue`, `LocationPropertyValue`, `DealPropertyValue`. Their data is now stored as `EntityPropertyValue` rows. The deal→client association previously held as a FK in `DealPropertyValue.client_id` is now an `EntityRelationship` row of type `deal_client`.
 
@@ -142,8 +158,8 @@ Different services compose **different slices** of the entity model:
 | DbContext | Location | What it maps | Extension used |
 |---|---|---|---|
 | `AuthDbContext` | `Authentication/.../Infrastructure/Data/AuthDbContext.cs` | User only (other entities reachable via `User` navigation properties are cut with `Ignore<UserRoleWorkspace>()` + `Ignore<UserRoleOrganization>()`) | `ApplyAuthEntityConfigurations` |
-| `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | All 21 entities | `ApplyAllEntityConfigurations` |
-| `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | All 21 entities | `ApplyAllEntityConfigurations` |
+| `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | Full Persistence slice | `ApplyAllEntityConfigurations` |
+| `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | Full Persistence slice | `ApplyAllEntityConfigurations` |
 
 Migrations are owned by the **Migration** service. The migration assembly name is `Relativa.Migration`. Schema changes always go through `Migration/src/Relativa.Migration/Migrations/`.
 
@@ -164,7 +180,6 @@ This matrix defines which service is the **authoritative writer** for each table
 | `workspace_roles` | -- | **Read/Write** |
 | `workspace_role_permissions` | -- | **Read/Write** |
 | `user_role_workspace` | -- | **Read/Write** |
-| `workspace_invitations` | -- | **Read/Write** |
 | `permissions` | -- | **Read/Write** |
 | `entity_type` | -- | **Read/Write** |
 | `entity` | -- | **Read/Write** |
@@ -196,7 +211,6 @@ erDiagram
     OrganizationRole ||--o{ UserRoleOrganization : "assigned via"
     Workspace ||--o{ EntityWorkspace : contains
     Workspace ||--o{ UserRoleWorkspace : "has members"
-    Workspace ||--o{ WorkspaceInvitation : "has invites"
     Workspace ||--o{ WorkspaceRole : "scoped roles"
     WorkspaceRole ||--o{ WorkspaceRolePermission : grants
     WorkspaceRole ||--o{ UserRoleWorkspace : "assigned via"
@@ -224,14 +238,18 @@ erDiagram
 - **Split RBAC schema:** Organization roles and workspace roles are separate table hierarchies that share a common `permissions` table.
   - **Org path:** `User` → `UserRoleOrganization` → `OrganizationRole` → `OrganizationRolePermission` → `Permission`
   - **Ws path:** `User` → `UserRoleWorkspace` → `WorkspaceRole` → `WorkspaceRolePermission` → `Permission`
-- **16 granular permissions** in the shared `permissions` table:
-  - **7 org-scoped:** `manage_org_settings`, `invite_to_org`, `manage_join_requests`, `remove_org_members`, `assign_org_roles`, `manage_org_roles`, `create_workspaces`
-  - **9 ws-scoped:** `manage_ws_settings`, `invite_to_workspace`, `add_ws_members`, `remove_ws_members`, `assign_ws_roles`, `manage_ws_roles`, `edit_deals`, `view_deals`, `view_analytics`
+- **Granular permissions** in the shared `permissions` table (ids are migration-defined; count changes with seeds):
+  - **Org-scoped:** `manage_org_settings`, `invite_to_org`, `manage_join_requests`, `remove_org_members`, `assign_org_roles`, `manage_org_roles`, `create_workspaces`, **`manage_org_workspace_members`** (lets org admins add/remove users in any workspace of that org without workspace-scoped `add_ws_members` / `remove_ws_members`)
+  - **Workspace-scoped:** `manage_ws_settings`, `add_ws_members`, `remove_ws_members`, `assign_ws_roles`, `manage_ws_roles`, `manage_entities`, `view_entities`, `view_analytics` (workspace email invitations and workspace join requests were removed)
 - **7 default system roles:**
-  - **3 org roles:** `org_owner` (all 7 org perms), `org_admin` (subset), `org_member` (minimal)
-  - **4 ws roles:** `ws_admin` (all 9 ws perms), `ws_manager` (subset), `ws_analyst` (view-only), `ws_member` (minimal)
-- `OrganizationJoinRequest` tracks pending/approved/rejected requests from users wanting to join an org.
-- `OrganizationInvitation` tracks email-based invitations to join an org (parallel to `WorkspaceInvitation` for workspaces).
+  - **3 org roles:** `org_owner` / `org_admin` include `manage_org_workspace_members`; `org_member` is minimal
+  - **4 ws roles:** `ws_admin` (full workspace toolkit), `ws_manager` (subset incl. `add_ws_members`), `ws_analyst`, `ws_member`
+- **Organization invitation / join-request flows:**
+  - `OrganizationJoinRequest` — user-initiated; reviewed with `manage_join_requests`.
+  - `OrganizationInvitation` — admin-initiated; targets `OrgRoleId`; non-default roles require `assign_org_roles`.
+  - **Workspace membership:** Users are added via `POST /workspaces/{id}/members` (caller has `add_ws_members` on the workspace **or** `manage_org_workspace_members` on the parent org). No workspace invitation or workspace join-request tables.
+  - **Dedup (org):** Partial unique indexes on pending org invitations / org join requests still apply as in migrations.
+  - **Resend / expiry:** Org invitation resend + expiry handling unchanged (`POST …/organizations/{id}/invitations/{id}/resend`).
 - `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client` or `deal`). All entity types use the same EAV storage — there are no separate per-type tables.
 - **EAV two-level pattern:**
   - **Schema layer:** `EntityTypeProperty` defines which `Property` definitions belong to each `EntityType` (with `is_required`). `EntityRelationshipType` defines which entity type pairs can be linked (e.g. `deal_client`: deal → client).
@@ -262,9 +280,10 @@ There is **no** global automatic validation filter or minimal-API endpoint filte
 
 **Core:**
 - `CreateWorkspaceRequestValidator`, `UpdateWorkspaceRequestValidator` -- workspace operations
-- `InviteMemberRequestValidator`, `AcceptInvitationRequestValidator` -- workspace invitations
+- `InviteToOrgRequestValidator`, `AddWorkspaceMemberRequestValidator`, `ReviewJoinRequestRequestValidator` -- org invitations, workspace member add, org join-request review
 - `CreateRoleRequestValidator` -- role management
 - `UpdateMemberRoleRequestValidator` -- member management
+- `CreateOrgUserRequestValidator`, `UpdateOrgUserProfileRequestValidator` -- org user admin provisioning / profile edits
 - Organization-related validators for org CRUD, join requests, org invitations, org roles
 
 ### Convention for new services
@@ -360,18 +379,22 @@ Authorization for workspace endpoints:
 
 ### Authorization policies
 
-- **Gateway:** `MapReverseProxy().RequireAuthorization()` -- all proxied routes require a valid JWT unless explicitly marked anonymous in YARP route config. Auth routes are split: `/login` and `/register` are anonymous, `/me` requires JWT.
-- **Audit:** `AuditReaders` policy requires any authenticated user. Audit now consumes RabbitMQ events and persists entries into `entity_audit_log`, `workspace_audit_log`, `organization_audit_log`, `user_audit_log`.
+- **Gateway:** `MapReverseProxy().RequireAuthorization()` -- all proxied routes require a valid JWT unless explicitly marked anonymous in YARP route config. Auth routes are split: `/login` and `/register` are anonymous; `/me` (GET/PATCH/DELETE) requires JWT.
+- **Audit:** `AuditReaders` requires a validated JWT. Read endpoints (`/audit-log`, `/entities/{id}/audit-log`) enforce **workspace** (`ws_admin` / `ws_analyst`) or **organization** (`org_owner` / `org_admin`) or **user-scope** rules via EF against `user_role_workspace` / `user_role_organization`. The read model joins `Entity`, `EntityType`, `Workspace`, `Organization`, `User`, and EAV `Property` / `EntityTypeProperty` metadata for report-friendly DTOs. See [AUDIT-LOG-API.md](AUDIT-LOG-API.md). Audit also consumes RabbitMQ events and persists into the four `*_audit_log` tables.
 - **Core:** No ASP.NET authentication or authorization middleware. Identity comes exclusively from `X-User-Id` / `X-User-Email` headers (see "Internal identity propagation" above). Per-endpoint authorization is then enforced via `UserRoleOrganization` / `UserRoleWorkspace` DB lookups inside the application service layer.
 
 ---
 
 ## Inter-Service Communication
 
-- **HTTP via Gateway only** for client-facing requests.
-- **RabbitMQ event bus** for audit events (`audit.events` exchange, topic routing by scope).
-- **SignalR:** Graph service exposes a WebSocket hub at `/hubs/graph` for real-time client updates (not inter-service messaging).
-- **Outbox dispatchers:** Core and Authentication write audit events to `audit_outbox` and publish asynchronously (fire-and-forget) to RabbitMQ.
+- **HTTP via Gateway only** for client-facing SPA traffic (no alternate client entry points).
+- **Transactional outbox (`audit_outbox`)** inside Core + Authentication Postgres databases co-locates business writes with **pending RabbitMQ payloads**. Hosted dispatchers periodically publish to RabbitMQ and mark `published_at_utc`.
+- **Two durable topic exchanges (default names):**
+  - **`audit.events`** — payloads whose routing keys use the **`audit.<scope>`** pattern (serialized `AuditEventContract`). Consumers: **Audit** (`audit.#`).
+  - **`relativa.domain`** — choreography/domain payloads keyed off **`DomainRouting`** verbs (serialized `DomainMessageEnvelope` + typed `PayloadJson`). Example pilot: **`core.workspace.*`** emits when workspaces are created/updated/archived. Consumers: **Graph** (workspace queue + SignalR broadcast), **ML** (`run_domain_consumer` management command; stub logs).
+- **SignalR:** Graph pushes `domain.workspace.lifecycle.v1` to connected clients **after** idempotent ingestion from the choreography bus (`rabbitmq_processed_delivery` guards replays).
+- **Shared envelopes / contracts:** `Persistence/src/Relativa.Persistence/Contracts/` defines `AuditEventContract`, `DomainMessageEnvelope`, `IOutboxWriter`, and payload structs (e.g. `WorkspaceLifecyclePayloadV1`).
+- **Operational runbook:** DLQ queues, purge commands, and configuration keys — [RABBITMQ-CHOREOGRAPHY.md](../runbooks/RABBITMQ-CHOREOGRAPHY.md).
 
 ---
 
@@ -380,7 +403,7 @@ Authorization for workspace endpoints:
 | Concern | Implementation | Where |
 |---|---|---|
 | **Logging** | Serilog (console + rolling file) | Core, Authentication, Gateway |
-| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `InvalidOperationException` → 409. | Core, Authentication, Gateway (distinct implementations per host) |
+| **Exception handling** | `IExceptionHandler` + `GlobalExceptionHandler` + `AddProblemDetails()`. Core maps: `ValidationException` → 400, `ArgumentException` → 400, `KeyNotFoundException` → 404, `UnauthorizedAccessException` → 401, `ForbiddenAccessException` → 403, `InvalidOperationException` → 409. Authentication additionally maps: `KeyNotFoundException` → 404, PostgreSQL unique violations (`DbUpdateException`) → 409. Audit adds `ForbiddenAccessException` → 403. Backend services serialize errors as `{ status, title, detail }` (validation `detail` is `"Field: msg; Field2: msg"`). In Core, organization permission denials now use `ForbiddenAccessException` (403), while auth identity failures remain 401. The Vue client consumes that envelope through `Client/src/api/errors.ts` (`normalizeError` → `NormalizedError` with status flags + parsed `fieldErrors`) and `Client/src/api/errorToast.ts` (`useApiErrorHandler().notify` for toast dispatch). Forms render `fieldErrors` inline under inputs; non-form failures are surfaced via toasts. | Core, Authentication, Gateway, Audit (distinct implementations per host) |
 | **Health checks** | `/health` endpoint, EF Core DB checks on Auth and Core | All .NET services |
 | **API docs** | OpenAPI + Scalar (`/scalar/v1`, `/openapi/v1.json`) | Auth, Core, Gateway, Graph (dev) |
 | **CORS** | Gateway-only policy. Default: named-origin allowlist with credentials (`Cors:Origins`). Optional local dev override: `Cors:AllowAnyOriginForDev=true` enables wildcard origin without credentials. Downstream services do not apply local CORS policies to avoid drift. | Gateway |

@@ -1,8 +1,8 @@
 import { api } from '@/api/http';
-import type { MyWorkspaceInvitationDto } from '@/api/organizations';
 
 export interface WorkspaceDto {
   id: number;
+  organizationId: number;
   name: string;
   memberCount: number;
   userRole: string | null;
@@ -29,13 +29,15 @@ export interface WorkspaceRoleDto {
   permissions: WorkspacePermissionDto[];
 }
 
-export type WorkspaceInvitationDto = MyWorkspaceInvitationDto;
-
 const CORE = '/core/api/v1';
 
 export const workspaceApi = {
-  list(): Promise<WorkspaceDto[]> {
-    return api.get<WorkspaceDto[]>(`${CORE}/workspaces`);
+  list(organizationId?: number): Promise<WorkspaceDto[]> {
+    const q =
+      organizationId !== undefined && organizationId !== null
+        ? `?organizationId=${encodeURIComponent(String(organizationId))}`
+        : '';
+    return api.get<WorkspaceDto[]>(`${CORE}/workspaces${q}`);
   },
   create(name: string, organizationId: number): Promise<WorkspaceDto> {
     return api.post<WorkspaceDto>(`${CORE}/workspaces`, {
@@ -83,25 +85,6 @@ export const workspaceApi = {
 
   listRoles(wsId: number): Promise<WorkspaceRoleDto[]> {
     return api.get<WorkspaceRoleDto[]>(`${CORE}/workspaces/${wsId}/roles`);
-  },
-
-  listInvitations(wsId: number): Promise<WorkspaceInvitationDto[]> {
-    return api.get<WorkspaceInvitationDto[]>(
-      `${CORE}/workspaces/${wsId}/invitations`,
-    );
-  },
-  invite(
-    wsId: number,
-    email: string,
-    roleId: number,
-  ): Promise<WorkspaceInvitationDto> {
-    return api.post<WorkspaceInvitationDto>(
-      `${CORE}/workspaces/${wsId}/invitations`,
-      { email, roleId },
-    );
-  },
-  cancelInvitation(wsId: number, invId: number): Promise<void> {
-    return api.del(`${CORE}/workspaces/${wsId}/invitations/${invId}`);
   },
 };
 

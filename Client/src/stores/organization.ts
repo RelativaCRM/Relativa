@@ -2,21 +2,19 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import {
   orgApi,
+  type CreateOrgUserRequest,
   type OrganizationDto,
   type OrgMemberDto,
   type OrgRoleDto,
   type OrgInvitationDto,
 } from '@/api/organizations';
+import { loadNumber, saveNumber } from '@/api/persistence';
 
 const ORG_KEY = 'relativa_org_id';
 
 export const useOrganizationStore = defineStore('organization', () => {
   const organizations = ref<OrganizationDto[]>([]);
-  const currentOrgId = ref<number | null>(
-    typeof localStorage !== 'undefined'
-      ? Number(localStorage.getItem(ORG_KEY)) || null
-      : null,
-  );
+  const currentOrgId = ref<number | null>(loadNumber(ORG_KEY));
   const members = ref<OrgMemberDto[]>([]);
   const roles = ref<OrgRoleDto[]>([]);
   const invitations = ref<OrgInvitationDto[]>([]);
@@ -28,9 +26,7 @@ export const useOrganizationStore = defineStore('organization', () => {
 
   function setCurrentOrg(id: number) {
     currentOrgId.value = id;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(ORG_KEY, String(id));
-    }
+    saveNumber(ORG_KEY, id);
   }
 
   async function fetchOrganizations() {
@@ -61,12 +57,16 @@ export const useOrganizationStore = defineStore('organization', () => {
 
   async function fetchInvitations() {
     if (!currentOrgId.value) return;
-    invitations.value = await orgApi.listInvitations(currentOrgId.value);
+    try {
+      invitations.value = await orgApi.listInvitations(currentOrgId.value);
+    } catch {
+      invitations.value = [];
+    }
   }
 
-  async function inviteMember(email: string) {
+  async function inviteMember(email: string, orgRoleId?: number) {
     if (!currentOrgId.value) return;
-    const inv = await orgApi.invite(currentOrgId.value, email);
+    const inv = await orgApi.invite(currentOrgId.value, email, orgRoleId);
     invitations.value.push(inv);
     return inv;
   }
@@ -75,6 +75,14 @@ export const useOrganizationStore = defineStore('organization', () => {
     if (!currentOrgId.value) return;
     await orgApi.cancelInvitation(currentOrgId.value, invId);
     invitations.value = invitations.value.filter((i) => i.id !== invId);
+  }
+
+  async function resendInvitation(invId: number) {
+    if (!currentOrgId.value) return;
+    const refreshed = await orgApi.resendInvitation(currentOrgId.value, invId);
+    const idx = invitations.value.findIndex((i) => i.id === invId);
+    if (idx >= 0) invitations.value[idx] = refreshed;
+    return refreshed;
   }
 
   async function changeMemberRole(userId: number, roleId: number) {
@@ -89,15 +97,26 @@ export const useOrganizationStore = defineStore('organization', () => {
     members.value = members.value.filter((m) => m.userId !== userId);
   }
 
+  async function createOrgUser(payload: CreateOrgUserRequest) {
+    if (!currentOrgId.value) return;
+    const created = await orgApi.createOrgUser(currentOrgId.value, payload);
+    await fetchMembers();
+    return created;
+  }
+
+  async function deleteOrgUser(userId: number) {
+    if (!currentOrgId.value) return;
+    await orgApi.deleteOrgUser(currentOrgId.value, userId);
+    members.value = members.value.filter((m) => m.userId !== userId);
+  }
+
   function clear() {
     organizations.value = [];
     currentOrgId.value = null;
     members.value = [];
     roles.value = [];
     invitations.value = [];
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(ORG_KEY);
-    }
+    saveNumber(ORG_KEY, null);
   }
 
   return {
@@ -116,8 +135,11 @@ export const useOrganizationStore = defineStore('organization', () => {
     fetchInvitations,
     inviteMember,
     cancelInvitation,
+    resendInvitation,
     changeMemberRole,
     removeMember,
+    createOrgUser,
+    deleteOrgUser,
     clear,
   };
 });

@@ -19,14 +19,13 @@ This guide walks through every step needed to open the Scalar interactive API do
 11. [Manage organization members and roles](#11-manage-organization-members-and-roles)
 12. [Create a workspace](#12-create-a-workspace)
 13. [Add members to a workspace](#13-add-members-to-a-workspace)
-14. [Invite a member to the workspace](#14-invite-a-member-to-the-workspace)
-15. [Accept a workspace invitation](#15-accept-a-workspace-invitation)
-16. [Manage workspace members](#16-manage-workspace-members)
-17. [Manage workspace roles and permissions](#17-manage-workspace-roles-and-permissions)
-18. [Combined invitations](#18-combined-invitations)
-19. [Health checks](#19-health-checks)
-20. [Available endpoints reference](#20-available-endpoints-reference)
-21. [Tips and troubleshooting](#21-tips-and-troubleshooting)
+14. [Adding people to a workspace (current flow)](#14-adding-people-to-a-workspace-current-flow)
+15. [Manage workspace members](#15-manage-workspace-members)
+16. [Manage workspace roles and permissions](#16-manage-workspace-roles-and-permissions)
+17. [Combined invitations](#17-combined-invitations)
+18. [Health checks](#18-health-checks)
+19. [Available endpoints reference](#19-available-endpoints-reference)
+20. [Tips and troubleshooting](#20-tips-and-troubleshooting)
 
 ---
 
@@ -262,10 +261,13 @@ The Gateway proxies endpoints under service prefixes:
 | `POST /api/v1/auth/login` | `POST /auth/api/v1/auth/login` |
 | `POST /api/v1/auth/register` | `POST /auth/api/v1/auth/register` |
 | `GET /api/v1/auth/me` | `GET /auth/api/v1/auth/me` |
+| `PATCH /api/v1/auth/me` | `PATCH /auth/api/v1/auth/me` |
+| `DELETE /api/v1/auth/me` | `DELETE /auth/api/v1/auth/me` |
 | `POST /api/v1/organizations` | `POST /core/api/v1/organizations` |
 | `POST /api/v1/workspaces` | `POST /core/api/v1/workspaces` |
+| `POST /api/v1/organizations/{id}/users` | `POST /core/api/v1/organizations/{id}/users` |
 
-The `/auth/api/v1/auth/login` and `/auth/api/v1/auth/register` paths are marked **Anonymous** in the gateway — no JWT needed. The `/auth/api/v1/auth/me` path and all `/core/...` paths require a valid JWT.
+The `/auth/api/v1/auth/login` and `/auth/api/v1/auth/register` paths are marked **Anonymous** in the gateway — no JWT needed. **`GET` / `PATCH` / `DELETE`** `/auth/api/v1/auth/me` and all `/core/...` paths require a valid JWT.
 
 ---
 
@@ -584,7 +586,7 @@ Returns all workspaces where the authenticated user is a member:
 
 **Endpoint:** `POST /api/v1/workspaces/{workspaceId}/members`
 
-Requires the `add_ws_members` permission. The target user must already be a member of the workspace's parent organization.
+Requires workspace `add_ws_members` **or** organization `manage_org_workspace_members` on the parent org. The target user must already be a member of the workspace's parent organization.
 
 ```json
 {
@@ -604,90 +606,16 @@ This directly adds an existing org member to the workspace without requiring an 
 
 ---
 
-## 14. Invite a member to the workspace
+## 14. Adding people to a workspace (current flow)
 
-**Endpoint:** `POST /api/v1/workspaces/{workspaceId}/invitations`
+Workspace-scoped **email invitations** and **workspace join requests** were removed.
 
-Requires the `invite_to_workspace` permission in the workspace.
-
-### Steps in Scalar (Core)
-
-1. Find **Invitations** → **InviteMember** in the sidebar.
-2. Set the `workspaceId` path parameter (e.g. `3`).
-3. Enter the request body:
-
-```json
-{
-  "email": "colleague@example.com",
-  "roleId": 2
-}
-```
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `email` | string | yes | Email of the person to invite |
-| `roleId` | integer | yes | Workspace role to assign on acceptance. Use `GET .../roles` to see available role IDs |
-
-4. Click **Send**.
-
-### Expected response — `201 Created`
-
-```json
-{
-  "id": 1,
-  "email": "colleague@example.com",
-  "roleName": "ws_manager",
-  "status": "Pending",
-  "expiresAt": "2026-04-24T12:00:00Z",
-  "token": "abc123..."
-}
-```
-
-The invitation token is included in the response for testing convenience.
-
-### List pending invitations
-
-**Endpoint:** `GET /api/v1/workspaces/{workspaceId}/invitations`
-
-Returns all pending invitations for the workspace.
+1. **Organization invitation:** invite the person to the **organization** (`POST /api/v1/organizations/{organizationId}/invitations`). They accept with `POST /api/v1/invitations/accept-org`.
+2. **Add to workspace:** call `POST /api/v1/workspaces/{workspaceId}/members` with `{ "userId", "roleId" }` as in [section 13](#13-add-members-to-a-workspace). The caller needs `add_ws_members` on the workspace **or** `manage_org_workspace_members` on the parent organization.
 
 ---
 
-## 15. Accept a workspace invitation
-
-**Endpoint:** `POST /api/v1/invitations/accept`
-
-The invited user must register (if new) and log in first, then accept the invitation using the token.
-
-### Steps
-
-1. Register a second user with the invited email (step 4).
-2. Log in as that user (step 5).
-3. Authorise the Core Scalar UI with the new user's token (step 7).
-4. Find **Invitations** → **AcceptInvitation** in the sidebar.
-5. Enter:
-
-```json
-{
-  "token": "<the invitation token from the invite response or database>"
-}
-```
-
-> **Note:** The token is returned in the `POST .../invitations` response body. For manual lookup, query the database: `SELECT token FROM workspace_invitations WHERE email = 'colleague@example.com';` using pgAdmin at `http://localhost:5050`.
-
-### Expected response — `200 OK`
-
-```json
-{
-  "message": "Invitation accepted."
-}
-```
-
-The user is now a member of the workspace with the role specified in the invitation.
-
----
-
-## 16. Manage workspace members
+## 15. Manage workspace members
 
 All member endpoints are under `/api/v1/workspaces/{workspaceId}/members`.
 
@@ -736,19 +664,19 @@ Returns `204 No Content` on success.
 
 **Endpoint:** `DELETE /api/v1/workspaces/{workspaceId}/members/{userId}`
 
-Requires `remove_ws_members` permission, or the user can remove themselves.
+Requires workspace `remove_ws_members` **or** organization `manage_org_workspace_members` on the parent org (unless removing yourself).
 
 Returns `204 No Content` on success.
 
 ---
 
-## 17. Manage workspace roles and permissions
+## 16. Manage workspace roles and permissions
 
 ### List available permissions
 
 **Endpoint:** `GET /api/v1/permissions`
 
-Any authenticated user. Returns all 16 permissions (both org-scoped and ws-scoped):
+Any authenticated user. Returns all permissions (org- and workspace-scoped). After the latest migrations, **19** rows remain (numeric ids keep gaps where retired permissions were removed):
 
 ```json
 [
@@ -760,14 +688,17 @@ Any authenticated user. Returns all 16 permissions (both org-scoped and ws-scope
   { "id": 6, "name": "manage_org_roles" },
   { "id": 7, "name": "create_workspaces" },
   { "id": 8, "name": "manage_ws_settings" },
-  { "id": 9, "name": "invite_to_workspace" },
   { "id": 10, "name": "add_ws_members" },
   { "id": 11, "name": "remove_ws_members" },
   { "id": 12, "name": "assign_ws_roles" },
   { "id": 13, "name": "manage_ws_roles" },
   { "id": 14, "name": "edit_deals" },
   { "id": 15, "name": "view_deals" },
-  { "id": 16, "name": "view_analytics" }
+  { "id": 16, "name": "view_analytics" },
+  { "id": 17, "name": "create_org_users" },
+  { "id": 18, "name": "edit_other_org_users_profile" },
+  { "id": 19, "name": "delete_org_users" },
+  { "id": 21, "name": "manage_org_workspace_members" }
 ]
 ```
 
@@ -785,7 +716,6 @@ Requires workspace membership. Returns system roles (available in all workspaces
     "isSystem": true,
     "permissions": [
       { "id": 8, "name": "manage_ws_settings" },
-      { "id": 9, "name": "invite_to_workspace" },
       { "id": 10, "name": "add_ws_members" },
       { "id": 11, "name": "remove_ws_members" },
       { "id": 12, "name": "assign_ws_roles" },
@@ -860,15 +790,15 @@ Requires `manage_ws_roles`. System roles cannot be deleted. Returns `204 No Cont
 
 ---
 
-## 18. Combined invitations
+## 17. Combined invitations
 
 **Endpoint:** `GET /api/v1/invitations/mine`
 
-Returns all pending invitations for the authenticated user — both workspace invitations and organization invitations in a single list. Useful for building a "pending invitations" UI.
+Returns pending **organization** invitations for the authenticated user’s email (same payload shape as before, but workspace invitations are no longer returned). **`GET /api/v1/invitations/mine/organization`** returns the same list without the wrapper DTO.
 
 ---
 
-## 19. Health checks
+## 18. Health checks
 
 All services expose a health check endpoint that does **not** require a token. These are useful for verifying the stack is alive before running other calls.
 
@@ -884,7 +814,7 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 
 ---
 
-## 20. Available endpoints reference
+## 19. Available endpoints reference
 
 ### Authentication service — `http://localhost:8081`
 
@@ -893,6 +823,8 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | `POST` | `/api/v1/auth/register` | None | Register a new user |
 | `POST` | `/api/v1/auth/login` | None | Authenticate and receive JWT |
 | `GET` | `/api/v1/auth/me` | JWT | Get authenticated user's profile |
+| `PATCH` | `/api/v1/auth/me` | JWT | Update own first and last name |
+| `DELETE` | `/api/v1/auth/me` | JWT | Archive own account |
 | `GET` | `/health` | None | Health check (DB connectivity) |
 | `GET` | `/scalar/v1` | None | Scalar interactive docs |
 | `GET` | `/openapi/v1.json` | None | Raw OpenAPI spec |
@@ -916,6 +848,14 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | `GET` | `/api/v1/organizations/{id}/members` | JWT + org membership | List org members |
 | `DELETE` | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove member |
 | `PUT` | `/api/v1/organizations/{id}/members/{userId}/role` | JWT + `assign_org_roles` | Change member's org role |
+
+**Organization users (admin provisioning):**
+
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| `POST` | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` (`assign_org_roles` when non-default role requested) | Create user account and add to org with selected role (`orgRoleId?`, default member) |
+| `PATCH` | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's name |
+| `DELETE` | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (caller and target must share email domain) |
 
 **Join requests:**
 
@@ -959,18 +899,9 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | Method | Path | Auth | Summary |
 |--------|------|------|---------|
 | `GET` | `/api/v1/workspaces/{id}/members` | JWT + ws membership | List workspace members |
-| `POST` | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` | Add org member to workspace |
+| `POST` | `/api/v1/workspaces/{id}/members` | JWT + `add_ws_members` **or** org `manage_org_workspace_members` | Add org member to workspace |
 | `PUT` | `/api/v1/workspaces/{id}/members/{userId}/role` | JWT + `assign_ws_roles` | Change member role |
-| `DELETE` | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` / self | Remove member |
-
-**Workspace invitations:**
-
-| Method | Path | Auth | Summary |
-|--------|------|------|---------|
-| `POST` | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | Invite user by email (returns token) |
-| `GET` | `/api/v1/workspaces/{id}/invitations` | JWT + `invite_to_workspace` | List pending invitations |
-| `DELETE` | `/api/v1/workspaces/{id}/invitations/{invId}` | JWT + `invite_to_workspace` | Cancel invitation |
-| `POST` | `/api/v1/invitations/accept` | JWT + matching email | Accept workspace invitation |
+| `DELETE` | `/api/v1/workspaces/{id}/members/{userId}` | JWT + `remove_ws_members` **or** org `manage_org_workspace_members` / self | Remove member |
 
 **Workspace roles:**
 
@@ -981,12 +912,13 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | `PUT` | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `manage_ws_roles` | Update custom role |
 | `DELETE` | `/api/v1/workspaces/{id}/roles/{roleId}` | JWT + `manage_ws_roles` | Archive custom role |
 
-**Combined invitations & permissions:**
+**Invitation inbox & permissions:**
 
 | Method | Path | Auth | Summary |
 |--------|------|------|---------|
-| `GET` | `/api/v1/invitations/mine` | JWT | List all pending invitations (ws + org) |
-| `GET` | `/api/v1/permissions` | JWT | List all 16 permissions |
+| `GET` | `/api/v1/invitations/mine` | JWT | Pending org invitations (wrapped DTO) |
+| `GET` | `/api/v1/invitations/mine/organization` | JWT | Pending org invitations (raw list) |
+| `GET` | `/api/v1/permissions` | JWT | List all permissions |
 
 **Infrastructure:**
 
@@ -1003,7 +935,12 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 | `POST` | `/auth/api/v1/auth/login` | None | Auth service |
 | `POST` | `/auth/api/v1/auth/register` | None | Auth service |
 | `GET` | `/auth/api/v1/auth/me` | Bearer JWT | Auth service |
+| `PATCH` | `/auth/api/v1/auth/me` | Bearer JWT | Auth service |
+| `DELETE` | `/auth/api/v1/auth/me` | Bearer JWT | Auth service |
 | `GET` | `/auth/health` | None | Auth service |
+| `POST` | `/core/api/v1/organizations/{id}/users` | Bearer JWT | Core service |
+| `PATCH` | `/core/api/v1/organizations/{id}/users/{userId}` | Bearer JWT | Core service |
+| `DELETE` | `/core/api/v1/organizations/{id}/users/{userId}` | Bearer JWT | Core service |
 | `GET` | `/core/health` | None | Core service |
 | `GET` | `/health` | None | Gateway itself |
 | `*` | `/auth/{**rest}` | Bearer JWT | Auth service |
@@ -1016,7 +953,7 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 
 ---
 
-## 21. Tips and troubleshooting
+## 20. Tips and troubleshooting
 
 **Scalar page is blank or shows a network error**
 - Confirm the service is running: `docker compose ps`.
@@ -1035,20 +972,20 @@ To test a health check in Scalar: open the Gateway Scalar (`http://localhost:808
 
 **403 / "You do not have the '...' permission" on Core endpoints**
 - Your user does not have the required permission. For org endpoints, check your org role with `GET /api/v1/organizations/{id}/members`. For workspace endpoints, check with `GET /api/v1/workspaces/{id}/members`.
-- The `org_owner` role has all org permissions; `ws_admin` has all workspace permissions.
+- The `org_owner` role has all org permissions; `ws_admin` has all **workspace** permissions (not org-only permissions such as `manage_org_workspace_members` unless also granted on an org role).
+- For `DELETE /api/v1/organizations/{id}/users/{userId}`, you also need the same email domain as the target user even with `delete_org_users`.
 
 **"You are not a member of this organization"**
 - The `sub` claim in your JWT does not match any `user_role_organization` row for that org. Create an org, request to join, or accept an invitation first.
 
 **"You are not a member of this workspace"**
-- The `sub` claim in your JWT does not match any `user_role_workspace` row for that workspace. Create a workspace, get added by an admin, or accept an invitation.
+- The `sub` claim in your JWT does not match any `user_role_workspace` row for that workspace. Join the parent organization (invite or join request), then have someone with `add_ws_members` or org `manage_org_workspace_members` add you via `POST .../workspaces/{id}/members`.
 
 **"User is not a member of the organization" when adding to workspace**
 - The `POST .../workspaces/{id}/members` endpoint requires the target user to be a member of the workspace's parent organization first.
 
 **How do I find invitation tokens for testing?**
-- **Workspace invitations:** The token is returned in the `POST .../invitations` response body. For manual lookup: `SELECT id, email, token, status FROM workspace_invitations;` in pgAdmin.
-- **Org invitations:** Query: `SELECT id, email, token, status FROM organization_invitations;` in pgAdmin at `http://localhost:5050`.
+- **Organization invitations:** The token is returned in the `POST .../organizations/{id}/invitations` response body. For manual lookup: `SELECT id, email, token, status FROM organization_invitations;` in pgAdmin at `http://localhost:5050`.
 
 **Scalar shows no endpoints**
 - The OpenAPI JSON may have failed to load. Navigate directly to `http://localhost:8082/openapi/v1.json` and confirm you get valid JSON (not an error page).

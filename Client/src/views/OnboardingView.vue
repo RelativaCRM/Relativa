@@ -8,42 +8,54 @@ import Tag from 'primevue/tag';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
+import { useWorkspaceStore } from '@/stores/workspace';
+import { useEntityStore } from '@/stores/entity';
 import {
   orgApi,
   type OrganizationDto,
-  type MyInvitationsDto,
+  type OrgInvitationDto,
+  type JoinRequestDto,
 } from '@/api/organizations';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
+import { useApiErrorHandler } from '@/api/errorToast';
 
 const router = useRouter();
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
+const wsStore = useWorkspaceStore();
+const entityStore = useEntityStore();
+const { notify } = useApiErrorHandler();
 
 type Tab = 'invitations' | 'create' | 'join';
 const activeTab = ref<Tab>('create');
 
-/* ── Invitations inbox ─────────────────────────────────── */
-const inbox = ref<MyInvitationsDto>({
-  organizationInvitations: [],
-  workspaceInvitations: [],
-});
+/* ── Invitations inbox (organization scope only) ───────── */
+const orgInvitations = ref<OrgInvitationDto[]>([]);
+const pendingJoinRequests = ref<JoinRequestDto[]>([]);
 const inboxLoading = ref(true);
 const acceptingToken = ref<string | null>(null);
 const inboxError = ref<string | null>(null);
 
-const pendingOrgInvitations = computed(
-  () => inbox.value.organizationInvitations,
+const pendingOrgInvitations = computed(() => orgInvitations.value);
+const hasInboxItems = computed(
+  () => pendingOrgInvitations.value.length > 0 || pendingJoinRequests.value.length > 0,
 );
 
 async function loadInbox() {
   inboxLoading.value = true;
   try {
-    inbox.value = await orgApi.myInvitations();
-    if (pendingOrgInvitations.value.length > 0) {
+    const [invitations, joinReqs] = await Promise.all([
+      orgApi.myOrganizationInvitations(),
+      orgApi.myJoinRequests(),
+    ]);
+    orgInvitations.value = invitations;
+    pendingJoinRequests.value = joinReqs.filter((r) => r.status === 'Pending');
+    if (hasInboxItems.value) {
       activeTab.value = 'invitations';
     }
   } catch {
-    inbox.value = { organizationInvitations: [], workspaceInvitations: [] };
+    orgInvitations.value = [];
+    pendingJoinRequests.value = [];
   } finally {
     inboxLoading.value = false;
   }
@@ -57,8 +69,7 @@ async function acceptOrgInvite(token: string) {
     await orgStore.fetchOrganizations();
     router.push({ name: 'home' });
   } catch (err) {
-    inboxError.value =
-      err instanceof ApiError ? err.message : 'Failed to accept invitation.';
+    inboxError.value = normalizeError(err, 'Failed to accept invitation.').message;
   } finally {
     acceptingToken.value = null;
   }
@@ -79,8 +90,7 @@ async function handleCreate() {
     await orgStore.createOrganization(newOrgName.value.trim());
     router.push({ name: 'home' });
   } catch (err) {
-    createError.value =
-      err instanceof ApiError ? err.message : 'Failed to create organization.';
+    createError.value = normalizeError(err, 'Failed to create organization.').message;
   } finally {
     creating.value = false;
   }
@@ -109,8 +119,9 @@ async function searchOrgs(q: string) {
   searching.value = true;
   try {
     searchResults.value = await orgApi.search(q);
-  } catch {
+  } catch (err) {
     searchResults.value = [];
+    notify(err, { fallback: 'Search failed.' });
   } finally {
     searching.value = false;
   }
@@ -124,8 +135,7 @@ async function handleJoinRequest(orgId: number) {
     await orgApi.submitJoinRequest(orgId, 'I would like to join your organization.');
     joinMessage.value = 'Join request sent. An administrator will review it.';
   } catch (err) {
-    joinError.value =
-      err instanceof ApiError ? err.message : 'Failed to send join request.';
+    joinError.value = normalizeError(err, 'Failed to send join request.').message;
   } finally {
     joinSending.value = null;
   }
@@ -135,6 +145,8 @@ async function handleJoinRequest(orgId: number) {
 function handleLogout() {
   auth.logout();
   orgStore.clear();
+  wsStore.clear();
+  entityStore.clear();
   router.push({ name: 'login' });
 }
 </script>
@@ -164,8 +176,8 @@ function handleLogout() {
         <template v-if="tab === 'invitations'">
           Invitations
           <Tag
-            v-if="pendingOrgInvitations.length"
-            :value="pendingOrgInvitations.length"
+            v-if="hasInboxItems"
+            :value="pendingOrgInvitations.length + pendingJoinRequests.length"
             severity="info"
             class="!ml-1.5 !text-[10px] !py-0 !px-1.5"
           />
@@ -185,7 +197,7 @@ function handleLogout() {
       </div>
 
       <div
-        v-else-if="!pendingOrgInvitations.length"
+        v-else-if="!hasInboxItems"
         class="text-center text-sm text-ink-500 py-6"
       >
         <i class="pi pi-inbox text-2xl text-ink-400 block mb-2" />
@@ -206,28 +218,50 @@ function handleLogout() {
         to continue.
       </div>
 
-      <ul v-else class="flex flex-col gap-2">
-        <li
-          v-for="inv in pendingOrgInvitations"
-          :key="inv.id"
-          class="flex items-center justify-between rounded-lg border border-line px-4 py-3"
-        >
-          <div class="min-w-0">
-            <p class="text-sm font-medium text-ink-900 truncate">
-              {{ inv.organizationName }}
-            </p>
-            <p class="text-xs text-ink-500">
-              Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
-            </p>
-          </div>
-          <Button
-            size="small"
-            label="Accept"
-            :loading="acceptingToken === inv.token"
-            @click="acceptOrgInvite(inv.token)"
-          />
-        </li>
-      </ul>
+      <div v-else class="flex flex-col gap-2">
+        <!-- Email invitations -->
+        <ul v-if="pendingOrgInvitations.length" class="flex flex-col gap-2">
+          <li
+            v-for="inv in pendingOrgInvitations"
+            :key="inv.id"
+            class="flex items-center justify-between rounded-lg border border-line px-4 py-3"
+          >
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-ink-900 truncate">
+                {{ inv.organizationName }}
+              </p>
+              <p class="text-xs text-ink-500">
+                Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
+              </p>
+            </div>
+            <Button
+              size="small"
+              label="Accept"
+              :loading="acceptingToken === inv.token"
+              @click="acceptOrgInvite(inv.token)"
+            />
+          </li>
+        </ul>
+
+        <!-- Pending join requests -->
+        <ul v-if="pendingJoinRequests.length" class="flex flex-col gap-2">
+          <li
+            v-for="req in pendingJoinRequests"
+            :key="req.id"
+            class="flex items-center justify-between rounded-lg border border-line px-4 py-3"
+          >
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-ink-900 truncate">
+                {{ req.organizationName }}
+              </p>
+              <p class="text-xs text-ink-500">
+                Requested {{ new Date(req.createdAt).toLocaleDateString() }}
+              </p>
+            </div>
+            <Tag value="Pending review" severity="warn" class="!text-[11px]" />
+          </li>
+        </ul>
+      </div>
 
       <Message
         v-if="inboxError"

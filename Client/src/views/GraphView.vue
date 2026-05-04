@@ -1,29 +1,105 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, shallowRef } from "vue";
-import { Network } from "vis-network/standalone";
-import { useGraphStore } from "@/stores/graph";
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import Button from 'primevue/button';
+import Message from 'primevue/message';
+import { Network } from 'vis-network/standalone';
+import { useGraphStore } from '@/stores/graph';
+import { useEntityStore } from '@/stores/entity';
+import { useWorkspaceStore } from '@/stores/workspace';
+import { normalizeError } from '@/api/errors';
+import type { EntityListItemDto } from '@/api/entities';
+
+const route = useRoute();
+const router = useRouter();
+const graphStore = useGraphStore();
+const entityStore = useEntityStore();
+const wsStore = useWorkspaceStore();
 
 const container = ref<HTMLDivElement | null>(null);
 const network = shallowRef<Network | null>(null);
-const graphStore = useGraphStore();
+const loading = ref(false);
+const errorMessage = ref<string | null>(null);
 
-onMounted(() => {
+const workspaceId = computed(() => {
+  const fromRoute = Number(route.params.workspaceId);
+  if (Number.isFinite(fromRoute) && fromRoute > 0) return fromRoute;
+  return wsStore.currentWorkspaceId;
+});
+const entities = computed(() =>
+  workspaceId.value ? entityStore.entitiesFor(workspaceId.value) : [],
+);
+
+const PRIMARY_FIELDS = ['title', 'name', 'first_name', 'email', 'company'];
+
+function valueToString(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v.trim();
+  return String(v);
+}
+
+function buildLabel(item: EntityListItemDto): string {
+  const fallback = `${item.entityTypeName} #${item.id}`;
+  const values = item.propertyValues ?? [];
+  for (const want of PRIMARY_FIELDS) {
+    const match = values.find(
+      (p) => (p.propertyName ?? '').toLowerCase() === want && valueToString(p.value) !== '',
+    );
+    if (match) return valueToString(match.value);
+  }
+  const firstNonEmpty = values.find((p) => valueToString(p.value) !== '');
+  return firstNonEmpty ? valueToString(firstNonEmpty.value) : fallback;
+}
+
+async function render() {
+  await nextTick();
   if (!container.value) return;
-  const nodes = [
-    { id: 1, label: "A" },
-    { id: 2, label: "B" },
-    { id: 3, label: "C" },
-  ];
-  const edges = [
-    { from: 1, to: 2 },
-    { from: 2, to: 3 },
-  ];
+  const items = entities.value;
+  const nodes = items.map((e) => ({
+    id: e.id,
+    label: buildLabel(e),
+    group: e.entityTypeName,
+    title: `${e.entityTypeName} · #${e.id}`,
+  }));
+  const edges: { from: number; to: number }[] = [];
+
+  if (network.value) network.value.destroy();
   network.value = new Network(
     container.value,
     { nodes, edges },
-    { physics: { enabled: true } },
+    {
+      physics: { enabled: true, stabilization: { iterations: 120 } },
+      nodes: {
+        shape: 'dot',
+        size: 14,
+        font: { size: 13, face: 'Inter, sans-serif' },
+      },
+      interaction: { hover: true },
+    },
   );
   graphStore.setStats(nodes.length, edges.length);
+}
+
+async function load() {
+  if (!workspaceId.value) return;
+  loading.value = true;
+  errorMessage.value = null;
+  try {
+    await entityStore.fetchList(workspaceId.value);
+    await render();
+  } catch (err) {
+    console.error('GraphView load failed:', err);
+    errorMessage.value = normalizeError(err, 'Failed to load graph data.').message;
+  } finally {
+    loading.value = false;
+  }
+}
+
+watch(workspaceId, load);
+
+onMounted(() => {
+  if (!workspaceId.value) return;
+  load();
 });
 
 onUnmounted(() => {
@@ -33,21 +109,85 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="graph-page">
-    <h1>Graph</h1>
-    <p>Placeholder force-directed graph (vis-network). D3 is available for other layouts.</p>
-    <div ref="container" class="graph-host" />
-  </main>
+  <section class="max-w-5xl">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-ink-900">Graph</h1>
+        <p class="mt-1 text-sm text-ink-500">
+          Entities in
+          <span class="font-medium text-ink-700">{{
+            wsStore.currentWorkspace?.name ?? 'this workspace'
+          }}</span>
+          rendered as nodes. Relationships will appear once the Graph service
+          ships its API.
+        </p>
+      </div>
+      <div class="text-xs text-ink-500">
+        {{ graphStore.nodeCount }} nodes · {{ graphStore.edgeCount }} edges
+      </div>
+    </div>
+
+    <Message
+      v-if="!workspaceId"
+      severity="info"
+      :closable="false"
+      class="!my-0 mb-4"
+    >
+      Select a workspace to see its entity graph.
+      <Button
+        text
+        size="small"
+        label="Choose workspace"
+        class="!ml-2"
+        @click="router.push({ name: 'workspaces' })"
+      />
+    </Message>
+
+    <Message
+      v-else-if="errorMessage"
+      severity="error"
+      :closable="false"
+      class="!my-0 mb-4"
+    >
+      {{ errorMessage }}
+    </Message>
+
+    <div v-else-if="loading && !entities.length" class="text-center py-12 text-ink-500">
+      Loading graph...
+    </div>
+
+    <div
+      v-else-if="!entities.length"
+      class="rounded-xl border border-line bg-white p-10 text-center"
+    >
+      <i class="pi pi-share-alt text-3xl text-ink-400" />
+      <p class="mt-3 text-sm text-ink-500">
+        No entities in this workspace yet.
+      </p>
+      <Button
+        class="mt-4"
+        label="Create entity"
+        icon="pi pi-plus"
+        @click="
+          router.push({
+            name: 'workspace-entity-create',
+            params: { workspaceId: String(workspaceId) },
+          })
+        "
+      />
+    </div>
+
+    <div
+      v-show="workspaceId && entities.length"
+      ref="container"
+      class="graph-host rounded-xl border border-line bg-white"
+    />
+  </section>
 </template>
 
 <style scoped>
-.graph-page {
-  padding: 1rem;
-}
 .graph-host {
   width: 100%;
-  height: 420px;
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 6px;
+  height: 520px;
 }
 </style>

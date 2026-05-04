@@ -11,7 +11,7 @@ public sealed class JoinRequestService(
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
     IOrganizationRepository organizationRepository,
-    IAuditOutboxWriter? auditOutboxWriter = null) : IJoinRequestService
+    IOutboxWriter? auditOutboxWriter = null) : IJoinRequestService
 {
     public async Task<JoinRequestDto> SubmitAsync(int organizationId, int userId, CreateJoinRequestRequest request, CancellationToken ct = default)
     {
@@ -41,7 +41,7 @@ public sealed class JoinRequestService(
         await joinRequestRepository.AddAsync(joinRequest, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -61,13 +61,15 @@ public sealed class JoinRequestService(
         return new JoinRequestDto(
             joinRequest.Id,
             joinRequest.UserId,
-            joinRequest.User?.FirstName + " " + joinRequest.User?.LastName,
-            joinRequest.User?.Email ?? "",
+            joinRequest.User is not null ? $"{joinRequest.User.FirstName} {joinRequest.User.LastName}".Trim() : string.Empty,
+            joinRequest.User?.Email ?? string.Empty,
             joinRequest.Message,
             joinRequest.Status,
             joinRequest.CreatedAt,
             null,
-            null);
+            null,
+            organizationId,
+            organization.Name);
     }
 
     public async Task<List<JoinRequestDto>> GetByOrganizationAsync(int organizationId, int callerUserId, CancellationToken ct = default)
@@ -80,13 +82,15 @@ public sealed class JoinRequestService(
             .Select(r => new JoinRequestDto(
                 r.Id,
                 r.UserId,
-                r.User.FirstName + " " + r.User.LastName,
-                r.User.Email,
+                r.User is not null ? $"{r.User.FirstName} {r.User.LastName}".Trim() : string.Empty,
+                r.User?.Email ?? string.Empty,
                 r.Message,
                 r.Status,
                 r.CreatedAt,
-                r.ReviewedBy is not null ? r.ReviewedBy.FirstName + " " + r.ReviewedBy.LastName : null,
-                r.ReviewedAt))
+                r.ReviewedBy is not null ? $"{r.ReviewedBy.FirstName} {r.ReviewedBy.LastName}".Trim() : null,
+                r.ReviewedAt,
+                r.OrganizationId,
+                r.Organization?.Name ?? string.Empty))
             .ToList();
     }
 
@@ -105,6 +109,10 @@ public sealed class JoinRequestService(
 
         if (request.Decision == "Approved")
         {
+            var existingMembership = await orgMemberRepository.GetAsync(joinRequest.UserId, organizationId, ct);
+            if (existingMembership is not null)
+                throw new InvalidOperationException("The requester is already a member of this organization.");
+
             var memberRole = await orgRoleRepository.GetSystemRoleByNameAsync("org_member", ct)
                 ?? throw new InvalidOperationException("System org_member role not found.");
 
@@ -120,7 +128,7 @@ public sealed class JoinRequestService(
             await orgMemberRepository.AddAsync(membership, ct);
             if (auditOutboxWriter is not null)
             {
-                await auditOutboxWriter.EnqueueAsync(
+                await auditOutboxWriter.EnqueueAuditAsync(
                     new AuditEventContract(
                         EventId: Guid.NewGuid(),
                         SchemaVersion: 1,
@@ -148,7 +156,7 @@ public sealed class JoinRequestService(
         await joinRequestRepository.UpdateAsync(joinRequest, ct);
         if (auditOutboxWriter is not null)
         {
-            await auditOutboxWriter.EnqueueAsync(
+            await auditOutboxWriter.EnqueueAuditAsync(
                 new AuditEventContract(
                     EventId: Guid.NewGuid(),
                     SchemaVersion: 1,
@@ -173,13 +181,15 @@ public sealed class JoinRequestService(
             .Select(r => new JoinRequestDto(
                 r.Id,
                 r.UserId,
-                r.User.FirstName + " " + r.User.LastName,
-                r.User.Email,
+                r.User is not null ? $"{r.User.FirstName} {r.User.LastName}".Trim() : string.Empty,
+                r.User?.Email ?? string.Empty,
                 r.Message,
                 r.Status,
                 r.CreatedAt,
-                r.ReviewedBy is not null ? r.ReviewedBy.FirstName + " " + r.ReviewedBy.LastName : null,
-                r.ReviewedAt))
+                r.ReviewedBy is not null ? $"{r.ReviewedBy.FirstName} {r.ReviewedBy.LastName}".Trim() : null,
+                r.ReviewedAt,
+                r.OrganizationId,
+                r.Organization?.Name ?? string.Empty))
             .ToList();
     }
 

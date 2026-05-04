@@ -1,9 +1,23 @@
+using Microsoft.EntityFrameworkCore;
+using Relativa.Graph.Data;
 using Relativa.Graph.Hubs;
+using Relativa.Graph.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
+
+var graphConnectionString = builder.Configuration.GetConnectionString("Default");
+if (string.IsNullOrWhiteSpace(graphConnectionString))
+{
+    throw new InvalidOperationException("ConnectionStrings:Default must be configured for Graph choreography idempotency.");
+}
+
+builder.Services.AddDbContext<GraphDbContext>(opt => opt.UseNpgsql(graphConnectionString));
+builder.Services.Configure<RabbitMqGraphConsumerOptions>(
+    builder.Configuration.GetSection(RabbitMqGraphConsumerOptions.SectionKey));
+builder.Services.AddHostedService<DomainEventConsumerHostedService>();
 
 var app = builder.Build();
 

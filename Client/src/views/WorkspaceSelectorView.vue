@@ -10,13 +10,15 @@ import AuthLayout from '@/layouts/AuthLayout.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
-import { ApiError } from '@/api/http';
+import { useEntityStore } from '@/stores/entity';
+import { normalizeError } from '@/api/errors';
 import type { WorkspaceDto } from '@/api/workspaces';
 
 const router = useRouter();
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
+const entityStore = useEntityStore();
 
 const loading = ref(true);
 const loadError = ref<string | null>(null);
@@ -43,7 +45,10 @@ function displayRole(roleName: string | null): string {
 
 function chooseWorkspace(ws: WorkspaceDto) {
   wsStore.setCurrentWorkspace(ws.id);
-  router.push({ name: 'home' });
+  router.push({
+    name: 'workspace-entities',
+    params: { workspaceId: String(ws.id) },
+  });
 }
 
 async function handleCreate() {
@@ -51,14 +56,16 @@ async function handleCreate() {
   creating.value = true;
   createError.value = null;
   try {
-    await wsStore.createWorkspace(
+    const ws = await wsStore.createWorkspace(
       newWorkspaceName.value.trim(),
       orgStore.currentOrgId,
     );
-    router.push({ name: 'home' });
+    router.push({
+      name: 'workspace-entities',
+      params: { workspaceId: String(ws.id) },
+    });
   } catch (err) {
-    createError.value =
-      err instanceof ApiError ? err.message : 'Failed to create workspace.';
+    createError.value = normalizeError(err, 'Failed to create workspace.').message;
   } finally {
     creating.value = false;
   }
@@ -68,23 +75,24 @@ function handleLogout() {
   auth.logout();
   orgStore.clear();
   wsStore.clear();
+  entityStore.clear();
   router.push({ name: 'login' });
 }
 
 onMounted(async () => {
   try {
-    await wsStore.fetchWorkspaces();
-    if (wsStore.workspaces.length === 1) {
-      const only = wsStore.workspaces[0];
+    await wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined);
+    const only = wsStore.workspaces.length === 1 ? wsStore.workspaces[0] : null;
+    if (only) {
       wsStore.setCurrentWorkspace(only.id);
-      router.replace({ name: 'home' });
+      router.replace({
+        name: 'workspace-entities',
+        params: { workspaceId: String(only.id) },
+      });
       return;
     }
   } catch (err) {
-    loadError.value =
-      err instanceof ApiError
-        ? err.message || 'Failed to load workspaces.'
-        : 'Network error. Please try again.';
+    loadError.value = normalizeError(err, 'Failed to load workspaces.').message;
   } finally {
     loading.value = false;
   }

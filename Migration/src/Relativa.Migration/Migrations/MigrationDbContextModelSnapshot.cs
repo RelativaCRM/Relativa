@@ -71,10 +71,13 @@ namespace Relativa.Migration.Migrations
                         .IsDescending()
                         .HasDatabaseName("ix_entity_audit_log_changed_at");
 
-                    b.HasIndex("ChangedById");
+                    b.HasIndex("ChangedById", "ChangedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_eal_changed_by_changed_at");
 
-                    b.HasIndex("EntityId")
-                        .HasDatabaseName("ix_entity_audit_log_entity_id");
+                    b.HasIndex("EntityId", "ChangedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_eal_entity_changed_at");
 
                     b.ToTable("entity_audit_log", (string)null);
                 });
@@ -122,10 +125,13 @@ namespace Relativa.Migration.Migrations
                         .IsDescending()
                         .HasDatabaseName("ix_organization_audit_log_changed_at");
 
-                    b.HasIndex("ChangedById");
+                    b.HasIndex("ChangedById", "ChangedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_oal_changed_by_changed_at");
 
-                    b.HasIndex("OrganizationId")
-                        .HasDatabaseName("ix_organization_audit_log_organization_id");
+                    b.HasIndex("OrganizationId", "ChangedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_oal_organization_changed_at");
 
                     b.ToTable("organization_audit_log", (string)null);
                 });
@@ -173,10 +179,13 @@ namespace Relativa.Migration.Migrations
                         .IsDescending()
                         .HasDatabaseName("ix_user_audit_log_changed_at");
 
-                    b.HasIndex("ChangedById");
+                    b.HasIndex("ChangedById", "ChangedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_ual_changed_by_changed_at");
 
-                    b.HasIndex("TargetUserId")
-                        .HasDatabaseName("ix_user_audit_log_target_user_id");
+                    b.HasIndex("TargetUserId", "ChangedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_ual_target_user_changed_at");
 
                     b.ToTable("user_audit_log", (string)null);
                 });
@@ -224,10 +233,13 @@ namespace Relativa.Migration.Migrations
                         .IsDescending()
                         .HasDatabaseName("ix_workspace_audit_log_changed_at");
 
-                    b.HasIndex("ChangedById");
+                    b.HasIndex("ChangedById", "ChangedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_wal_changed_by_changed_at");
 
-                    b.HasIndex("WorkspaceId")
-                        .HasDatabaseName("ix_workspace_audit_log_workspace_id");
+                    b.HasIndex("WorkspaceId", "ChangedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_wal_workspace_changed_at");
 
                     b.ToTable("workspace_audit_log", (string)null);
                 });
@@ -273,8 +285,8 @@ namespace Relativa.Migration.Migrations
 
                     b.Property<string>("RoutingKey")
                         .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("routing_key");
 
                     b.HasKey("Id");
@@ -286,8 +298,8 @@ namespace Relativa.Migration.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_audit_outbox_event_id");
 
-                    b.HasIndex("PublishedAtUtc")
-                        .HasDatabaseName("ix_audit_outbox_published_at_utc");
+                    b.HasIndex("PublishedAtUtc", "Id")
+                        .HasDatabaseName("ix_audit_outbox_pending");
 
                     b.ToTable("audit_outbox", (string)null);
                 });
@@ -366,11 +378,7 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("EntityId", "PropertyId");
 
-                    b.HasIndex("EntityId")
-                        .HasDatabaseName("ix_epv_entity_id");
-
-                    b.HasIndex("PropertyId")
-                        .HasDatabaseName("ix_epv_property_id");
+                    b.HasIndex("PropertyId");
 
                     b.ToTable("entity_property_value", (string)null);
                 });
@@ -509,9 +517,11 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("EntityId");
-
                     b.HasIndex("WorkspaceId");
+
+                    b.HasIndex("EntityId", "WorkspaceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ew_entity_workspace");
 
                     b.ToTable("entity_workspace", (string)null);
                 });
@@ -567,6 +577,10 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("invited_by_user_id");
 
+                    b.Property<int>("OrgRoleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("org_role_id");
+
                     b.Property<int>("OrganizationId")
                         .HasColumnType("integer")
                         .HasColumnName("organization_id");
@@ -585,11 +599,17 @@ namespace Relativa.Migration.Migrations
 
                     b.HasIndex("InvitedByUserId");
 
-                    b.HasIndex("OrganizationId");
+                    b.HasIndex("OrgRoleId");
 
                     b.HasIndex("Token")
                         .IsUnique()
                         .HasDatabaseName("ix_org_invitations_token");
+
+                    b.HasIndex("Email", "Status")
+                        .HasDatabaseName("ix_oi_email_status");
+
+                    b.HasIndex("OrganizationId", "Status")
+                        .HasDatabaseName("ix_oi_org_status");
 
                     b.ToTable("organization_invitations", (string)null);
                 });
@@ -634,11 +654,13 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrganizationId");
-
                     b.HasIndex("ReviewedByUserId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("OrganizationId", "Status")
+                        .HasDatabaseName("ix_ojr_org_status");
+
+                    b.HasIndex("UserId", "Status")
+                        .HasDatabaseName("ix_ojr_user_status");
 
                     b.ToTable("organization_join_requests", (string)null);
                 });
@@ -757,10 +779,29 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrganizationId")
-                        .HasDatabaseName("ix_property_organization_id");
+                    b.HasIndex("OrganizationId");
 
                     b.ToTable("property", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.RabbitMqProcessedDelivery", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
+                    b.Property<string>("ConsumerGroup")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("consumer_group");
+
+                    b.Property<DateTimeOffset>("ProcessedAtUtc")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("processed_at_utc");
+
+                    b.HasKey("MessageId", "ConsumerGroup");
+
+                    b.ToTable("rabbitmq_processed_delivery", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>
@@ -805,7 +846,8 @@ namespace Relativa.Migration.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"is_archived\" = FALSE");
 
                     b.ToTable("users", (string)null);
                 });
@@ -845,7 +887,8 @@ namespace Relativa.Migration.Migrations
 
                     b.HasIndex("OrgRoleId");
 
-                    b.HasIndex("OrganizationId");
+                    b.HasIndex("OrganizationId", "IsArchived")
+                        .HasDatabaseName("ix_uro_org_active");
 
                     b.HasIndex("UserId", "OrganizationId")
                         .IsUnique()
@@ -887,13 +930,14 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("WorkspaceId");
-
                     b.HasIndex("WsRoleId");
 
                     b.HasIndex("UserId", "WorkspaceId")
                         .IsUnique()
                         .HasDatabaseName("ix_user_role_workspace_user_ws");
+
+                    b.HasIndex("WorkspaceId", "IsArchived")
+                        .HasDatabaseName("ix_urw_workspace_active");
 
                     b.ToTable("user_role_workspace", (string)null);
                 });
@@ -933,65 +977,6 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("OrganizationId");
 
                     b.ToTable("workspaces", (string)null);
-                });
-
-            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceInvitation", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("email");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
-
-                    b.Property<int>("InvitedByUserId")
-                        .HasColumnType("integer")
-                        .HasColumnName("invited_by_user_id");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("status");
-
-                    b.Property<string>("Token")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("token");
-
-                    b.Property<int>("WorkspaceId")
-                        .HasColumnType("integer")
-                        .HasColumnName("workspace_id");
-
-                    b.Property<int>("WsRoleId")
-                        .HasColumnType("integer")
-                        .HasColumnName("ws_role_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InvitedByUserId");
-
-                    b.HasIndex("Token")
-                        .IsUnique()
-                        .HasDatabaseName("ix_workspace_invitations_token");
-
-                    b.HasIndex("WorkspaceId");
-
-                    b.HasIndex("WsRoleId");
-
-                    b.ToTable("workspace_invitations", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceRole", b =>
@@ -1266,6 +1251,13 @@ namespace Relativa.Migration.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_oi_invited_by");
 
+                    b.HasOne("Relativa.Persistence.Entities.OrganizationRole", "Role")
+                        .WithMany()
+                        .HasForeignKey("OrgRoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_oi_org_role");
+
                     b.HasOne("Relativa.Persistence.Entities.Organization", "Organization")
                         .WithMany("Invitations")
                         .HasForeignKey("OrganizationId")
@@ -1276,6 +1268,8 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("InvitedBy");
 
                     b.Navigation("Organization");
+
+                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.OrganizationJoinRequest", b =>
@@ -1431,36 +1425,6 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Organization");
                 });
 
-            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceInvitation", b =>
-                {
-                    b.HasOne("Relativa.Persistence.Entities.User", "InvitedBy")
-                        .WithMany()
-                        .HasForeignKey("InvitedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_wi_invited_by");
-
-                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
-                        .WithMany("Invitations")
-                        .HasForeignKey("WorkspaceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_wi_workspace");
-
-                    b.HasOne("Relativa.Persistence.Entities.WorkspaceRole", "Role")
-                        .WithMany()
-                        .HasForeignKey("WsRoleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_wi_role");
-
-                    b.Navigation("InvitedBy");
-
-                    b.Navigation("Role");
-
-                    b.Navigation("Workspace");
-                });
-
             modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceRole", b =>
                 {
                     b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
@@ -1564,8 +1528,6 @@ namespace Relativa.Migration.Migrations
             modelBuilder.Entity("Relativa.Persistence.Entities.Workspace", b =>
                 {
                     b.Navigation("EntityWorkspaces");
-
-                    b.Navigation("Invitations");
 
                     b.Navigation("Members");
 

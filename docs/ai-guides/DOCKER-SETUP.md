@@ -1,6 +1,6 @@
 # Docker Setup -- Infrastructure and Deployment
 
-> **Last verified:** 2026-05-01 (RabbitMQ added for audit event transport)
+> **Last verified:** 2026-05-02 (Graph compose build context shares Persistence + Rabbit choreography for Graph/ML)
 
 > **Maintenance obligation:** If you change Docker Compose, Dockerfiles, networking, volumes, or environment variables, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -56,12 +56,12 @@ The startup chain enforced by Docker Compose `depends_on` conditions:
 2. **pgadmin** starts once postgres is healthy (ops tool, not an app dependency).
 3. **migration** starts once postgres is healthy. Runs `Database.MigrateAsync()`, applies all EF migrations, then exits with code 0.
 4. **auth** and **core** start once migration completes successfully (`service_completed_successfully`). Both need the schema to be ready.
-5. **rabbitmq** starts and becomes healthy.
-6. **graph**, **ml** start independently.
-7. **audit** starts after postgres + migration + rabbitmq.
-8. **auth** and **core** also depend on rabbitmq for audit-outbox publishing.
+5. **rabbitmq** starts and becomes healthy — required before **auth** and **core** (outbox dispatchers declare/publish exchanges).
+6. **graph** starts after postgres + migration + rabbitmq (DB idempotency table + choreography consumer AMQP wiring).
+7. **ml** starts after postgres + migration + rabbitmq (Postgres choreography inbox + Rabbit consumer sidecar alongside `runserver`).
+8. **audit** starts after postgres + migration + rabbitmq.
 9. **gateway** starts once auth, core, graph, ml, and audit are started (so YARP has upstream targets).
-10. **client** starts once gateway is started (needs `VITE_GATEWAY_URL` to resolve).
+10. **client** starts once gateway is healthy (needs `VITE_GATEWAY_URL` to resolve).
 
 ---
 
@@ -94,7 +94,7 @@ No other named or bind-mount volumes are defined. Service containers are statele
 | graph | 8083 | 8083 | |
 | ml | 8084 | 8084 | |
 | audit | 8086 | 8086 | |
-| rabbitmq | 5672 | 5672 | AMQP broker for audit events |
+| rabbitmq | 5672 | 5672 | AMQP broker for transactional outbox (audit pipeline + choreography domain exchanges) |
 | rabbitmq-management | 15672 | 15672 | RabbitMQ management UI |
 | gateway | 8080 | 8080 | Main entry point for clients |
 | client | 3000 | `${CLIENT_PORT}` (default 3000) | |
@@ -123,18 +123,18 @@ Services that reference the shared `Persistence` library need the **repo root** 
 
 | Dockerfile | Build context (in compose) | Copies Persistence? |
 |---|---|---|
-| `Authentication/Dockerfile` | `.` (repo root) | Yes |
-| `Core/Dockerfile` | `.` (repo root) | Yes |
+| `Authentication/Dockerfile` | `.` (repo root) | Yes (also copies `Messaging/` shared publish helpers) |
+| `Core/Dockerfile` | `.` (repo root) | Yes (also copies `Messaging/` shared publish helpers) |
 | `Migration/Dockerfile` | `.` (repo root) | Yes |
 | `Gateway/Dockerfile` | `./Gateway` | No |
-| `Graph/Dockerfile` | `./Graph` | No |
+| `Graph/Dockerfile` | `.` (repo root) | Yes (`Persistence/` for choreography contracts + Postgres idempotency) |
 | `Audit/Dockerfile` | `.` (repo root) | Yes |
 
 ### Non-.NET services
 
 | Dockerfile | Base image | Notes |
 |---|---|---|
-| `ML/Dockerfile` | `python:3.11-slim` | `pip install -e .` from `pyproject.toml`, runs `manage.py runserver` |
+| `ML/Dockerfile` | `python:3.12-slim` | Installs editable package; **`scripts/run_api_and_consumer.sh`** runs `manage.py run_domain_consumer` concurrently with Django `runserver` |
 | `Client/Dockerfile` | `node:20-alpine` | `npm ci`, runs `npm run dev -- --host 0.0.0.0 --port 3000` |
 
 ---
@@ -147,9 +147,9 @@ Template for Docker Compose variable substitution. Users copy to `.env` (gitigno
 
 | Variable | Used by | Purpose |
 |---|---|---|
-| `DB_NAME` | postgres, auth, core, migration | Database name |
-| `DB_USER` | postgres, auth, core, migration | Database username |
-| `DB_PASS` | postgres, auth, core, migration | Database password |
+| `DB_NAME` | postgres, auth, core, migration, graph, ml | Database name |
+| `DB_USER` | postgres, auth, core, migration, graph, ml | Database username |
+| `DB_PASS` | postgres, auth, core, migration, graph, ml | Database password |
 | `DB_PORT` | postgres | Host-exposed port |
 | `PGADMIN_DEFAULT_EMAIL` | pgadmin | Admin email |
 | `PGADMIN_DEFAULT_PASSWORD` | pgadmin | Admin password |
@@ -159,9 +159,9 @@ Template for Docker Compose variable substitution. Users copy to `.env` (gitigno
 | `CORS_ORIGIN_1` | gateway | First allowed browser origin for gateway CORS allowlist |
 | `CORS_ORIGIN_2` | gateway | Second allowed browser origin for gateway CORS allowlist |
 | `CORS_ALLOW_ANY_ORIGIN_FOR_DEV` | gateway | Local dev-only wildcard CORS override (`true`/`false`) |
-| `JWT_SECRET` | auth, gateway | Shared symmetric signing key |
-| `JWT_ISSUER` | auth, gateway | Token issuer claim |
-| `JWT_AUDIENCE` | auth, gateway | Token audience claim |
+| `JWT_SECRET` | auth, gateway, audit | Shared symmetric signing key |
+| `JWT_ISSUER` | auth, gateway, audit | Token issuer claim |
+| `JWT_AUDIENCE` | auth, gateway, audit | Token audience claim |
 
 ### How env vars reach services
 

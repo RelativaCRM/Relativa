@@ -23,7 +23,7 @@ public sealed class AuditOutboxMessageConfiguration : IEntityTypeConfiguration<A
             .IsRequired();
         builder.Property(x => x.RoutingKey)
             .HasColumnName("routing_key")
-            .HasMaxLength(120)
+            .HasMaxLength(512)
             .IsRequired();
         builder.Property(x => x.OccurredAtUtc)
             .HasColumnName("occurred_at_utc")
@@ -43,8 +43,8 @@ public sealed class AuditOutboxMessageConfiguration : IEntityTypeConfiguration<A
             .HasColumnName("last_error")
             .HasMaxLength(2000);
 
-        builder.HasIndex(x => x.PublishedAtUtc)
-            .HasDatabaseName("ix_audit_outbox_published_at_utc");
+        builder.HasIndex(x => new { x.PublishedAtUtc, x.Id })
+            .HasDatabaseName("ix_audit_outbox_pending");
         builder.HasIndex(x => x.CreatedAtUtc)
             .HasDatabaseName("ix_audit_outbox_created_at_utc");
         builder.HasIndex(x => x.EventId)

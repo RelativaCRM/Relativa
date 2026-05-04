@@ -1,28 +1,31 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   authApi,
   type LoginRequest,
   type RegisterRequest,
+  type UpdateProfilePayload,
   type UserProfile,
 } from '@/api/auth';
+import {
+  loadJson,
+  loadString,
+  saveJson,
+  saveString,
+} from '@/api/persistence';
 
 const STORAGE_KEY = 'relativa_jwt';
 const EXPIRY_KEY = 'relativa_jwt_expires_at';
 const WORKSPACE_KEY = 'relativa_workspace_id';
+const USER_KEY = 'relativa_user';
+const ROLES_KEY = 'relativa_roles';
 
 export const useAuthStore = defineStore('auth', () => {
-  const accessToken = ref<string | null>(
-    typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null,
-  );
-  const expiresAt = ref<string | null>(
-    typeof localStorage !== 'undefined' ? localStorage.getItem(EXPIRY_KEY) : null,
-  );
-  const workspaceId = ref<string>(
-    typeof localStorage !== 'undefined' ? localStorage.getItem(WORKSPACE_KEY) ?? '' : '',
-  );
-  const roles = ref<string[]>(['User']);
-  const user = ref<UserProfile | null>(null);
+  const accessToken = ref<string | null>(loadString(STORAGE_KEY));
+  const expiresAt = ref<string | null>(loadString(EXPIRY_KEY));
+  const workspaceId = ref<string>(loadString(WORKSPACE_KEY) ?? '');
+  const roles = ref<string[]>(loadJson<string[]>(ROLES_KEY) ?? ['User']);
+  const user = ref<UserProfile | null>(loadJson<UserProfile>(USER_KEY));
 
   const isAuthenticated = computed(() => {
     if (!accessToken.value) return false;
@@ -33,24 +36,13 @@ export const useAuthStore = defineStore('auth', () => {
   function setToken(token: string | null, expiry: string | null = null) {
     accessToken.value = token;
     expiresAt.value = expiry;
-    if (typeof localStorage !== 'undefined') {
-      if (token) {
-        localStorage.setItem(STORAGE_KEY, token);
-        if (expiry) localStorage.setItem(EXPIRY_KEY, expiry);
-        else localStorage.removeItem(EXPIRY_KEY);
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(EXPIRY_KEY);
-      }
-    }
+    saveString(STORAGE_KEY, token);
+    saveString(EXPIRY_KEY, token ? expiry : null);
   }
 
   function setWorkspace(id: string) {
     workspaceId.value = id;
-    if (typeof localStorage !== 'undefined') {
-      if (id) localStorage.setItem(WORKSPACE_KEY, id);
-      else localStorage.removeItem(WORKSPACE_KEY);
-    }
+    saveString(WORKSPACE_KEY, id || null);
   }
 
   function setRoles(next: string[]) {
@@ -85,9 +77,30 @@ export const useAuthStore = defineStore('auth', () => {
     return authApi.register(payload);
   }
 
+  async function updateProfile(payload: UpdateProfilePayload) {
+    user.value = await authApi.updateMe(payload);
+    return user.value;
+  }
+
+  async function deleteAccount() {
+    await authApi.deleteMe();
+    clearSession();
+  }
+
   function logout() {
     clearSession();
   }
+
+  watch(
+    user,
+    (next) => saveJson(USER_KEY, next),
+    { deep: true },
+  );
+  watch(
+    roles,
+    (next) => saveJson(ROLES_KEY, next),
+    { deep: true },
+  );
 
   return {
     accessToken,
@@ -101,6 +114,8 @@ export const useAuthStore = defineStore('auth', () => {
     setRoles,
     clearSession,
     fetchProfile,
+    updateProfile,
+    deleteAccount,
     login,
     register,
     logout,

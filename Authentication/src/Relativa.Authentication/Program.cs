@@ -12,6 +12,8 @@ using Relativa.Authentication.Infrastructure.Repositories;
 using Relativa.Authentication.Infrastructure.Services.Audit;
 using Relativa.Authentication.Infrastructure.Services;
 using Relativa.Authentication.Middleware;
+using Relativa.Messaging;
+using Relativa.Persistence.Contracts;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -32,7 +34,8 @@ try
 
     builder.Services.AddDbContext<AuthDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-    builder.Services.Configure<RabbitMqAuditOptions>(builder.Configuration.GetSection("RabbitMqAudit"));
+    builder.Services.Configure<RabbitMqPublishingOptions>(
+        builder.Configuration.GetSection(RabbitMqPublishingOptions.ConfigurationSectionKey));
 
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<AuthDbContext>();
@@ -65,8 +68,9 @@ try
     builder.Services.AddScoped<IUserRepository, UserRepository>();
     builder.Services.AddScoped<ITokenService, JwtTokenService>();
     builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+    builder.Services.AddScoped<IUserProvisioningService, UserProvisioningService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
-    builder.Services.AddScoped<IAuditOutboxWriter, AuditOutboxWriter>();
+    builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
     builder.Services.AddHostedService<AuditOutboxDispatcher>();
 
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

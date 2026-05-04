@@ -8,11 +8,13 @@ import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
-import { ApiError } from '@/api/http';
+import { normalizeError } from '@/api/errors';
+import { useApiErrorHandler } from '@/api/errorToast';
 
 const router = useRouter();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
+const { notify } = useApiErrorHandler();
 
 const loading = ref(true);
 const showCreate = ref(false);
@@ -34,10 +36,12 @@ async function handleCreate() {
       orgStore.currentOrgId,
     );
     closeDialog();
-    router.push({ name: 'workspace-members', params: { id: ws.id } });
+    router.push({
+      name: 'workspace-members',
+      params: { workspaceId: String(ws.id) },
+    });
   } catch (err) {
-    createError.value =
-      err instanceof ApiError ? err.message : 'Failed to create workspace.';
+    createError.value = normalizeError(err, 'Failed to create workspace.').message;
   } finally {
     creating.value = false;
   }
@@ -51,12 +55,18 @@ function closeDialog() {
 
 function openWorkspace(id: number) {
   wsStore.setCurrentWorkspace(id);
-  router.push({ name: 'workspace-members', params: { id } });
+  router.push({
+    name: 'workspace-members',
+    params: { workspaceId: String(id) },
+  });
 }
 
 function openEntities(id: number) {
   wsStore.setCurrentWorkspace(id);
-  router.push({ name: 'workspace-entities', params: { id } });
+  router.push({
+    name: 'workspace-entities',
+    params: { workspaceId: String(id) },
+  });
 }
 
 function displayRole(roleName: string | null): string {
@@ -70,7 +80,9 @@ function displayRole(roleName: string | null): string {
 
 onMounted(async () => {
   try {
-    await wsStore.fetchWorkspaces();
+    await wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined);
+  } catch (err) {
+    notify(err, { fallback: 'Failed to load workspaces.' });
   } finally {
     loading.value = false;
   }

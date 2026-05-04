@@ -21,7 +21,6 @@ public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> opti
     public DbSet<WorkspaceRole> WorkspaceRoles => Set<WorkspaceRole>();
     public DbSet<WorkspaceRolePermission> WorkspaceRolePermissions => Set<WorkspaceRolePermission>();
     public DbSet<UserRoleWorkspace> UserRoleWorkspaces => Set<UserRoleWorkspace>();
-    public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
 
     public DbSet<EntityType> EntityTypes => Set<EntityType>();
     public DbSet<Entity> Entities => Set<Entity>();
@@ -37,6 +36,7 @@ public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> opti
     public DbSet<OrganizationAuditLog> OrganizationAuditLogs => Set<OrganizationAuditLog>();
     public DbSet<AuditOutboxMessage> AuditOutboxMessages => Set<AuditOutboxMessage>();
     public DbSet<AuditProcessedEvent> AuditProcessedEvents => Set<AuditProcessedEvent>();
+    public DbSet<RabbitMqProcessedDelivery> RabbitMqProcessedDeliveries => Set<RabbitMqProcessedDelivery>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

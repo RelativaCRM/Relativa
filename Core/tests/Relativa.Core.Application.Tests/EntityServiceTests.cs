@@ -6,6 +6,7 @@ using Relativa.Core.Application.DTOs.Entity;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
 using Xunit;
 
@@ -15,7 +16,7 @@ public sealed class EntityServiceTests
 {
     private readonly Mock<IEntityRepository> _entityRepo = new();
     private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly Mock<IValidator<CreateEntityRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateEntityRequest>> _updateValidator = new();
     private readonly EntityService _sut;
@@ -213,7 +214,7 @@ public sealed class EntityServiceTests
         _entityRepo.Verify(r =>
             r.CreateAsync(It.IsAny<Entity>(), It.IsAny<List<EntityPropertyValue>>(), 1, It.IsAny<CancellationToken>()),
             Times.Once);
-        _auditOutboxWriter.Verify(x => x.EnqueueAsync(It.IsAny<Relativa.Persistence.Contracts.AuditEventContract>(), It.IsAny<CancellationToken>()), Times.Once);
+        _auditOutboxWriter.Verify(x => x.EnqueueAuditAsync(It.IsAny<Relativa.Persistence.Contracts.AuditEventContract>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
