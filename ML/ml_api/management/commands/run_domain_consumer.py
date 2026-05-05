@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 
 import pika
 from django.conf import settings
@@ -14,6 +15,7 @@ QUEUE_NAME = 'domain.events.ml.workspace.v1'
 DLX_FANOUT = 'relativa.consumer.ml.workspace.v1.dlx'
 DLQ_NAME = 'domain.events.ml.workspace.v1.failed'
 WORKSPACE_BINDING_PATTERN = 'core.workspace.*'
+ENTITY_BINDING_PATTERN = 'core.entity.*'
 CONSUMER_GROUP = 'ml.domain.workspace.v1'
 
 
@@ -60,6 +62,9 @@ class Command(BaseCommand):
         channel.queue_bind(
             exchange=DOMAIN_EXCHANGE, queue=QUEUE_NAME,
             routing_key=WORKSPACE_BINDING_PATTERN)
+        channel.queue_bind(
+            exchange=DOMAIN_EXCHANGE, queue=QUEUE_NAME,
+            routing_key=ENTITY_BINDING_PATTERN)
 
         channel.basic_qos(prefetch_count=32)
 
@@ -101,6 +106,9 @@ class Command(BaseCommand):
                     'ML choreography workspace.lifecycle received payload=%s',
                     payload_js if isinstance(payload_js, str) and len(payload_js) < 280 else '[payload]',
                     extra=extra)
+            elif ptype == 'relativa.domain.entity.analysis_refresh.v1':
+                payload_js = envelope.get('PayloadJson') or envelope.get('payloadJson')
+                _touch_deal_analysis_source_updated_at(payload_js, extra)
             else:
                 logger.info('ML choreography PayloadTypeName=%s', ptype, extra=extra)
 
@@ -124,3 +132,69 @@ def try_mark_processed_once(message_id: uuid.UUID) -> bool:
     with connection.cursor() as cursor:
         cursor.execute(insert_sql, [str(message_id), CONSUMER_GROUP])
         return cursor.rowcount == 1
+
+
+def _touch_deal_analysis_source_updated_at(payload_js: str | None, extra: dict) -> None:
+    if not payload_js:
+        logger.warning('analysis_refresh payload is empty', extra=extra)
+        return
+
+    try:
+        payload = json.loads(payload_js)
+    except json.JSONDecodeError:
+        logger.warning('analysis_refresh payload json malformed', extra=extra)
+        return
+
+    entity_id = payload.get('EntityId') or payload.get('entityId')
+    entity_type_id = payload.get('EntityTypeId') or payload.get('entityTypeId')
+    source_updated_at_utc = payload.get('SourceUpdatedAtUtc') or payload.get('sourceUpdatedAtUtc')
+    if entity_id is None:
+        return
+
+    try:
+        entity_id = int(entity_id)
+    except (TypeError, ValueError):
+        logger.warning('analysis_refresh entity_id invalid: %s', entity_id, extra=extra)
+        return
+
+    if source_updated_at_utc:
+        try:
+            dt = datetime.fromisoformat(source_updated_at_utc.replace('Z', '+00:00'))
+            source_date = dt.date()
+        except ValueError:
+            source_date = datetime.now(timezone.utc).date()
+    else:
+        source_date = datetime.now(timezone.utc).date()
+
+    upsert_sql = (
+        '''
+        WITH rel AS (
+            SELECT er.target_entity_id AS analysis_entity_id
+            FROM entity_relationship er
+            JOIN entity_relationship_type ert ON ert.id = er.relationship_type_id
+            WHERE ert.name = 'deal_analysis'
+              AND er.source_entity_id = %s
+            LIMIT 1
+        ),
+        prop AS (
+            SELECT id AS property_id
+            FROM property
+            WHERE name = 'source_updated_at'
+              AND organization_id IS NULL
+            LIMIT 1
+        )
+        INSERT INTO entity_property_value (
+            entity_id, property_id, value_string, value_int, value_decimal, value_bool, value_date
+        )
+        SELECT rel.analysis_entity_id, prop.property_id, NULL, NULL, NULL, NULL, %s
+        FROM rel, prop
+        ON CONFLICT (entity_id, property_id)
+        DO UPDATE SET value_date = EXCLUDED.value_date
+        '''
+    )
+
+    # EntityTypeId may be used in future for fan-out (client/contract -> impacted deals).
+    _ = entity_type_id
+
+    with connection.cursor() as cursor:
+        cursor.execute(upsert_sql, [entity_id, source_date])

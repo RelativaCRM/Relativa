@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-04 (Core org user admin: create supports optional `orgRoleId`; cross-user archive enforces same email domain; org permission denials aligned to 403)
+> **Last verified:** 2026-05-05 (ML batch scoring endpoint implemented; ML consumer now handles workspace + entity analysis refresh choreography)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -16,7 +16,7 @@
 | Graph | 8083 | .NET 10, SignalR, RabbitMQ | Stub hub + choreography consumer (broadcasts lifecycle envelope) |
 | Audit | 8086 | .NET 10, EF Core, RabbitMQ | Functional |
 | Migration | -- | .NET 10, EF Core (console) | Functional |
-| ML | 8084 | Django 5.1, DRF, pika | Stub API + `run_domain_consumer` choreography subscriber (logs only) |
+| ML | 8084 | Django 5.1, DRF, pika | Functional batch scoring API + choreography subscriber |
 | Client | 3000 | Vue 3, Vite | Scaffold |
 
 ---
@@ -355,9 +355,9 @@ None -- this is a console application, not a web service.
 
 ## 7. ML (`relativa-ml`)
 
-**Purpose:** Machine learning service for scoring deals (closure probability, churn risk). Built on Django + DRF with planned Celery task scheduling.
+**Purpose:** Machine learning service for scoring deals (closure probability, churn risk). Built on Django + DRF with on-demand batch scoring and RabbitMQ-driven freshness updates.
 
-**Stack:** Python 3.12, Django 5.1, Django REST Framework, scikit-learn (planned), Celery + Redis (configured but inactive), pika (RabbitMQ choreography consumer)
+**Stack:** Python 3.12, Django 5.1, Django REST Framework, scikit-learn (`.pkl` models loaded at startup), Celery + Redis (configured but inactive), pika (RabbitMQ choreography consumer)
 **Project:** `ML/`
 **Port:** 8084
 
@@ -366,17 +366,18 @@ None -- this is a console application, not a web service.
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | POST | `/api/ml/recalculate/` | None | Returns `{"status":"accepted","detail":"stub"}` |
+| POST | `/api/ml/score/batch` | None | Accepts `{"entity_ids":[int,...]}`; returns `[{"entity_id", "closure_score", "churn_score"}]` with null-safe per-entity scoring and 5s timeout |
 
-### Status: Stub (choreography sidecar enabled)
+### Status: Functional endpoint + choreography sidecar
 
-Docker runs `manage.py run_domain_consumer` concurrently with Django (see `ML/scripts/run_api_and_consumer.sh`). The subscriber binds `domain.events.ml.workspace.v1` to `relativa.domain` for `core.workspace.*`, logs payloads, and uses `rabbitmq_processed_delivery` for idempotency. HTTP API stub remains unchanged.
+Docker runs `manage.py run_domain_consumer` concurrently with Django (see `ML/scripts/run_api_and_consumer.sh`). The subscriber binds `domain.events.ml.workspace.v1` to `relativa.domain` for both `core.workspace.*` and `core.entity.*`, and uses `rabbitmq_processed_delivery` for idempotency.
 
-API endpoint still returns stub body. Celery beat remains commented-out in `settings.py`.
+`POST /api/ml/score/batch` resolves `deal -> deal_analysis`, lazy-creates analysis entities when missing, reads EAV data from PostgreSQL, recomputes stale analysis rows (`source_updated_at`/`calculated_at`), and scores through loaded closure/churn sklearn models. Celery beat remains commented-out in `settings.py`.
 
 ### Key Files
 
 - `ML/ml_api/management/commands/run_domain_consumer.py` — Rabbit consumer (blocking)
-- `ML/ml_api/views.py` — REST stub handlers
+- `ML/ml_api/views.py` — health + recalculate stub + batch scoring handlers
 - `ML/ml_api/urls.py` — URL routing
 - `ML/scripts/run_api_and_consumer.sh` — runs consumer + Django server in Docker
 - `ML/relativa_ml/` -- future ML model package
