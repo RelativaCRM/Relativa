@@ -20,7 +20,7 @@ public sealed class AuditOutboxWriterIntegrationTests : IAsyncLifetime
         .Build();
 
     private RelativaDbContext _db = null!;
-    private AuditOutboxWriter _writer = null!;
+    private OutboxWriter _writer = null!;
 
     public async Task InitializeAsync()
     {
@@ -30,7 +30,7 @@ public sealed class AuditOutboxWriterIntegrationTests : IAsyncLifetime
             .Options;
         _db = new RelativaDbContext(options);
         await _db.Database.EnsureCreatedAsync();
-        _writer = new AuditOutboxWriter(_db);
+        _writer = new OutboxWriter(_db);
     }
 
     public async Task DisposeAsync()
@@ -59,7 +59,7 @@ public sealed class AuditOutboxWriterIntegrationTests : IAsyncLifetime
     {
         var contract = Contract(AuditRouting.ScopeEntity, "entity_created");
 
-        await _writer.EnqueueAsync(contract);
+        await _writer.EnqueueAuditAsync(contract);
 
         var message = await _db.AuditOutboxMessages.SingleAsync(m => m.EventId == contract.EventId);
         message.RoutingKey.Should().Be("audit.entity");
@@ -72,7 +72,7 @@ public sealed class AuditOutboxWriterIntegrationTests : IAsyncLifetime
     {
         var contract = Contract(AuditRouting.ScopeWorkspace, "workspace_created", actorId: 7, targetId: 42);
 
-        await _writer.EnqueueAsync(contract);
+        await _writer.EnqueueAuditAsync(contract);
 
         var message = await _db.AuditOutboxMessages.SingleAsync(m => m.EventId == contract.EventId);
         var deserialized = System.Text.Json.JsonSerializer.Deserialize<AuditEventContract>(message.PayloadJson);
@@ -92,10 +92,10 @@ public sealed class AuditOutboxWriterIntegrationTests : IAsyncLifetime
         var org = Contract(AuditRouting.ScopeOrganization, "org_created");
         var user = Contract(AuditRouting.ScopeUser, "user_registered");
 
-        await _writer.EnqueueAsync(entity);
-        await _writer.EnqueueAsync(workspace);
-        await _writer.EnqueueAsync(org);
-        await _writer.EnqueueAsync(user);
+        await _writer.EnqueueAuditAsync(entity);
+        await _writer.EnqueueAuditAsync(workspace);
+        await _writer.EnqueueAuditAsync(org);
+        await _writer.EnqueueAuditAsync(user);
 
         (await _db.AuditOutboxMessages.SingleAsync(m => m.EventId == entity.EventId)).RoutingKey
             .Should().Be("audit.entity");

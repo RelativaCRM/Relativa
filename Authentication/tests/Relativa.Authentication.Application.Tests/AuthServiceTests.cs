@@ -14,36 +14,28 @@ namespace Relativa.Authentication.Application.Tests;
 public sealed class AuthServiceTests
 {
     private readonly Mock<IUserRepository> _userRepo = new();
+    private readonly Mock<IUserProvisioningService> _userProvisioning = new();
     private readonly Mock<ITokenService> _tokenService = new();
     private readonly Mock<IPasswordHasher> _passwordHasher = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
     private readonly Mock<IValidator<LoginRequestDto>> _loginValidator = new();
-    private readonly Mock<IValidator<RegisterRequestDto>> _registerValidator = new();
+    private readonly Mock<IValidator<UpdateMyProfileRequest>> _updateProfileValidator = new();
     private readonly AuthService _sut;
 
     public AuthServiceTests()
     {
         _sut = new AuthService(
             _userRepo.Object,
+            _userProvisioning.Object,
             _tokenService.Object,
             _passwordHasher.Object,
             _loginValidator.Object,
-            _registerValidator.Object,
-            _auditOutboxWriter.Object
-        );
+            _updateProfileValidator.Object);
     }
 
     private void SetupValidLogin() =>
         _loginValidator
             .Setup(v => v.ValidateAsync(
                 It.IsAny<ValidationContext<LoginRequestDto>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult());
-
-    private void SetupValidRegister() =>
-        _registerValidator
-            .Setup(v => v.ValidateAsync(
-                It.IsAny<ValidationContext<RegisterRequestDto>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
 
@@ -137,110 +129,53 @@ public sealed class AuthServiceTests
     public async Task RegisterAsync_NewEmail_CreatesUserWithHashedPassword()
     {
         var request = new RegisterRequestDto("Taras", "Melnyk", "melnyk@relativa.io", "Secur3P@ss");
+        var ct = CancellationToken.None;
 
-        SetupValidRegister();
-        _userRepo
-            .Setup(r => r.ExistsAsync(request.Email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-        _passwordHasher
-            .Setup(h => h.Hash(request.Password))
-            .Returns("bcrypt-result");
+        _userProvisioning
+            .Setup(p => p.CreateUserAsync(request, null, ct))
+            .ReturnsAsync(new RegisterResponseDto(1, request.Email, request.FirstName, request.LastName));
 
-        User? captured = null;
-        _userRepo
-            .Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
-            .Callback<User, CancellationToken>((u, _) => captured = u);
-
-        var result = await _sut.RegisterAsync(request);
+        var result = await _sut.RegisterAsync(request, ct);
 
         result.Email.Should().Be(request.Email);
         result.FirstName.Should().Be(request.FirstName);
         result.LastName.Should().Be(request.LastName);
-        captured!.Password.Should().Be("bcrypt-result");
-        _userRepo.Verify(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Once);
-        _auditOutboxWriter.Verify(x => x.EnqueueAsync(It.IsAny<Relativa.Persistence.Contracts.AuditEventContract>(), It.IsAny<CancellationToken>()), Times.Once);
+        _userProvisioning.Verify(p => p.CreateUserAsync(request, null, ct), Times.Once);
     }
 
     [Fact]
     public async Task RegisterAsync_InvalidRequest_ThrowsValidationException()
     {
         var request = new RegisterRequestDto("", "", "not-an-email", "123");
+        var ct = CancellationToken.None;
 
-        _registerValidator
-            .Setup(v => v.ValidateAsync(
-                It.IsAny<ValidationContext<RegisterRequestDto>>(),
-                It.IsAny<CancellationToken>()))
+        _userProvisioning
+            .Setup(p => p.CreateUserAsync(request, null, ct))
             .ThrowsAsync(new ValidationException(new[]
             {
                 new ValidationFailure("FirstName", "First name is required."),
                 new ValidationFailure("Email", "A valid email address is required.")
             }));
 
-        var act = () => _sut.RegisterAsync(request);
+        var act = () => _sut.RegisterAsync(request, ct);
 
         await act.Should().ThrowAsync<ValidationException>();
-        _userRepo.Verify(
-            r => r.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
     }
 
     [Fact]
     public async Task RegisterAsync_DuplicateEmail_ThrowsInvalidOperationException()
     {
         var request = new RegisterRequestDto("Oksana", "Petrenko", "petrenko@relativa.io", "Secur3P@ss");
+        var ct = CancellationToken.None;
 
-        SetupValidRegister();
-        _userRepo
-            .Setup(r => r.ExistsAsync(request.Email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _userProvisioning
+            .Setup(p => p.CreateUserAsync(request, null, ct))
+            .ThrowsAsync(new InvalidOperationException("A user with this email already exists."));
 
-        var act = () => _sut.RegisterAsync(request);
+        var act = () => _sut.RegisterAsync(request, ct);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("A user with this email already exists.");
-        _userRepo.Verify(
-            r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task RegisterAsync_ValidRequest_EnqueuesUserScopeRegisteredAuditEvent()
-    {
-        var request = new RegisterRequestDto("Taras", "Melnyk", "melnyk@relativa.io", "Secur3P@ss");
-
-        SetupValidRegister();
-        _userRepo.Setup(r => r.ExistsAsync(request.Email, It.IsAny<CancellationToken>())).ReturnsAsync(false);
-        _passwordHasher.Setup(h => h.Hash(request.Password)).Returns("bcrypt-result");
-
-        await _sut.RegisterAsync(request);
-
-        _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
-                It.Is<Relativa.Persistence.Contracts.AuditEventContract>(e =>
-                    e.AuditScope == Relativa.Persistence.Contracts.AuditRouting.ScopeUser &&
-                    e.Action == "user_registered" &&
-                    e.SourceService == "authentication"),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task LoginAsync_ValidCredentials_DoesNotEnqueueAuditEvent()
-    {
-        var request = new LoginRequestDto("kovalenko@relativa.io", "Str0ngP@ss");
-        var user = new User { Id = 7, Email = request.Email, Password = "bcrypt-hash" };
-        var expiresAt = DateTime.UtcNow.AddHours(1);
-
-        SetupValidLogin();
-        _userRepo.Setup(r => r.GetByEmailAsync(request.Email, It.IsAny<CancellationToken>())).ReturnsAsync(user);
-        _passwordHasher.Setup(h => h.Verify(request.Password, user.Password)).Returns(true);
-        _tokenService.Setup(t => t.GenerateAccessToken(user)).Returns(("signed-jwt", expiresAt));
-
-        await _sut.LoginAsync(request);
-
-        _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(It.IsAny<Relativa.Persistence.Contracts.AuditEventContract>(), It.IsAny<CancellationToken>()),
-            Times.Never);
     }
 
     [Fact]

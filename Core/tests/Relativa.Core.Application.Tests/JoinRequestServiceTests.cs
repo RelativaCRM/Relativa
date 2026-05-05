@@ -16,7 +16,7 @@ public sealed class JoinRequestServiceTests
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IOrganizationRoleRepository> _orgRoleRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly JoinRequestService _sut;
 
     public JoinRequestServiceTests()
@@ -134,7 +134,7 @@ public sealed class JoinRequestServiceTests
         result.Status.Should().Be("Pending");
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_join_request_submitted" &&
@@ -298,12 +298,12 @@ public sealed class JoinRequestServiceTests
         _orgMemberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Once);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e => e.Action == "organization_member_added_via_join_request"),
                 It.IsAny<CancellationToken>()),
             Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e => e.Action == "organization_join_request_reviewed"),
                 It.IsAny<CancellationToken>()),
             Times.Once);
@@ -339,7 +339,7 @@ public sealed class JoinRequestServiceTests
         joinRequest.Status.Should().Be("Rejected");
         _orgMemberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(It.IsAny<AuditEventContract>(), It.IsAny<CancellationToken>()),
+            x => x.EnqueueAuditAsync(It.IsAny<AuditEventContract>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 }

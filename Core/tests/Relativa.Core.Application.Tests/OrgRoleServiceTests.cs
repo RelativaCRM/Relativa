@@ -19,7 +19,7 @@ public sealed class OrgRoleServiceTests
     private readonly Mock<IPermissionRepository> _permissionRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IValidator<CreateOrgRoleRequest>> _createValidator = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly OrgRoleService _sut;
 
     public OrgRoleServiceTests()
@@ -146,7 +146,7 @@ public sealed class OrgRoleServiceTests
         _orgRoleRepo.Verify(r => r.AddAsync(It.IsAny<OrganizationRole>(), It.IsAny<CancellationToken>()), Times.Once);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_role_created" &&
@@ -227,7 +227,7 @@ public sealed class OrgRoleServiceTests
         role.Name.Should().Be("new-name");
         _orgRoleRepo.Verify(r => r.UpdateAsync(role, It.IsAny<CancellationToken>()), Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_role_updated"),
@@ -292,7 +292,7 @@ public sealed class OrgRoleServiceTests
         role.IsArchived.Should().BeTrue();
         _orgRoleRepo.Verify(r => r.UpdateAsync(role, It.IsAny<CancellationToken>()), Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_role_archived" &&

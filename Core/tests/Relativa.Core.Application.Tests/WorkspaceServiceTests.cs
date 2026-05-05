@@ -20,7 +20,7 @@ public sealed class WorkspaceServiceTests
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IValidator<CreateWorkspaceRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateWorkspaceRequest>> _updateValidator = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly WorkspaceService _sut;
 
     public WorkspaceServiceTests()
@@ -193,7 +193,7 @@ public sealed class WorkspaceServiceTests
         await _sut.CreateAsync(7, new CreateWorkspaceRequest("Audit Team", 1));
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_created" &&
@@ -289,7 +289,7 @@ public sealed class WorkspaceServiceTests
         await _sut.UpdateAsync(7, 2, new UpdateWorkspaceRequest("New Name"));
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_updated" &&
@@ -327,7 +327,7 @@ public sealed class WorkspaceServiceTests
         await _sut.ArchiveAsync(3, 1);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_archived" &&

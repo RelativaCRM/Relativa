@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
+using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Core.Application.DTOs.OrgInvitation;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
@@ -17,8 +18,9 @@ public sealed class OrgInvitationServiceTests
     private readonly Mock<IOrgInvitationRepository> _invitationRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IOrganizationRoleRepository> _orgRoleRepo = new();
+    private readonly Mock<IUserRepository> _userRepo = new();
     private readonly Mock<IValidator<InviteToOrgRequest>> _inviteValidator = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly OrgInvitationService _sut;
 
     public OrgInvitationServiceTests()
@@ -27,6 +29,7 @@ public sealed class OrgInvitationServiceTests
             _invitationRepo.Object,
             _orgMemberRepo.Object,
             _orgRoleRepo.Object,
+            _userRepo.Object,
             _inviteValidator.Object,
             _auditOutboxWriter.Object);
 
@@ -74,7 +77,9 @@ public sealed class OrgInvitationServiceTests
     public async Task InviteAsync_ValidRequest_CreatesInvitationWithPendingStatusAndEnqueuesAuditEvent()
     {
         var caller = OrgMemberWithPermission(1, 5, "invite_to_org");
+        var memberRole = new OrganizationRole { Id = 2, Name = "org_member" };
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+        _orgRoleRepo.Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>())).ReturnsAsync(memberRole);
 
         OrganizationInvitation? captured = null;
         _invitationRepo
@@ -89,7 +94,7 @@ public sealed class OrgInvitationServiceTests
         captured.ExpiresAt.Should().BeAfter(DateTime.UtcNow);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_invitation_created" &&
@@ -159,7 +164,7 @@ public sealed class OrgInvitationServiceTests
         invitation.Status.Should().Be("Cancelled");
         _invitationRepo.Verify(r => r.UpdateAsync(invitation, It.IsAny<CancellationToken>()), Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.Action == "organization_invitation_cancelled" &&
                     e.AuditScope == AuditRouting.ScopeOrganization),
@@ -245,24 +250,6 @@ public sealed class OrgInvitationServiceTests
     }
 
     [Fact]
-    public async Task AcceptAsync_OrgMemberRoleNotFound_ThrowsInvalidOperationException()
-    {
-        var invitation = new OrganizationInvitation
-        {
-            OrganizationId = 3, Email = "u@r.io", Token = "tok",
-            Status = "Pending", ExpiresAt = DateTime.UtcNow.AddDays(3)
-        };
-        _invitationRepo.Setup(r => r.GetByTokenAsync("tok", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-        _orgMemberRepo.Setup(r => r.GetAsync(5, 3, It.IsAny<CancellationToken>())).ReturnsAsync((UserRoleOrganization?)null);
-        _orgRoleRepo.Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>())).ReturnsAsync((OrganizationRole?)null);
-
-        var act = () => _sut.AcceptAsync(5, "u@r.io", "tok");
-
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("System org_member role not found.");
-    }
-
-    [Fact]
     public async Task AcceptAsync_ValidToken_CreatesMembershipAndEnqueuesTwoAuditEvents()
     {
         var invitation = new OrganizationInvitation
@@ -282,12 +269,12 @@ public sealed class OrgInvitationServiceTests
         _orgMemberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Once);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e => e.Action == "organization_member_added_via_invitation"),
                 It.IsAny<CancellationToken>()),
             Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e => e.Action == "organization_invitation_accepted"),
                 It.IsAny<CancellationToken>()),
             Times.Once);

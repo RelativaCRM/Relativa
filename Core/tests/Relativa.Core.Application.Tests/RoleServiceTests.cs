@@ -18,7 +18,7 @@ public sealed class RoleServiceTests
     private readonly Mock<IPermissionRepository> _permissionRepo = new();
     private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
     private readonly Mock<IValidator<CreateRoleRequest>> _createValidator = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly RoleService _sut;
 
     public RoleServiceTests()
@@ -179,7 +179,7 @@ public sealed class RoleServiceTests
         await _sut.CreateAsync(4, 3, request);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_role_created" &&
@@ -277,7 +277,7 @@ public sealed class RoleServiceTests
         role.Name.Should().Be("new-name");
         _roleRepo.Verify(r => r.UpdateAsync(role, It.IsAny<CancellationToken>()), Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_role_updated" &&
@@ -371,7 +371,7 @@ public sealed class RoleServiceTests
         await _sut.ArchiveAsync(5, 9, 2);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_role_archived" &&

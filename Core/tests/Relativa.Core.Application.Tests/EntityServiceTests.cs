@@ -509,7 +509,7 @@ public sealed class EntityServiceTests
         await _sut.UpdateAsync(1, 1, 5, new UpdateEntityRequest([new PropertyValueInput(1, "Updated")]));
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<Relativa.Persistence.Contracts.AuditEventContract>(e =>
                     e.AuditScope == Relativa.Persistence.Contracts.AuditRouting.ScopeEntity &&
                     e.Action == "entity_updated" &&
@@ -533,7 +533,7 @@ public sealed class EntityServiceTests
         await _sut.ArchiveAsync(1, 1, 3);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<Relativa.Persistence.Contracts.AuditEventContract>(e =>
                     e.AuditScope == Relativa.Persistence.Contracts.AuditRouting.ScopeEntity &&
                     e.Action == "entity_archived" &&

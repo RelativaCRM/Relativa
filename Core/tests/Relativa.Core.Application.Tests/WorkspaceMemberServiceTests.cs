@@ -16,7 +16,7 @@ public sealed class WorkspaceMemberServiceTests
     private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IWorkspaceRepository> _workspaceRepo = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly WorkspaceMemberService _sut;
 
     public WorkspaceMemberServiceTests()
@@ -173,7 +173,7 @@ public sealed class WorkspaceMemberServiceTests
         target.WsRoleId.Should().Be(5);
         _memberRepo.Verify(r => r.UpdateAsync(target, It.IsAny<CancellationToken>()), Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_member_role_changed" &&
@@ -236,7 +236,7 @@ public sealed class WorkspaceMemberServiceTests
 
         _memberRepo.Verify(r => r.RemoveAsync(target, It.IsAny<CancellationToken>()), Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_member_removed" &&
@@ -257,12 +257,18 @@ public sealed class WorkspaceMemberServiceTests
                 UserId = 1, WorkspaceId = 5,
                 Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
             });
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 1, OrganizationId = 1,
+                Role = new OrganizationRole { Name = "org_viewer", RolePermissions = [] }
+            });
 
         var act = () => _sut.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(10, 2));
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>()
             .WithMessage("*add_ws_members*");
-        _workspaceRepo.Verify(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -366,7 +372,7 @@ public sealed class WorkspaceMemberServiceTests
         result.RoleName.Should().Be("analyst");
         _memberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()), Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeWorkspace &&
                     e.Action == "workspace_member_added" &&

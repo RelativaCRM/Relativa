@@ -3,6 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using Relativa.Core.Application.DTOs.Organization;
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
@@ -19,7 +20,7 @@ public sealed class OrganizationServiceTests
     private readonly Mock<IOrganizationRoleRepository> _orgRoleRepo = new();
     private readonly Mock<IValidator<CreateOrganizationRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateOrganizationRequest>> _updateValidator = new();
-    private readonly Mock<IAuditOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly OrganizationService _sut;
 
     public OrganizationServiceTests()
@@ -132,7 +133,7 @@ public sealed class OrganizationServiceTests
         await _sut.CreateAsync(7, new CreateOrganizationRequest("Audit Corp"));
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_created" &&
@@ -212,7 +213,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateAsync(10, 3, new UpdateOrganizationRequest("New Name"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*manage_org_settings*");
         _orgRepo.Verify(r => r.UpdateAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -243,7 +244,7 @@ public sealed class OrganizationServiceTests
         await _sut.UpdateAsync(3, 1, new UpdateOrganizationRequest("New Corp"));
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_updated" &&
@@ -318,7 +319,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.RemoveMemberAsync(6, 99, 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
         _orgMemberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -348,7 +349,7 @@ public sealed class OrganizationServiceTests
         await _sut.RemoveMemberAsync(6, 77, 1);
 
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_member_removed" &&
@@ -369,7 +370,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.ChangeMemberRoleAsync(4, 2, 1, new ChangeOrgMemberRoleRequest(3));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*assign_org_roles*");
     }
 
@@ -436,7 +437,7 @@ public sealed class OrganizationServiceTests
         target.OrgRoleId.Should().Be(5);
         _orgMemberRepo.Verify(r => r.UpdateAsync(target, It.IsAny<CancellationToken>()), Times.Once);
         _auditOutboxWriter.Verify(
-            x => x.EnqueueAsync(
+            x => x.EnqueueAuditAsync(
                 It.Is<AuditEventContract>(e =>
                     e.AuditScope == AuditRouting.ScopeOrganization &&
                     e.Action == "organization_member_role_changed" &&
