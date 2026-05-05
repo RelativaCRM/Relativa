@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 const BASE        = 'http://localhost:3000';
 const GATEWAY     = 'http://localhost:8080';
 const ADMIN_EMAIL = 'admin@relativa.com';
-const ADMIN_PASS  = 'Admin1234!';
+const ADMIN_PASS  = 'Demo1234!';
 const ts          = Date.now();
 
 async function fillLogin(page: Page, email: string, password: string) {
