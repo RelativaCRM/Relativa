@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-05 (Implemented ML batch scoring endpoint + EAV-backed deal analysis refresh flow.)
+> **Last verified:** 2026-05-05 (Implemented async ML recalculation endpoint and dedicated recalculation consumer.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -161,8 +161,8 @@
 
 ### ML service
 
-**What exists:** `POST /api/ml/score/batch` endpoint (request: `{"entity_ids":[int,...]}`) with 5-second timeout budget, null-safe per-entity scoring, lazy `deal_analysis` creation, stale analysis recomputation (`source_updated_at` vs `calculated_at`), and inference using loaded `closure_model.pkl` + `churn_model.pkl`. `run_domain_consumer` now subscribes to both `core.workspace.*` and `core.entity.*` and updates `deal_analysis.source_updated_at` idempotently via `rabbitmq_processed_delivery`.
-**What is missing:** `POST /api/ml/recalculate/` remains a stub. Celery tasks are still not implemented. Redis broker is not in Docker Compose. Beat schedule remains commented out in `settings.py`.
+**What exists:** `POST /api/ml/score/batch` endpoint (request: `{"entity_ids":[int,...]}`) with 5-second timeout budget, null-safe per-entity scoring, and stale-data fallback recomputation. `POST /api/ml/recalculate/` now supports async enqueue (`202 + job_id`) for both explicit `entity_ids` and workspace mode. `run_domain_consumer` subscribes to `core.workspace.*` and `core.entity.*` (freshness updates), while `run_recalculate_consumer` handles queued recomputation jobs (`ml.recalculate.enqueued`). Both use `rabbitmq_processed_delivery` idempotency receipts.
+**What is missing:** Celery tasks are still not implemented. Redis broker is not in Docker Compose. Beat schedule remains commented out in `settings.py`.
 
 ### Client
 
@@ -225,7 +225,7 @@
 ### ML service
 
 - ~~scikit-learn models for `closure_score` and `churn_score`.~~ *(done — models are loaded and used by `/api/ml/score/batch`)*
-- Celery task implementation for batch recalculation.
+- ~~Celery task implementation for batch recalculation.~~ *(replaced by RabbitMQ async recalculate workflow via `/api/ml/recalculate/` + `run_recalculate_consumer`)*
 - Redis broker added to Docker Compose.
 - Celery beat nightly schedule (02:00 UTC) enabled.
 - ~~Integration with Core (read deal data)~~ *(partial — Core emits `core.entity.changed`; ML consumes and marks analysis freshness)* and Graph push of updated scores.

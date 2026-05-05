@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-05 (Entity model extended with `deal_analysis`/`contract` type semantics and deal-analysis relationship conventions for ML scoring.)
+> **Last verified:** 2026-05-05 (ML now uses async recalculation choreography with enqueue/progress/completed domain contracts.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -251,6 +251,10 @@ erDiagram
   - **Dedup (org):** Partial unique indexes on pending org invitations / org join requests still apply as in migrations.
   - **Resend / expiry:** Org invitation resend + expiry handling unchanged (`POST …/organizations/{id}/invitations/{id}/resend`).
 - `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client`, `deal`, `deal_analysis`, `contract`). All entity types use the same EAV storage — there are no separate per-type tables.
+- ML processing split:
+  - `POST /api/ml/score/batch` is the on-demand scoring path.
+  - `POST /api/ml/recalculate/` enqueues asynchronous recomputation jobs over RabbitMQ.
+  - `run_recalculate_consumer` performs heavy write-back recomputation, while `run_domain_consumer` marks freshness (`source_updated_at`) from Core domain events.
 - **EAV two-level pattern:**
   - **Schema layer:** `EntityTypeProperty` defines which `Property` definitions belong to each `EntityType` (with `is_required`). `EntityRelationshipType` defines which entity type pairs can be linked (e.g. `deal_client`: deal → client).
   - **Data layer:** `EntityPropertyValue` holds a concrete typed value for one entity+property pair (composite PK). `EntityRelationship` holds a directed link between two entity instances, typed by `EntityRelationshipType`.

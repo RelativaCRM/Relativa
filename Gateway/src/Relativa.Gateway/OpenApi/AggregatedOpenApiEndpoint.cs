@@ -412,6 +412,11 @@ public static class AggregatedOpenApiEndpoint
         {
             ["entity_ids"] = new JsonArray(3, 4, 5)
         },
+        ["ML_Recalculate"] = new JsonObject
+        {
+            ["entity_ids"] = new JsonArray(3, 4, 5),
+            ["reason"] = "manual"
+        },
     };
 
     /// <summary>
@@ -419,6 +424,113 @@ public static class AggregatedOpenApiEndpoint
     /// </summary>
     private static void InjectMlPaths(JsonObject mergedPaths)
     {
+        mergedPaths["/ml/api/ml/recalculate/"] = new JsonObject
+        {
+            ["post"] = new JsonObject
+            {
+                ["tags"] = new JsonArray("ML"),
+                ["summary"] = "Enqueue asynchronous deal analysis recalculation",
+                ["description"] =
+                    "Enqueues a background job via RabbitMQ. Use either **`entity_ids`** (non-empty) "
+                    + "or **`workspace_id` + `mode\":\"workspace`** — not both. Returns `202` with `job_id`.",
+                ["operationId"] = "ML_Recalculate",
+                ["requestBody"] = new JsonObject
+                {
+                    ["required"] = true,
+                    ["content"] = new JsonObject
+                    {
+                        ["application/json"] = new JsonObject
+                        {
+                            ["schema"] = new JsonObject
+                            {
+                                ["type"] = "object",
+                                ["properties"] = new JsonObject
+                                {
+                                    ["entity_ids"] = new JsonObject
+                                    {
+                                        ["type"] = "array",
+                                        ["items"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1 },
+                                        ["description"] = "Deal entity ids to recalculate (exclusive with workspace mode)"
+                                    },
+                                    ["workspace_id"] = new JsonObject
+                                    {
+                                        ["type"] = "integer",
+                                        ["minimum"] = 1,
+                                        ["description"] = "When `mode` is `workspace`, recalculate deals in this workspace (up to batch cap)"
+                                    },
+                                    ["mode"] = new JsonObject
+                                    {
+                                        ["type"] = "string",
+                                        ["enum"] = new JsonArray("workspace"),
+                                        ["description"] = "Set to `workspace` together with `workspace_id` for workspace-wide recalculation"
+                                    },
+                                    ["reason"] = new JsonObject
+                                    {
+                                        ["type"] = "string",
+                                        ["description"] = "Optional audit hint (default: manual)"
+                                    }
+                                },
+                                ["oneOf"] = new JsonArray
+                                {
+                                    new JsonObject { ["required"] = new JsonArray("entity_ids") },
+                                    new JsonObject { ["required"] = new JsonArray("workspace_id", "mode") }
+                                }
+                            },
+                            ["examples"] = new JsonObject
+                            {
+                                ["explicitEntityIds"] = new JsonObject
+                                {
+                                    ["summary"] = "Recalculate explicit deal ids",
+                                    ["value"] = new JsonObject
+                                    {
+                                        ["entity_ids"] = new JsonArray(3, 4, 5),
+                                        ["reason"] = "manual"
+                                    }
+                                },
+                                ["workspaceWide"] = new JsonObject
+                                {
+                                    ["summary"] = "Recalculate all deals in a workspace",
+                                    ["value"] = new JsonObject
+                                    {
+                                        ["workspace_id"] = 1,
+                                        ["mode"] = "workspace",
+                                        ["reason"] = "scheduled"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                ["responses"] = new JsonObject
+                {
+                    ["202"] = new JsonObject
+                    {
+                        ["description"] = "Job accepted",
+                        ["content"] = new JsonObject
+                        {
+                            ["application/json"] = new JsonObject
+                            {
+                                ["schema"] = new JsonObject
+                                {
+                                    ["type"] = "object",
+                                    ["properties"] = new JsonObject
+                                    {
+                                        ["status"] = new JsonObject { ["type"] = "string" },
+                                        ["job_id"] = new JsonObject { ["type"] = "string", ["format"] = "uuid" },
+                                        ["scope"] = new JsonObject { ["type"] = "string" },
+                                        ["entity_count"] = new JsonObject { ["type"] = "integer" },
+                                        ["workspace_id"] = new JsonObject { ["type"] = new JsonArray("integer", "null") }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    ["400"] = new JsonObject { ["description"] = "Invalid payload (e.g. mixed entity_ids + workspace mode)" },
+                    ["500"] = new JsonObject { ["description"] = "Failed to publish job to RabbitMQ" }
+                }
+            }
+        };
+
         mergedPaths["/ml/api/ml/score/batch"] = new JsonObject
         {
             ["post"] = new JsonObject
