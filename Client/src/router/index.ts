@@ -21,6 +21,7 @@ const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
 const AuditLogView = () => import('@/views/AuditLogView.vue');
 const AccountSettingsView = () => import('@/views/AccountSettingsView.vue');
+const InvitationsView = () => import('@/views/InvitationsView.vue');
 
 const orgMeta = { navScope: 'org' as const, skipWorkspaceCheck: true };
 const userMeta = { navScope: 'user' as const, skipWorkspaceCheck: true };
@@ -92,6 +93,12 @@ const router = createRouter({
           name: 'account',
           component: AccountSettingsView,
           meta: userMeta,
+        },
+        {
+          path: 'invitations',
+          name: 'invitations',
+          component: InvitationsView,
+          meta: { navScope: 'user' as const, skipOrgCheck: true, skipWorkspaceCheck: true },
         },
         {
           path: 'w/:workspaceId(\\d+)',

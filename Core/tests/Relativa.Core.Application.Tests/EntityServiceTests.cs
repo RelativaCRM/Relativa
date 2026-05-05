@@ -331,6 +331,27 @@ public sealed class EntityServiceTests
             .WithMessage("*Duplicate*");
     }
 
+    [Fact]
+    public async Task CreateAsync_DecimalPropertyValueOverflowsDecimalMaxValue_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(9, "closure_score", required: false, type: PropertyDataType.Decimal)
+        };
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new CreateEntityRequest(2,
+        [
+            new PropertyValueInput(9, "44444444444444450000000000000000000000000000000000000000")
+        ]);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*closure_score*decimal*");
+    }
 
     [Fact]
     public async Task UpdateAsync_UserLacksPermission_InvalidPayload_ThrowsUnauthorized_NotValidation()
@@ -468,5 +489,111 @@ public sealed class EntityServiceTests
         await _sut.ArchiveAsync(1, 1, 1);
 
         _entityRepo.Verify(r => r.ArchiveAsync(entity, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ValidRequest_EnqueuesEntityUpdatedAuditEvent()
+    {
+        var storedEntity = BuildEntity(1, 1, "client", [(1, "first_name", "Olena")]);
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+        var reloaded = BuildEntity(1, 1, "client", [(1, "first_name", "Updated")]);
+
+        _memberRepo.Setup(r => r.GetAsync(5, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(5, 1, "manage_entities"));
+        _entityRepo.SetupSequence(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(storedEntity)
+            .ReturnsAsync(reloaded);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.UpdateAsync(1, 1, 5, new UpdateEntityRequest([new PropertyValueInput(1, "Updated")]));
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAuditAsync(
+                It.Is<Relativa.Persistence.Contracts.AuditEventContract>(e =>
+                    e.AuditScope == Relativa.Persistence.Contracts.AuditRouting.ScopeEntity &&
+                    e.Action == "entity_updated" &&
+                    e.TargetId == 1 &&
+                    e.ActorUserId == 5 &&
+                    e.SourceService == "core"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ArchiveAsync_ValidRequest_EnqueuesEntityArchivedAuditEvent()
+    {
+        var entity = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
+
+        _memberRepo.Setup(r => r.GetAsync(3, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(3, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+
+        await _sut.ArchiveAsync(1, 1, 3);
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAuditAsync(
+                It.Is<Relativa.Persistence.Contracts.AuditEventContract>(e =>
+                    e.AuditScope == Relativa.Persistence.Contracts.AuditRouting.ScopeEntity &&
+                    e.Action == "entity_archived" &&
+                    e.TargetId == 1 &&
+                    e.ActorUserId == 3),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithNullAuditWriter_CompletesWithoutError()
+    {
+        var sut = new EntityService(
+            _entityRepo.Object,
+            _memberRepo.Object,
+            _createValidator.Object,
+            _updateValidator.Object,
+            null);
+
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+        var created = BuildEntity(10, 1, "client", [(1, "first_name", "Ivan")]);
+
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+        _entityRepo.Setup(r => r.CreateAsync(It.IsAny<Entity>(), It.IsAny<List<EntityPropertyValue>>(), 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(10, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+
+        var act = () => sut.CreateAsync(1, 1, new CreateEntityRequest(1, [new PropertyValueInput(1, "Ivan")]));
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithNullAuditWriter_CompletesWithoutError()
+    {
+        var sut = new EntityService(
+            _entityRepo.Object,
+            _memberRepo.Object,
+            _createValidator.Object,
+            _updateValidator.Object,
+            null);
+
+        var storedEntity = BuildEntity(1, 1, "client", [(1, "first_name", "Olena")]);
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+        var reloaded = BuildEntity(1, 1, "client", [(1, "first_name", "Updated")]);
+
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.SetupSequence(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(storedEntity)
+            .ReturnsAsync(reloaded);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var act = () => sut.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "Updated")]));
+
+        await act.Should().NotThrowAsync();
     }
 }

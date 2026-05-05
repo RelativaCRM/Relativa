@@ -27,6 +27,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-auth-${{ hashFiles('Authentication/**/*.csproj') }}
+          restore-keys: nuget-auth-
+
       - name: Restore
         run: dotnet restore Authentication/Relativa.Authentication.sln
 
@@ -34,7 +41,21 @@ jobs:
         run: dotnet build Authentication/Relativa.Authentication.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --no-restore --configuration Release --verbosity normal
+        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool || dotnet tool update -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-authentication-unit
+          path: ./CoverageReport
+          retention-days: 14
 
 
   core-unit-tests:
@@ -47,6 +68,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-core-${{ hashFiles('Core/**/*.csproj') }}
+          restore-keys: nuget-core-
+
       - name: Restore
         run: dotnet restore Core/Relativa.Core.sln
 
@@ -54,7 +82,21 @@ jobs:
         run: dotnet build Core/Relativa.Core.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --no-restore --configuration Release --verbosity normal
+        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool || dotnet tool update -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-core-unit
+          path: ./CoverageReport
+          retention-days: 14
 
 
   core-integration-tests:
@@ -67,6 +109,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-core-${{ hashFiles('Core/**/*.csproj') }}
+          restore-keys: nuget-core-
+
       - name: Restore
         run: dotnet restore Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj
 
@@ -74,7 +123,62 @@ jobs:
         run: dotnet build Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal
+        run: dotnet test Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool || dotnet tool update -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-core-integration
+          path: ./CoverageReport
+          retention-days: 14
+
+
+  audit-integration-tests:
+    name: Audit — Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-audit-${{ hashFiles('Audit/**/*.csproj') }}
+          restore-keys: nuget-audit-
+
+      - name: Restore
+        run: dotnet restore Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj
+
+      - name: Build
+        run: dotnet build Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Install reportgenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool || dotnet tool update -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-audit-integration
+          path: ./CoverageReport
+          retention-days: 14
 
 
   e2e-tests:
@@ -118,14 +222,21 @@ jobs:
         run: docker compose up -d --build --wait
         timeout-minutes: 10
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tests/e2e/package-lock.json
 
       - name: Install dependencies
         working-directory: tests/e2e
         run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('tests/e2e/package-lock.json') }}
 
       - name: Install Playwright browsers
         working-directory: tests/e2e
@@ -135,11 +246,27 @@ jobs:
         working-directory: tests/e2e
         run: npx playwright test
 
-      - name: Upload test results
+      - name: Upload E2E HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
+          name: playwright-html-report
+          path: tests/e2e/html-report
+          retention-days: 14
+
+      - name: Upload E2E screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: tests/e2e/test-results
+          retention-days: 14
+
+      - name: Upload test results JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-json
           path: tests/e2e/results.json
           retention-days: 14
 
