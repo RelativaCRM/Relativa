@@ -13,6 +13,7 @@ from .recalculate_service import (
     ANALYSIS_PROP_SOURCE_UPDATED_AT,
     ANALYSIS_PROP_STAGE_ENCODED,
     BATCH_TIMEOUT_SECONDS,
+    FEATURE_KEYS,
     enqueue_recalculation_job,
     normalize_entity_ids,
     recompute_deal_analysis,
