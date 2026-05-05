@@ -6,17 +6,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
-using Relativa.Audit.Data;
-using Relativa.Audit.Services;
+using Relativa.Audit.Infrastructure.Data;
+using Relativa.Audit.Infrastructure.Services;
 using Relativa.Core.Infrastructure.Data;
 using Relativa.Core.Infrastructure.Services.Audit;
+using Relativa.Messaging;
 using Relativa.Persistence.Contracts;
 using Testcontainers.PostgreSql;
 using Testcontainers.RabbitMq;
 using Xunit;
 
-using AuditRmqOptions = Relativa.Audit.Services.RabbitMqAuditOptions;
-using CoreRmqOptions = Relativa.Core.Infrastructure.Services.Audit.RabbitMqAuditOptions;
+using AuditRmqOptions = Relativa.Audit.Infrastructure.Services.RabbitMqAuditOptions;
+using CoreRmqOptions = Relativa.Messaging.RabbitMqPublishingOptions;
 
 namespace Relativa.Audit.Integration.Tests;
 
@@ -300,10 +301,10 @@ public sealed class AuditIntegrationTests : IAsyncLifetime
     public async Task FullPipeline_OutboxWriterThroughDispatcherAndConsumer_PersistsToAuditLog()
     {
         await using var coreDb = new RelativaDbContext(_coreDbOptions);
-        var writer = new AuditOutboxWriter(coreDb);
+        var writer = new OutboxWriter(coreDb);
         var contract = BuildContract(AuditRouting.ScopeWorkspace, "workspace_updated", actorId: 3, targetId: 12);
 
-        await writer.EnqueueAsync(contract);
+        await writer.EnqueueAuditAsync(contract);
 
         var found = await WaitForConditionAsync(async () =>
         {
@@ -323,10 +324,10 @@ public sealed class AuditIntegrationTests : IAsyncLifetime
     public async Task FullPipeline_DispatcherSetsPublishedAtUtcAndIncrementsAttempts()
     {
         await using var coreDb = new RelativaDbContext(_coreDbOptions);
-        var writer = new AuditOutboxWriter(coreDb);
+        var writer = new OutboxWriter(coreDb);
         var contract = BuildContract(AuditRouting.ScopeEntity, "entity_archived", actorId: 8, targetId: 20);
 
-        await writer.EnqueueAsync(contract);
+        await writer.EnqueueAuditAsync(contract);
 
         var published = await WaitForConditionAsync(async () =>
         {

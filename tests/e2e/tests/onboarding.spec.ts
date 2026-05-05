@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 const BASE    = 'http://localhost:3000';
 const GATEWAY = 'http://localhost:8080';
-const FRESH_PASS     = 'Admin1234!';
+const FRESH_PASS     = 'Demo1234!';
 const ts             = Date.now();
 const ONBOARD1_EMAIL = `onboard1.${ts}@example.com`;
 const ONBOARD2_EMAIL = `onboard2.${ts}@example.com`;
