@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-05 (ML batch scoring endpoint implemented; ML consumer now handles workspace + entity analysis refresh choreography)
+> **Last verified:** 2026-05-05 (Gateway Scalar aggregated OpenAPI includes `POST /ml/api/ml/recalculate/` and batch score)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -34,8 +34,9 @@
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/health` | None | Returns `{"status":"Healthy","service":"relativa-gateway"}` |
-| GET | `/scalar/v1` | None | Scalar interactive API docs |
+| GET | `/scalar/v1` | None | Scalar interactive API docs (uses merged `GET /openapi/aggregated.json`, including ML `POST /ml/api/ml/recalculate/` and `POST /ml/api/ml/score/batch`) |
 | GET | `/openapi/v1.json` | None | Raw OpenAPI spec |
+| GET | `/openapi/aggregated.json` | None | Merged Auth + Core + Audit + manual ML paths for Scalar |
 | * | `/auth/{**rest}` | Bearer JWT (anonymous exceptions below) | Proxied to Authentication (8081), prefix `/auth` stripped |
 | * | `/core/{**rest}` | Bearer JWT (anonymous exceptions below) | Proxied to Core (8082), prefix `/core` stripped |
 | * | `/graph/{**rest}` | Bearer JWT | Proxied to Graph (8083), prefix `/graph` stripped |
@@ -365,19 +366,21 @@ None -- this is a console application, not a web service.
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/ml/recalculate/` | None | Returns `{"status":"accepted","detail":"stub"}` |
+| POST | `/api/ml/recalculate/` | None | Async enqueue endpoint; accepts explicit `entity_ids` or workspace mode and returns `202` with `job_id` |
 | POST | `/api/ml/score/batch` | None | Accepts `{"entity_ids":[int,...]}`; returns `[{"entity_id", "closure_score", "churn_score"}]` with null-safe per-entity scoring and 5s timeout |
 
-### Status: Functional endpoint + choreography sidecar
+### Status: Functional scoring + async recalculation workers
 
-Docker runs `manage.py run_domain_consumer` concurrently with Django (see `ML/scripts/run_api_and_consumer.sh`). The subscriber binds `domain.events.ml.workspace.v1` to `relativa.domain` for both `core.workspace.*` and `core.entity.*`, and uses `rabbitmq_processed_delivery` for idempotency.
+Docker runs `manage.py run_domain_consumer` and `manage.py run_recalculate_consumer` concurrently with Django (see `ML/scripts/run_api_and_consumer.sh`). The domain subscriber binds `domain.events.ml.workspace.v1` to `relativa.domain` for both `core.workspace.*` and `core.entity.*`, and uses `rabbitmq_processed_delivery` for idempotency. Recalculation jobs are consumed from `domain.events.ml.recalculate.v1`.
 
-`POST /api/ml/score/batch` resolves `deal -> deal_analysis`, lazy-creates analysis entities when missing, reads EAV data from PostgreSQL, recomputes stale analysis rows (`source_updated_at`/`calculated_at`), and scores through loaded closure/churn sklearn models. Celery beat remains commented-out in `settings.py`.
+`POST /api/ml/recalculate/` publishes `ml.recalculate.enqueued` domain events with a job payload; `run_recalculate_consumer` performs recomputation and emits progress/completed events. `POST /api/ml/score/batch` focuses on scoring and uses recompute service as stale-data fallback. Celery beat remains commented-out in `settings.py`.
 
 ### Key Files
 
 - `ML/ml_api/management/commands/run_domain_consumer.py` — Rabbit consumer (blocking)
-- `ML/ml_api/views.py` — health + recalculate stub + batch scoring handlers
+- `ML/ml_api/management/commands/run_recalculate_consumer.py` — async recalculation consumer
+- `ML/ml_api/recalculate_service.py` — shared enqueue/recompute logic
+- `ML/ml_api/views.py` — health + async recalculate + batch scoring handlers
 - `ML/ml_api/urls.py` — URL routing
 - `ML/scripts/run_api_and_consumer.sh` — runs consumer + Django server in Docker
 - `ML/relativa_ml/` -- future ML model package
