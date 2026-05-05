@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Entity;
 using Relativa.Core.Application.Interfaces;
@@ -66,6 +67,14 @@ public sealed class EntityService(
                 OldValueJson: null,
                 NewValueJson: System.Text.Json.JsonSerializer.Serialize(request.Properties)),
             ct);
+            await PublishEntityRefreshDomainAsync(
+                auditOutboxWriter,
+                created.Id,
+                created.EntityTypeId,
+                workspaceId,
+                userId,
+                "created",
+                ct);
         }
 
         var detail = await entityRepository.GetByIdInWorkspaceAsync(created.Id, workspaceId, ct);
@@ -108,6 +117,14 @@ public sealed class EntityService(
                 OldValueJson: null,
                 NewValueJson: System.Text.Json.JsonSerializer.Serialize(merged)),
             ct);
+            await PublishEntityRefreshDomainAsync(
+                auditOutboxWriter,
+                entityId,
+                entity.EntityTypeId,
+                workspaceId,
+                userId,
+                "updated",
+                ct);
         }
 
         var updated = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct);
@@ -140,6 +157,14 @@ public sealed class EntityService(
                 OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = false }),
                 NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { IsArchived = true })),
             ct);
+            await PublishEntityRefreshDomainAsync(
+                auditOutboxWriter,
+                entityId,
+                entity.EntityTypeId,
+                workspaceId,
+                userId,
+                "archived",
+                ct);
         }
     }
 
@@ -338,4 +363,37 @@ public sealed class EntityService(
         PropertyDataType.Date    => pv.ValueDate?.ToString("yyyy-MM-dd"),
         _                        => null
     };
+
+    private static Task PublishEntityRefreshDomainAsync(
+        IOutboxWriter outboxWriter,
+        int entityId,
+        int entityTypeId,
+        int workspaceId,
+        int actorUserId,
+        string action,
+        CancellationToken ct)
+    {
+        var sagaInstanceId = Guid.NewGuid();
+        var envelope = new DomainMessageEnvelope(
+            SchemaVersion: MessagingSchemaVersions.V1,
+            MessageId: Guid.NewGuid(),
+            CorrelationId: sagaInstanceId,
+            SagaInstanceId: sagaInstanceId,
+            CausationId: null,
+            OccurredAtUtc: DateTimeOffset.UtcNow,
+            SourceService: "core",
+            PayloadTypeName: DomainPayloadTypes.EntityAnalysisRefreshV1,
+            PayloadJson: JsonSerializer.Serialize(new EntityAnalysisRefreshPayloadV1(
+                EntityId: entityId,
+                EntityTypeId: entityTypeId,
+                WorkspaceId: workspaceId,
+                ActorUserId: actorUserId,
+                Action: action,
+                SourceUpdatedAtUtc: DateTimeOffset.UtcNow)));
+
+        return outboxWriter.EnqueueDomainAsync(
+            DomainRouting.RoutingKeyCoreEntity(DomainRouting.CoreEntityVerbChanged),
+            envelope,
+            ct);
+    }
 }

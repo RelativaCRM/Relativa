@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-04 (Core org-user-admin flow: optional role selection on create, same-domain guard for cross-user archive, org permission denials aligned to 403.)
+> **Last verified:** 2026-05-05 (Entity model extended with `deal_analysis`/`contract` type semantics and deal-analysis relationship conventions for ML scoring.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -131,13 +131,13 @@ Several tables use `is_archived` instead of hard deletes for domain records. For
 | `WorkspaceRolePermission` | `workspace_role_permissions` | Join between ws roles and permissions. |
 | `UserRoleWorkspace` | `user_role_workspace` | Ws membership: user + workspace + ws role. |
 | `Permission` | `permissions` | Shared by both org and ws role-permission joins. Org-scoped includes `manage_org_workspace_members`; workspace-scoped excludes removed `invite_to_workspace` / `manage_ws_join_requests`. |
-| `EntityType` | `entity_type` | Named type discriminator (`client`, `deal`). Singular table name. |
+| `EntityType` | `entity_type` | Named type discriminator (`client`, `deal`, `deal_analysis`, `contract`). Singular table name. |
 | `Entity` | `entity` | Business record typed by EntityType. Singular table name. |
 | `EntityWorkspace` | `entity_workspace` | Join between Entity and Workspace. Singular table name. |
 | `Property` | `property` | **EAV.** Named attribute definition with data type (`String/Int/Decimal/Bool/Date`). `organization_id` nullable: `null` = global, set = org-specific custom property. |
 | `EntityTypeProperty` | `entity_type_property` | **EAV schema layer.** Maps which properties belong to which entity type, with `is_required` flag. Composite PK `(entity_type_id, property_id)`. |
 | `EntityPropertyValue` | `entity_property_value` | **EAV data layer.** Stores a concrete attribute value for an entity. Composite PK `(entity_id, property_id)`. Five typed value columns: `value_string`, `value_int`, `value_decimal`, `value_bool`, `value_date`. Only one is populated per row. |
-| `EntityRelationshipType` | `entity_relationship_type` | **EAV schema layer.** Defines valid entity-type-to-entity-type link schemas (e.g. `deal_client`: deal → client). |
+| `EntityRelationshipType` | `entity_relationship_type` | **EAV schema layer.** Defines valid entity-type-to-entity-type link schemas (e.g. `deal_client`: deal → client, `deal_analysis`: deal → deal_analysis, `deal_contract`: deal → contract). |
 | `EntityRelationship` | `entity_relationship` | **EAV data layer.** A concrete directed link between two entity instances, typed by `EntityRelationshipType`. |
 | `EntityAuditLog` | `entity_audit_log` | Polymorphic audit log base class specialized for entities. Has `entity_id` and `changed_by` JSONB properties. |
 | `WorkspaceAuditLog` | `workspace_audit_log` | Polymorphic audit log base class specialized for workspaces. |
@@ -250,7 +250,7 @@ erDiagram
   - **Workspace membership:** Users are added via `POST /workspaces/{id}/members` (caller has `add_ws_members` on the workspace **or** `manage_org_workspace_members` on the parent org). No workspace invitation or workspace join-request tables.
   - **Dedup (org):** Partial unique indexes on pending org invitations / org join requests still apply as in migrations.
   - **Resend / expiry:** Org invitation resend + expiry handling unchanged (`POST …/organizations/{id}/invitations/{id}/resend`).
-- `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client` or `deal`). All entity types use the same EAV storage — there are no separate per-type tables.
+- `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client`, `deal`, `deal_analysis`, `contract`). All entity types use the same EAV storage — there are no separate per-type tables.
 - **EAV two-level pattern:**
   - **Schema layer:** `EntityTypeProperty` defines which `Property` definitions belong to each `EntityType` (with `is_required`). `EntityRelationshipType` defines which entity type pairs can be linked (e.g. `deal_client`: deal → client).
   - **Data layer:** `EntityPropertyValue` holds a concrete typed value for one entity+property pair (composite PK). `EntityRelationship` holds a directed link between two entity instances, typed by `EntityRelationshipType`.
