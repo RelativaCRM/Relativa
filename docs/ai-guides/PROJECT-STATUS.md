@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-04 (Org user CRUD expanded: create supports role selection, cross-user archive enforces same email domain, Members UI routes to dedicated Member view with workspace access management.)
+> **Last verified:** 2026-05-05 (Implemented ML batch scoring endpoint + EAV-backed deal analysis refresh flow.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -16,7 +16,7 @@
 | Graph | **Stub** | SignalR hub + RabbitMQ choreography consumer broadcasts workspace lifecycle payloads; choreography idempotency via EF `GraphDbContext` on `rabbitmq_processed_delivery`; graph projection logic still absent |
 | Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
-| ML | **Stub** | REST stub unchanged; **`run_domain_consumer`** processes choreography events (stub logging path) beside `runserver` in Docker |
+| ML | **Functional (batch scoring)** | `POST /api/ml/score/batch` scores deals from EAV + sklearn models; consumer ingests workspace/entity choreography with idempotency |
 | Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + account/profile + org members (clickable list -> `MemberView`, create org user with role, archive/remove paths, join-request review) + invitations inbox (org only) + workspace members (**add** existing org user with `add_ws_members` or org `manage_org_workspace_members`) + entity CRUD UI + graph placeholder, typed API clients. Persisted state via `localStorage` |
 | Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions; performance indexes on membership/org invitations/audit logs/outbox + unique `entity_workspace (entity_id, workspace_id)` + partial unique `users.email` where not archived |
 
@@ -161,8 +161,8 @@
 
 ### ML service
 
-**What exists:** `POST /api/ml/recalculate/` endpoint; `run_domain_consumer` management command (blocking pika loop) started next to Django in Docker Compose; deduplicates via `rabbitmq_processed_delivery`.
-**What is missing:** Returns `{"status":"accepted","detail":"stub"}`. No ML models (closure_score, churn_score). No Celery tasks defined. No Redis broker in Docker Compose. Beat schedule is commented out in `settings.py`.
+**What exists:** `POST /api/ml/score/batch` endpoint (request: `{"entity_ids":[int,...]}`) with 5-second timeout budget, null-safe per-entity scoring, lazy `deal_analysis` creation, stale analysis recomputation (`source_updated_at` vs `calculated_at`), and inference using loaded `closure_model.pkl` + `churn_model.pkl`. `run_domain_consumer` now subscribes to both `core.workspace.*` and `core.entity.*` and updates `deal_analysis.source_updated_at` idempotently via `rabbitmq_processed_delivery`.
+**What is missing:** `POST /api/ml/recalculate/` remains a stub. Celery tasks are still not implemented. Redis broker is not in Docker Compose. Beat schedule remains commented out in `settings.py`.
 
 ### Client
 
@@ -175,7 +175,6 @@
 
 | Issue | Severity | Details |
 |---|---|---|
-| **Seed passwords are placeholders** | High | `InitSeedData` migration uses `$2y$10$hashed_pwd_placeholder` -- seeded demo users cannot log in. Must be replaced with real bcrypt hashes. |
 | **Authentication README outdated** | Low | `Authentication/README.md` claims endpoints return 501 stubs. In reality, login, register, and `/me` are fully implemented. |
 | **Migration README outdated** | Low | `Migration/README.md` describes an `entrypoint.sh` flow. Actual code uses `MigrateAsync` in `Program.cs`. |
 | **Gateway README partially outdated** | Low | `Gateway/README.md` says JWT validation is a stub. Gateway now fully validates JWT. |
@@ -225,11 +224,11 @@
 
 ### ML service
 
-- scikit-learn models for `closure_score` and `churn_score`.
+- ~~scikit-learn models for `closure_score` and `churn_score`.~~ *(done — models are loaded and used by `/api/ml/score/batch`)*
 - Celery task implementation for batch recalculation.
 - Redis broker added to Docker Compose.
 - Celery beat nightly schedule (02:00 UTC) enabled.
-- Integration with Core (read deal data) and Graph (push updated scores).
+- ~~Integration with Core (read deal data)~~ *(partial — Core emits `core.entity.changed`; ML consumes and marks analysis freshness)* and Graph push of updated scores.
 
 ### Client
 

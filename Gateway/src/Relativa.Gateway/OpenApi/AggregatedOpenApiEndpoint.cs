@@ -98,6 +98,7 @@ public static class AggregatedOpenApiEndpoint
         }
 
         InjectExamples(mergedPaths);
+        InjectMlPaths(mergedPaths);
         ApplyGatewaySecurity(mergedPaths);
 
         var securitySchemes = new JsonObject
@@ -405,7 +406,83 @@ public static class AggregatedOpenApiEndpoint
                 new JsonObject { ["propertyId"] = 2, ["value"] = "Smith"          }
             }
         },
+
+        // ── ML ───────────────────────────────────────────────────────────────────
+        ["ML_ScoreBatch"] = new JsonObject
+        {
+            ["entity_ids"] = new JsonArray(3, 4, 5)
+        },
     };
+
+    /// <summary>
+    /// Adds ML endpoints to the aggregated spec until ML exposes native OpenAPI.
+    /// </summary>
+    private static void InjectMlPaths(JsonObject mergedPaths)
+    {
+        mergedPaths["/ml/api/ml/score/batch"] = new JsonObject
+        {
+            ["post"] = new JsonObject
+            {
+                ["tags"] = new JsonArray("ML"),
+                ["summary"] = "Batch score deals",
+                ["description"] = "Scores deal entities using ML models and returns closure/churn scores per entity.",
+                ["operationId"] = "ML_ScoreBatch",
+                ["requestBody"] = new JsonObject
+                {
+                    ["required"] = true,
+                    ["content"] = new JsonObject
+                    {
+                        ["application/json"] = new JsonObject
+                        {
+                            ["schema"] = new JsonObject
+                            {
+                                ["type"] = "object",
+                                ["required"] = new JsonArray("entity_ids"),
+                                ["properties"] = new JsonObject
+                                {
+                                    ["entity_ids"] = new JsonObject
+                                    {
+                                        ["type"] = "array",
+                                        ["items"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1 }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                ["responses"] = new JsonObject
+                {
+                    ["200"] = new JsonObject
+                    {
+                        ["description"] = "Batch scoring result",
+                        ["content"] = new JsonObject
+                        {
+                            ["application/json"] = new JsonObject
+                            {
+                                ["schema"] = new JsonObject
+                                {
+                                    ["type"] = "array",
+                                    ["items"] = new JsonObject
+                                    {
+                                        ["type"] = "object",
+                                        ["properties"] = new JsonObject
+                                        {
+                                            ["entity_id"] = new JsonObject { ["type"] = "integer" },
+                                            ["closure_score"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
+                                            ["churn_score"] = new JsonObject { ["type"] = new JsonArray("number", "null") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    ["400"] = new JsonObject { ["description"] = "Invalid request payload" },
+                    ["503"] = new JsonObject { ["description"] = "Models unavailable" },
+                    ["504"] = new JsonObject { ["description"] = "Batch timeout exceeded" }
+                }
+            }
+        };
+    }
 
     /// <summary>
     /// Applies Gateway auth behavior to the aggregated OpenAPI document:
