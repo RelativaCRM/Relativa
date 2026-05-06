@@ -19,12 +19,12 @@ def generate_and_train_closure():
     print("[1/2] generation and training of closure model...")
     data = []
     for _ in range(100000):
-        deal_value = round(random.uniform(500, 100000), 2)
+        deal_value = round(np.random.lognormal(mean=10.8, sigma=1.1), 2)
         days_since_created = np.random.randint(1, 120)
         stage_encoded = np.random.randint(0, 5) 
         num_interactions = np.random.randint(0, 25)
 
-        base_prob = 0.1 + (stage_encoded * 0.15) + (num_interactions * 0.02) - (days_since_created * 0.005)
+        base_prob = 0.05 + (stage_encoded * 0.10) + (num_interactions * 0.01) - (days_since_created * 0.003)
         base_prob = np.clip(base_prob, 0.05, 0.95)
         
         data.append({
@@ -63,10 +63,13 @@ def generate_and_train_churn():
     for _ in range(100000):
         days_since_last_contact = np.random.randint(1, 365)
         num_open_deals = np.random.randint(0, 5)
-        avg_deal_value = round(random.uniform(1000, 50000), 2)
+        avg_deal_value = round(np.random.lognormal(mean=9.4, sigma=1.0), 2)
 
-        base_prob = 0.1 + (days_since_last_contact * 0.002) - (num_open_deals * 0.15)
+        base_prob = 0.12 + (days_since_last_contact * 0.002) - (num_open_deals * 0.12)
         base_prob = np.clip(base_prob, 0.05, 0.95)
+
+        enterprise_stickiness = (avg_deal_value / 10000) * 0.01
+        base_prob += enterprise_stickiness
         
         data.append({
             'days_since_last_contact': days_since_last_contact,
