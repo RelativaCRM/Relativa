@@ -446,4 +446,52 @@ public sealed class OrganizationServiceTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task SearchAsync_MapsHitsToDto_PreservesIdNameAndMemberCount()
+    {
+        var hits = new List<OrganizationSearchHit>
+        {
+            new(1, "Relativa",  12),
+            new(2, "Acme Corp",  3)
+        };
+        _orgRepo.Setup(r => r.SearchAsync("rel", It.IsAny<CancellationToken>())).ReturnsAsync(hits);
+
+        var result = await _sut.SearchAsync("rel");
+
+        result.Should().HaveCount(2);
+        result.Should().Contain(r => r.Id == 1 && r.Name == "Relativa"  && r.MemberCount == 12);
+        result.Should().Contain(r => r.Id == 2 && r.Name == "Acme Corp" && r.MemberCount == 3);
+    }
+
+    [Fact]
+    public async Task SearchAsync_NoMatches_ReturnsEmptyList()
+    {
+        _orgRepo.Setup(r => r.SearchAsync("zzz", It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await _sut.SearchAsync("zzz");
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetByUserAsync_ReturnsOrgsWithMemberCountAndRole()
+    {
+        var org1 = new Organization { Id = 1, Name = "Alpha Corp" };
+        var org2 = new Organization { Id = 2, Name = "Beta Inc" };
+
+        _orgRepo.Setup(r => r.GetByUserIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync([org1, org2]);
+        _orgMemberRepo.Setup(r => r.GetAsync(7, 1, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberWithPermission(7, 1, "manage_org_settings"));
+        _orgMemberRepo.Setup(r => r.GetAsync(7, 2, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberNoPermissions(7, 2));
+        _orgMemberRepo.Setup(r => r.GetByOrganizationIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([OrgMemberWithPermission(7, 1, "manage_org_settings"), OrgMemberNoPermissions(8, 1)]);
+        _orgMemberRepo.Setup(r => r.GetByOrganizationIdAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([OrgMemberNoPermissions(7, 2), OrgMemberNoPermissions(9, 2), OrgMemberNoPermissions(10, 2)]);
+
+        var result = await _sut.GetByUserAsync(7);
+
+        result.Should().HaveCount(2);
+        result.Should().Contain(o => o.Id == 1 && o.MemberCount == 2 && o.UserRole == "org_admin");
+        result.Should().Contain(o => o.Id == 2 && o.MemberCount == 3 && o.UserRole == "org_viewer");
+    }
 }

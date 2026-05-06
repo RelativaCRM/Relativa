@@ -370,4 +370,40 @@ public sealed class OrganizationUserAdminServiceTests
 
         _userProvisioning.Verify(s => s.ArchiveUserAsync(7, 5, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task DeleteOrgUserAsync_CallerEmailHasNoAtSign_ThrowsForbiddenAccessException()
+    {
+        SetupCallerMembership(5, 10, OrganizationPermissions.DeleteOrgUsers);
+        _orgMemberRepository
+            .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization { UserId = 7, OrganizationId = 10 });
+        _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = 5, Email = "adminnoemail" });
+        _userRepository.Setup(r => r.GetByIdAsync(7, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = 7, Email = "member@corp.com" });
+
+        var act = () => _sut.DeleteOrgUserAsync(10, 7, 5);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("*same email domain*");
+    }
+
+    [Fact]
+    public async Task DeleteOrgUserAsync_CallerEmailEndsWithAtSign_ThrowsForbiddenAccessException()
+    {
+        SetupCallerMembership(5, 10, OrganizationPermissions.DeleteOrgUsers);
+        _orgMemberRepository
+            .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization { UserId = 7, OrganizationId = 10 });
+        _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = 5, Email = "admin@" });
+        _userRepository.Setup(r => r.GetByIdAsync(7, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = 7, Email = "member@corp.com" });
+
+        var act = () => _sut.DeleteOrgUserAsync(10, 7, 5);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("*same email domain*");
+    }
 }

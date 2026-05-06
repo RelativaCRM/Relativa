@@ -400,4 +400,27 @@ public sealed class RoleServiceTests
         result.Should().HaveCount(2);
         result.Should().NotContain(p => p.Name == "legacy_perm");
     }
+
+    [Fact]
+    public async Task UpdateAsync_WithPermissionIds_ClearsAndRebuildsPermissions()
+    {
+        var caller = MemberWithPermission(1, 5, "manage_ws_roles");
+        var role = new WorkspaceRole { Id = 9, Name = "analyst", WorkspaceId = 5, IsArchived = false, RolePermissions = [] };
+        var permissions = new List<Permission>
+        {
+            new() { Id = 1, Name = "can_edit_deals" },
+            new() { Id = 2, Name = "can_view_analytics" }
+        };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+        _roleRepo.Setup(r => r.GetByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(role);
+        _permissionRepo.Setup(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
+
+        await _sut.UpdateAsync(5, 9, 1, new UpdateRoleRequest(null, [1, 2]));
+
+        role.RolePermissions.Should().HaveCount(2);
+        role.RolePermissions.Should().Contain(rp => rp.PermissionId == 1);
+        role.RolePermissions.Should().Contain(rp => rp.PermissionId == 2);
+        _permissionRepo.Verify(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

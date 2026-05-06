@@ -418,4 +418,88 @@ public sealed class WorkspaceMemberServiceTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task AddMemberAsync_CallerHasOrgLevelPermission_AddsMemberSuccessfully()
+    {
+        var callerWsMembership = new UserRoleWorkspace
+        {
+            UserId = 1, WorkspaceId = 5,
+            Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
+        };
+        var callerOrgMembership = new UserRoleOrganization
+        {
+            UserId = 1, OrganizationId = 1,
+            Role = new OrganizationRole
+            {
+                Name = "org_admin",
+                RolePermissions = [new OrganizationRolePermission { Permission = new Permission { Name = "manage_org_workspace_members" } }]
+            }
+        };
+        var targetOrgMembership = OrgMember(10, 1);
+        var role = new WorkspaceRole { Id = 2, Name = "analyst", WorkspaceId = 5 };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(callerWsMembership);
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>())).ReturnsAsync(callerOrgMembership);
+        _orgMemberRepo.Setup(r => r.GetAsync(10, 1, It.IsAny<CancellationToken>())).ReturnsAsync(targetOrgMembership);
+        _memberRepo.Setup(r => r.GetAsync(10, 5, It.IsAny<CancellationToken>())).ReturnsAsync((UserRoleWorkspace?)null);
+        _roleRepo.Setup(r => r.GetByIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync(role);
+
+        var result = await _sut.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(10, 2));
+
+        result.UserId.Should().Be(10);
+        _memberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_CallerHasOrgLevelPermission_RemovesMemberSuccessfully()
+    {
+        var callerWsMembership = new UserRoleWorkspace
+        {
+            UserId = 1, WorkspaceId = 6,
+            Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
+        };
+        var callerOrgMembership = new UserRoleOrganization
+        {
+            UserId = 1, OrganizationId = 1,
+            Role = new OrganizationRole
+            {
+                Name = "org_admin",
+                RolePermissions = [new OrganizationRolePermission { Permission = new Permission { Name = "manage_org_workspace_members" } }]
+            }
+        };
+        var target = new UserRoleWorkspace { UserId = 8, WorkspaceId = 6, Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] } };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 6, It.IsAny<CancellationToken>())).ReturnsAsync(callerWsMembership);
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>())).ReturnsAsync(callerOrgMembership);
+        _memberRepo.Setup(r => r.GetAsync(8, 6, It.IsAny<CancellationToken>())).ReturnsAsync(target);
+
+        await _sut.RemoveAsync(6, 8, 1);
+
+        _memberRepo.Verify(r => r.RemoveAsync(target, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_OrgMemberWithoutManageOrgWorkspaceMembersPermission_ThrowsUnauthorizedAccessException()
+    {
+        var callerWsMembership = new UserRoleWorkspace
+        {
+            UserId = 1, WorkspaceId = 6,
+            Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
+        };
+        _memberRepo.Setup(r => r.GetAsync(1, 6, It.IsAny<CancellationToken>())).ReturnsAsync(callerWsMembership);
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 1, OrganizationId = 1,
+                Role = new OrganizationRole { Name = "org_viewer", RolePermissions = [] }
+            });
+
+        var act = () => _sut.RemoveAsync(6, 8, 1);
+
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*remove_ws_members*");
+        _memberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

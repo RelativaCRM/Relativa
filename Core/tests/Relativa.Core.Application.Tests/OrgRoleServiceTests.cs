@@ -300,4 +300,27 @@ public sealed class OrgRoleServiceTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task UpdateAsync_WithPermissionIds_ClearsAndRebuildsPermissions()
+    {
+        var member = OrgMemberWithPermission(1, 5, "manage_org_roles");
+        var role = new OrganizationRole { Id = 9, Name = "analyst", OrganizationId = 5, IsArchived = false, RolePermissions = [] };
+        var permissions = new List<Permission>
+        {
+            new() { Id = 1, Name = "view_reports" },
+            new() { Id = 2, Name = "export_data" }
+        };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(member);
+        _orgRoleRepo.Setup(r => r.GetByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(role);
+        _permissionRepo.Setup(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
+
+        await _sut.UpdateAsync(5, 9, 1, new UpdateOrgRoleRequest(null, [1, 2]));
+
+        role.RolePermissions.Should().HaveCount(2);
+        role.RolePermissions.Should().Contain(rp => rp.PermissionId == 1);
+        role.RolePermissions.Should().Contain(rp => rp.PermissionId == 2);
+        _permissionRepo.Verify(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
