@@ -342,4 +342,40 @@ public sealed class JoinRequestServiceTests
             x => x.EnqueueAuditAsync(It.IsAny<AuditEventContract>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task ReviewAsync_ApprovedDecision_RequesterAlreadyMember_ThrowsInvalidOperationException()
+    {
+        var caller = OrgMemberWithPermission(1, 3, "manage_join_requests");
+        var joinRequest = new OrganizationJoinRequest { Id = 10, OrganizationId = 3, Status = "Pending", UserId = 5 };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 3, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+        _joinRequestRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(joinRequest);
+        _orgMemberRepo.Setup(r => r.GetAsync(5, 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization { UserId = 5, OrganizationId = 3 });
+
+        var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("The requester is already a member of this organization.");
+        _orgMemberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetMyRequestsAsync_ReturnsAllRequestsForUserRegardlessOfStatus()
+    {
+        var org = new Organization { Id = 2, Name = "Relativa" };
+        var requests = new List<OrganizationJoinRequest>
+        {
+            new() { Id = 1, UserId = 7, Status = "Pending",  CreatedAt = DateTime.UtcNow, OrganizationId = 2, Organization = org },
+            new() { Id = 2, UserId = 7, Status = "Approved", CreatedAt = DateTime.UtcNow, OrganizationId = 2, Organization = org },
+            new() { Id = 3, UserId = 7, Status = "Rejected", CreatedAt = DateTime.UtcNow, OrganizationId = 2, Organization = org }
+        };
+        _joinRequestRepo.Setup(r => r.GetByUserIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(requests);
+
+        var result = await _sut.GetMyRequestsAsync(7);
+
+        result.Should().HaveCount(3);
+        result.Select(r => r.Status).Should().BeEquivalentTo(["Pending", "Approved", "Rejected"]);
+    }
 }
