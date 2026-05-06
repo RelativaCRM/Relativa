@@ -55,8 +55,6 @@ public sealed class WorkspaceMemberServiceTests
     private UserRoleOrganization OrgMember(int userId, int orgId) =>
         new() { UserId = userId, OrganizationId = orgId, User = new User { Id = userId, FirstName = "A", LastName = "B", Email = "a@b.io" } };
 
-    // ── GetMembersAsync ────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetMembersAsync_UserNotMember_ThrowsUnauthorizedAccessException()
     {
@@ -96,8 +94,6 @@ public sealed class WorkspaceMemberServiceTests
         result.Should().HaveCount(1);
         result[0].Email.Should().Be("andriy@r.io");
     }
-
-    // ── UpdateRoleAsync ────────────────────────────────────────────────────
 
     [Fact]
     public async Task UpdateRoleAsync_UserLacksPermission_ThrowsUnauthorizedAccessException()
@@ -183,7 +179,50 @@ public sealed class WorkspaceMemberServiceTests
             Times.Once);
     }
 
-    // ── RemoveAsync ────────────────────────────────────────────────────────
+    [Fact]
+    public async Task UpdateRoleAsync_SoleWsAdmin_ThrowsInvalidOperationException()
+    {
+        var adminRole = new WorkspaceRole { Id = 1, Name = "ws_admin", WorkspaceId = 4 };
+        var target = new UserRoleWorkspace { UserId = 2, WorkspaceId = 4, WsRoleId = 1, Role = adminRole };
+        var analystRole = new WorkspaceRole { Id = 5, Name = "analyst", WorkspaceId = 4 };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 4, It.IsAny<CancellationToken>())).ReturnsAsync(MemberWithPermission(1, 4, "assign_ws_roles"));
+        _memberRepo.Setup(r => r.GetAsync(2, 4, It.IsAny<CancellationToken>())).ReturnsAsync(target);
+        _memberRepo.Setup(r => r.GetByWorkspaceIdAsync(4, It.IsAny<CancellationToken>())).ReturnsAsync(
+        [
+            MemberWithPermission(1, 4, "assign_ws_roles"),
+            target
+        ]);
+        _roleRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(analystRole);
+
+        var act = () => _sut.UpdateRoleAsync(4, 2, 1, new UpdateMemberRoleRequest(5));
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Cannot demote the last workspace admin.");
+        _memberRepo.Verify(r => r.UpdateAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateRoleAsync_SelfDemoteWsAdminWithOtherAdminPresent_Succeeds()
+    {
+        var adminRole = new WorkspaceRole
+        {
+            Id = 1, Name = "ws_admin", WorkspaceId = 4,
+            RolePermissions = [new WorkspaceRolePermission { Permission = new Permission { Name = "assign_ws_roles" } }]
+        };
+        var target = new UserRoleWorkspace { UserId = 1, WorkspaceId = 4, WsRoleId = 1, Role = adminRole };
+        var otherAdmin = new UserRoleWorkspace { UserId = 3, WorkspaceId = 4, Role = new WorkspaceRole { Name = "ws_admin" }, IsArchived = false };
+        var analystRole = new WorkspaceRole { Id = 5, Name = "analyst", WorkspaceId = 4 };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 4, It.IsAny<CancellationToken>())).ReturnsAsync(target);
+        _memberRepo.Setup(r => r.GetByWorkspaceIdAsync(4, It.IsAny<CancellationToken>())).ReturnsAsync([target, otherAdmin]);
+        _roleRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(analystRole);
+
+        await _sut.UpdateRoleAsync(4, 1, 1, new UpdateMemberRoleRequest(5));
+
+        target.WsRoleId.Should().Be(5);
+        _memberRepo.Verify(r => r.UpdateAsync(target, It.IsAny<CancellationToken>()), Times.Once);
+    }
 
     [Fact]
     public async Task RemoveAsync_SelfRemove_SkipsPermissionCheck()
@@ -245,8 +284,6 @@ public sealed class WorkspaceMemberServiceTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
-
-    // ── AddMemberAsync ─────────────────────────────────────────────────────
 
     [Fact]
     public async Task AddMemberAsync_CallerLacksPermission_ThrowsUnauthorizedAccessException()
