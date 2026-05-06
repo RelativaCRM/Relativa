@@ -3,6 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using Relativa.Core.Application.DTOs.Workspace;
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
@@ -347,5 +348,79 @@ public sealed class WorkspaceServiceTests
         await act.Should().ThrowAsync<UnauthorizedAccessException>()
             .WithMessage("Only workspace admins can archive a workspace.");
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByUserAsync_WithOrgFilter_UserNotMemberOfOrg_ThrowsForbiddenAccessException()
+    {
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(7, 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleOrganization?)null);
+
+        var act = () => _sut.GetByUserAsync(7, organizationId: 3);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("*not a member of this organization*");
+        _workspaceRepo.Verify(r => r.GetByUserIdAndOrganizationIdAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByUserAsync_WithOrgFilter_ReturnsMemberCountAndUserRolePerWorkspace()
+    {
+        var orgMember = OrgMemberWithPermission(1, 2, "view_workspaces");
+        var ws = new Workspace { Id = 10, OrganizationId = 2, Name = "Sales" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 2, It.IsAny<CancellationToken>())).ReturnsAsync(orgMember);
+        _workspaceRepo
+            .Setup(r => r.GetByUserIdAndOrganizationIdAsync(1, 2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ws]);
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>())).ReturnsAsync(AdminMember(1, 10));
+        _memberRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([AdminMember(1, 10), AdminMember(2, 10)]);
+
+        var result = await _sut.GetByUserAsync(1, organizationId: 2);
+
+        result.Should().HaveCount(1);
+        result[0].Id.Should().Be(10);
+        result[0].MemberCount.Should().Be(2);
+        result[0].UserRole.Should().Be("ws_admin");
+    }
+
+    [Fact]
+    public async Task GetByUserAsync_WithoutOrgFilter_ReturnsAllUserWorkspacesAcrossOrgs()
+    {
+        var ws1 = new Workspace { Id = 1, OrganizationId = 10, Name = "Alpha" };
+        var ws2 = new Workspace { Id = 2, OrganizationId = 20, Name = "Beta" };
+
+        _workspaceRepo.Setup(r => r.GetByUserIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync([ws1, ws2]);
+        _memberRepo.Setup(r => r.GetAsync(5, 1, It.IsAny<CancellationToken>())).ReturnsAsync(AdminMember(5, 1));
+        _memberRepo.Setup(r => r.GetAsync(5, 2, It.IsAny<CancellationToken>())).ReturnsAsync(AdminMember(5, 2));
+        _memberRepo.Setup(r => r.GetByWorkspaceIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([AdminMember(5, 1)]);
+        _memberRepo.Setup(r => r.GetByWorkspaceIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([AdminMember(5, 2), AdminMember(6, 2)]);
+
+        var result = await _sut.GetByUserAsync(5, organizationId: null);
+
+        result.Should().HaveCount(2);
+        result.Should().Contain(w => w.Id == 1 && w.MemberCount == 1);
+        result.Should().Contain(w => w.Id == 2 && w.MemberCount == 2);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_ValidMember_ReturnsDtoWithMemberCountAndRole()
+    {
+        var workspace = new Workspace { Id = 10, OrganizationId = 2, Name = "Sales", IsArchived = false };
+        var membership = AdminMember(1, 10);
+
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>())).ReturnsAsync(membership);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+        _memberRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([AdminMember(1, 10), AdminMember(2, 10), AdminMember(3, 10)]);
+
+        var result = await _sut.GetByIdAsync(10, 1);
+
+        result.Id.Should().Be(10);
+        result.Name.Should().Be("Sales");
+        result.MemberCount.Should().Be(3);
+        result.UserRole.Should().Be("ws_admin");
     }
 }

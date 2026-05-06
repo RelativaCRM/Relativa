@@ -44,6 +44,16 @@ public sealed class WorkspaceMemberService(
         if (role.WorkspaceId.HasValue && role.WorkspaceId.Value != workspaceId)
             throw new ArgumentException("The specified role does not belong to this workspace.");
 
+        if (targetMember.Role?.Name == "ws_admin" && role.Name != "ws_admin")
+        {
+            var allMembers = await memberRepository.GetByWorkspaceIdAsync(workspaceId, ct);
+            var wsAdminCount = allMembers.Count(m => !m.IsArchived && m.Role?.Name == "ws_admin");
+            if (wsAdminCount <= 1)
+            {
+                throw new InvalidOperationException("Cannot demote the last workspace admin.");
+            }
+        }
+
         targetMember.WsRoleId = role.Id;
         await memberRepository.UpdateAsync(targetMember, ct);
         if (auditOutboxWriter is not null)

@@ -596,4 +596,82 @@ public sealed class EntityServiceTests
 
         await act.Should().NotThrowAsync();
     }
+
+    [Fact]
+    public async Task CreateAsync_PropertyDataType_Int_SetsIntValueAndResolvesCorrectly()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(5, "age", required: false, type: PropertyDataType.Int)
+        };
+        List<EntityPropertyValue>? capturedValues = null;
+        var created = new Entity
+        {
+            Id = 30, EntityTypeId = 3, IsArchived = false,
+            EntityType = new EntityType { Id = 3, Name = "person" },
+            EntityPropertyValues =
+            [
+                new EntityPropertyValue
+                {
+                    PropertyId = 5, ValueInt = 42,
+                    Property = new Property { Name = "age", DataType = PropertyDataType.Int }
+                }
+            ]
+        };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+        _entityRepo.Setup(r => r.CreateAsync(It.IsAny<Entity>(), It.IsAny<List<EntityPropertyValue>>(), 1, It.IsAny<CancellationToken>()))
+            .Callback<Entity, List<EntityPropertyValue>, int, CancellationToken>((_, pvs, _, _) => capturedValues = pvs)
+            .ReturnsAsync(created);
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(30, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+
+        var result = await _sut.CreateAsync(1, 1, new CreateEntityRequest(3, [new PropertyValueInput(5, "42")]));
+
+        capturedValues.Should().NotBeNull();
+        capturedValues!.Single(v => v.PropertyId == 5).ValueInt.Should().Be(42);
+        result.PropertyValues.Should().Contain(p => p.PropertyName == "age" && (int?)p.Value == 42);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PropertyDataType_Bool_SetsBoolValueAndResolvesCorrectly()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(6, "is_active", required: false, type: PropertyDataType.Bool)
+        };
+        List<EntityPropertyValue>? capturedValues = null;
+        var created = new Entity
+        {
+            Id = 31, EntityTypeId = 4, IsArchived = false,
+            EntityType = new EntityType { Id = 4, Name = "subscription" },
+            EntityPropertyValues =
+            [
+                new EntityPropertyValue
+                {
+                    PropertyId = 6, ValueBool = true,
+                    Property = new Property { Name = "is_active", DataType = PropertyDataType.Bool }
+                }
+            ]
+        };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Member(1, 1, "manage_entities"));
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(4, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+        _entityRepo.Setup(r => r.CreateAsync(It.IsAny<Entity>(), It.IsAny<List<EntityPropertyValue>>(), 1, It.IsAny<CancellationToken>()))
+            .Callback<Entity, List<EntityPropertyValue>, int, CancellationToken>((_, pvs, _, _) => capturedValues = pvs)
+            .ReturnsAsync(created);
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(31, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(created);
+
+        var result = await _sut.CreateAsync(1, 1, new CreateEntityRequest(4, [new PropertyValueInput(6, "true")]));
+
+        capturedValues.Should().NotBeNull();
+        capturedValues!.Single(v => v.PropertyId == 6).ValueBool.Should().BeTrue();
+        result.PropertyValues.Should().Contain(p => p.PropertyName == "is_active" && (bool?)p.Value == true);
+    }
 }
