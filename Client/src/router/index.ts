@@ -17,6 +17,8 @@ const MemberView = () => import('@/views/MemberView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
 const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
+const UserListView = () => import('@/views/UserListView.vue');
+const UserProfileView = () => import('@/views/UserProfileView.vue');
 const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
 const AuditLogView = () => import('@/views/AuditLogView.vue');
@@ -121,6 +123,18 @@ const router = createRouter({
               path: 'members',
               name: 'workspace-members',
               component: WorkspaceMembersView,
+              meta: workspaceMeta,
+            },
+            {
+              path: 'users',
+              name: 'workspace-users',
+              component: UserListView,
+              meta: workspaceMeta,
+            },
+            {
+              path: 'users/:userId(\\d+)',
+              name: 'workspace-user',
+              component: UserProfileView,
               meta: workspaceMeta,
             },
             {
