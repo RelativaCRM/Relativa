@@ -10,6 +10,17 @@ on:
     branches:
       - 'release/**'
       - main
+  workflow_dispatch:
+    inputs:
+      verbosity:
+        description: 'Test output verbosity'
+        required: false
+        default: 'minimal'
+        type: choice
+        options:
+          - minimal
+          - normal
+          - detailed
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -34,6 +45,12 @@ jobs:
           key: nuget-auth-${{ hashFiles('Authentication/**/*.csproj') }}
           restore-keys: nuget-auth-
 
+      - name: Cache dotnet tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.dotnet/tools
+          key: dotnet-tools-reportgenerator-${{ runner.os }}
+
       - name: Restore
         run: dotnet restore Authentication/Relativa.Authentication.sln
 
@@ -41,13 +58,13 @@ jobs:
         run: dotnet build Authentication/Relativa.Authentication.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+        run: dotnet test Authentication/tests/Relativa.Authentication.Application.Tests --no-build --no-restore --configuration Release --verbosity ${{ inputs.verbosity || 'minimal' }} --collect:"XPlat Code Coverage" --results-directory ./TestResults
 
       - name: Install reportgenerator
         run: dotnet tool install -g dotnet-reportgenerator-globaltool || dotnet tool update -g dotnet-reportgenerator-globaltool
 
       - name: Generate coverage report
-        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html -assemblyfilters:"+Relativa.Authentication.Application;+Relativa.Authentication.Domain"
 
       - name: Upload coverage report
         if: always()
@@ -72,8 +89,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-core-${{ hashFiles('Core/**/*.csproj') }}
-          restore-keys: nuget-core-
+          key: nuget-core-unit-${{ hashFiles('Core/**/*.csproj') }}
+          restore-keys: nuget-core-unit-
+
+      - name: Cache dotnet tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.dotnet/tools
+          key: dotnet-tools-reportgenerator-${{ runner.os }}
 
       - name: Restore
         run: dotnet restore Core/Relativa.Core.sln
@@ -82,13 +105,13 @@ jobs:
         run: dotnet build Core/Relativa.Core.sln --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+        run: dotnet test Core/tests/Relativa.Core.Application.Tests --no-build --no-restore --configuration Release --verbosity ${{ inputs.verbosity || 'minimal' }} --collect:"XPlat Code Coverage" --results-directory ./TestResults
 
       - name: Install reportgenerator
         run: dotnet tool install -g dotnet-reportgenerator-globaltool || dotnet tool update -g dotnet-reportgenerator-globaltool
 
       - name: Generate coverage report
-        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html -assemblyfilters:"+Relativa.Core.Application;+Relativa.Core.Domain"
 
       - name: Upload coverage report
         if: always()
@@ -113,8 +136,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-core-${{ hashFiles('Core/**/*.csproj') }}
-          restore-keys: nuget-core-
+          key: nuget-core-integration-${{ hashFiles('Core/**/*.csproj') }}
+          restore-keys: nuget-core-integration-
+
+      - name: Cache dotnet tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.dotnet/tools
+          key: dotnet-tools-reportgenerator-${{ runner.os }}
 
       - name: Restore
         run: dotnet restore Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj
@@ -123,13 +152,13 @@ jobs:
         run: dotnet build Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+        run: dotnet test Core/tests/Relativa.Core.Integration.Tests/Relativa.Core.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity ${{ inputs.verbosity || 'minimal' }} --collect:"XPlat Code Coverage" --results-directory ./TestResults
 
       - name: Install reportgenerator
         run: dotnet tool install -g dotnet-reportgenerator-globaltool || dotnet tool update -g dotnet-reportgenerator-globaltool
 
       - name: Generate coverage report
-        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html -assemblyfilters:"+Relativa.Core.Application;+Relativa.Core.Domain;+Relativa.Core.Infrastructure"
 
       - name: Upload coverage report
         if: always()
@@ -157,6 +186,12 @@ jobs:
           key: nuget-audit-${{ hashFiles('Audit/**/*.csproj') }}
           restore-keys: nuget-audit-
 
+      - name: Cache dotnet tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.dotnet/tools
+          key: dotnet-tools-reportgenerator-${{ runner.os }}
+
       - name: Restore
         run: dotnet restore Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj
 
@@ -164,13 +199,13 @@ jobs:
         run: dotnet build Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+        run: dotnet test Audit/tests/Relativa.Audit.Integration.Tests/Relativa.Audit.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity ${{ inputs.verbosity || 'minimal' }} --collect:"XPlat Code Coverage" --results-directory ./TestResults
 
       - name: Install reportgenerator
         run: dotnet tool install -g dotnet-reportgenerator-globaltool || dotnet tool update -g dotnet-reportgenerator-globaltool
 
       - name: Generate coverage report
-        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html
+        run: reportgenerator -reports:"./TestResults/**/coverage.cobertura.xml" -targetdir:"./CoverageReport" -reporttypes:Html -assemblyfilters:"+Relativa.Audit.Application"
 
       - name: Upload coverage report
         if: always()
@@ -233,14 +268,21 @@ jobs:
         run: npm ci
 
       - name: Cache Playwright browsers
+        id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ hashFiles('tests/e2e/package-lock.json') }}
 
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: tests/e2e
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: tests/e2e
+        run: npx playwright install-deps chromium
 
       - name: Run Playwright tests
         working-directory: tests/e2e
