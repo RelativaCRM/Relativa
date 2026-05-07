@@ -51,6 +51,8 @@ const workspaceRouteNames = new Set([
   'workspace-entities',
   'workspace-entity-create',
   'workspace-members',
+  'workspace-users',
+  'workspace-user',
   'graph',
 ]);
 
@@ -264,6 +266,16 @@ onMounted(async () => {
                 active-class="nav-link--active"
               >
                 <i class="pi pi-share-alt" />Graph
+              </RouterLink>
+              <RouterLink
+                :to="{
+                  name: 'workspace-users',
+                  params: { workspaceId: workspaceIdStr },
+                }"
+                class="px-3 py-2 rounded-lg hover:bg-surface"
+                active-class="bg-brand-50 text-brand-700 font-medium"
+              >
+                <i class="pi pi-users mr-2" />Users
               </RouterLink>
               <RouterLink
                 :to="{

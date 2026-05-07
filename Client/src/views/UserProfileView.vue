@@ -1,0 +1,300 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
+import Button from 'primevue/button';
+import Select from 'primevue/select';
+import Tag from 'primevue/tag';
+import { useAuthStore } from '@/stores/auth';
+import { useWorkspaceStore } from '@/stores/workspace';
+import { useApiErrorHandler } from '@/api/errorToast';
+import { ApiError } from '@/api/http';
+
+const route = useRoute();
+const router = useRouter();
+const toast = useToast();
+const auth = useAuthStore();
+const wsStore = useWorkspaceStore();
+const { notify } = useApiErrorHandler();
+
+const ROLE_ORDER = ['ws_admin', 'ws_manager', 'ws_analyst', 'ws_member'];
+
+const workspaceId = computed(() => Number(route.params.workspaceId));
+const userId = computed(() => Number(route.params.userId));
+
+const loading = ref(true);
+const savingRole = ref(false);
+const selectedRoleId = ref<number | null>(null);
+
+const member = computed(() =>
+  wsStore.members.find((m) => m.userId === userId.value) ?? null,
+);
+
+const isSelf = computed(() => member.value?.userId === auth.user?.id);
+
+const currentUserRoleName = computed(
+  () =>
+    wsStore.members.find((m) => m.userId === auth.user?.id)?.roleName ?? null,
+);
+
+const isWorkspaceAdmin = computed(
+  () => currentUserRoleName.value === 'ws_admin',
+);
+
+const roleOptions = computed(() =>
+  ROLE_ORDER.map((name) => wsStore.roles.find((r) => r.name === name))
+    .filter((r): r is NonNullable<typeof r> => !!r)
+    .map((r) => ({ label: displayRole(r.name), value: r.id })),
+);
+
+function displayRole(roleName: string): string {
+  if (roleName === 'ws_admin') return 'Admin';
+  if (roleName === 'ws_manager') return 'Manager';
+  if (roleName === 'ws_analyst') return 'Analyst';
+  if (roleName === 'ws_member') return 'Member';
+  return roleName;
+}
+
+function roleSeverity(roleName: string): string {
+  if (roleName === 'ws_admin') return 'info';
+  if (roleName === 'ws_manager') return 'warn';
+  if (roleName === 'ws_analyst') return 'success';
+  return 'secondary';
+}
+
+function roleIdByName(roleName: string): number | null {
+  return wsStore.roles.find((r) => r.name === roleName)?.id ?? null;
+}
+
+const initialRoleId = computed(() =>
+  member.value ? roleIdByName(member.value.roleName) : null,
+);
+
+const hasChanges = computed(
+  () =>
+    selectedRoleId.value !== null &&
+    initialRoleId.value !== null &&
+    selectedRoleId.value !== initialRoleId.value,
+);
+
+const canSave = computed(
+  () =>
+    isWorkspaceAdmin.value &&
+    !isSelf.value &&
+    hasChanges.value &&
+    !savingRole.value,
+);
+
+async function handleSaveRole() {
+  if (!canSave.value || !member.value || selectedRoleId.value == null) return;
+
+  const newRoleName = wsStore.roles.find(
+    (r) => r.id === selectedRoleId.value,
+  )?.name;
+
+  if (
+    member.value.roleName === 'ws_admin' &&
+    newRoleName !== 'ws_admin'
+  ) {
+    const adminCount = wsStore.members.filter(
+      (m) => m.roleName === 'ws_admin',
+    ).length;
+    if (adminCount <= 1) {
+      toast.add({
+        severity: 'error',
+        summary: 'Conflict',
+        detail: 'Cannot remove the last workspace administrator.',
+        life: 5000,
+      });
+      return;
+    }
+  }
+
+  savingRole.value = true;
+  try {
+    await wsStore.changeMemberRole(
+      workspaceId.value,
+      member.value.userId,
+      selectedRoleId.value,
+    );
+    toast.add({
+      severity: 'success',
+      summary: 'Role updated',
+      detail: `User role changed to ${displayRole(newRoleName ?? '')}.`,
+      life: 3000,
+    });
+  } catch (err) {
+    notify(err, { fallback: 'Failed to update role.' });
+  } finally {
+    savingRole.value = false;
+  }
+}
+
+async function loadAll() {
+  loading.value = true;
+  try {
+    await Promise.all([
+      wsStore.fetchMembers(workspaceId.value),
+      wsStore.fetchRoles(workspaceId.value),
+      wsStore.workspaces.length === 0
+        ? wsStore.fetchWorkspaces()
+        : Promise.resolve(),
+    ]);
+    wsStore.setCurrentWorkspace(workspaceId.value);
+
+    if (!member.value) {
+      router.replace({
+        name: 'workspace-users',
+        params: { workspaceId: String(workspaceId.value) },
+      });
+      return;
+    }
+    selectedRoleId.value = initialRoleId.value;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      router.replace({ name: 'workspaces' });
+      return;
+    }
+    notify(err, { fallback: 'Failed to load user profile.' });
+  } finally {
+    loading.value = false;
+  }
+}
+
+watch(
+  () => member.value?.roleName,
+  () => {
+    if (initialRoleId.value !== null) {
+      selectedRoleId.value = initialRoleId.value;
+    }
+  },
+);
+
+watch([workspaceId, userId], ([wsId, uId]) => {
+  if (wsId && uId) loadAll();
+});
+
+onMounted(loadAll);
+</script>
+
+<template>
+  <section class="max-w-3xl">
+    <div class="flex items-center justify-between mb-6">
+      <div class="min-w-0">
+        <Button
+          text
+          icon="pi pi-arrow-left"
+          label="Back to users"
+          severity="secondary"
+          size="small"
+          class="!px-1 !mb-1"
+          @click="
+            router.push({
+              name: 'workspace-users',
+              params: { workspaceId: String(workspaceId) },
+            })
+          "
+        />
+        <h1 class="text-2xl font-bold text-ink-900">User profile</h1>
+        <p v-if="member" class="mt-1 text-sm text-ink-500">
+          {{ member.firstName }} {{ member.lastName }} ({{ member.email }})
+        </p>
+      </div>
+      <Tag
+        v-if="member"
+        :value="displayRole(member.roleName)"
+        :severity="roleSeverity(member.roleName)"
+      />
+    </div>
+
+    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+
+    <div
+      v-else-if="!member"
+      class="rounded-xl border border-line bg-white p-6 text-ink-600"
+    >
+      User not found in this workspace.
+    </div>
+
+    <div v-else class="space-y-6">
+      <div class="rounded-xl border border-line bg-white p-6">
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">Profile</h2>
+        <dl class="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <dt class="text-xs font-medium text-ink-500 uppercase tracking-wider">
+              First name
+            </dt>
+            <dd class="mt-1 text-ink-900">{{ member.firstName }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-ink-500 uppercase tracking-wider">
+              Last name
+            </dt>
+            <dd class="mt-1 text-ink-900">{{ member.lastName }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-ink-500 uppercase tracking-wider">
+              Email
+            </dt>
+            <dd class="mt-1 text-ink-700">{{ member.email }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-ink-500 uppercase tracking-wider">
+              Joined
+            </dt>
+            <dd class="mt-1 text-ink-700">
+              {{ new Date(member.joinedAt).toLocaleDateString() }}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="rounded-xl border border-line bg-white p-6">
+        <h2 class="text-lg font-semibold text-ink-900 mb-1">Workspace role</h2>
+        <p class="text-sm text-ink-500 mb-4">
+          <span v-if="isWorkspaceAdmin && !isSelf">
+            Change the role and click Save to apply.
+          </span>
+          <span v-else-if="isSelf">
+            You cannot change your own role.
+          </span>
+          <span v-else>
+            Only workspace administrators can change roles.
+          </span>
+        </p>
+
+        <div
+          v-if="isWorkspaceAdmin && !isSelf"
+          class="grid grid-cols-[1fr_auto] items-end gap-3"
+        >
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-ink-600">Role</label>
+            <Select
+              v-model="selectedRoleId"
+              :options="roleOptions"
+              option-label="label"
+              option-value="value"
+              :disabled="savingRole"
+              class="!h-10"
+            />
+          </div>
+          <Button
+            label="Save"
+            icon="pi pi-check"
+            :loading="savingRole"
+            :disabled="!canSave"
+            @click="handleSaveRole"
+          />
+        </div>
+
+        <div v-else class="flex items-center gap-3">
+          <span class="text-sm text-ink-500">Current role:</span>
+          <Tag
+            :value="displayRole(member.roleName)"
+            :severity="roleSeverity(member.roleName)"
+          />
+        </div>
+      </div>
+    </div>
+  </section>
+</template>
