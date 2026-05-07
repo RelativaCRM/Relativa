@@ -29,7 +29,8 @@ public sealed class EntityTypeService(IEntityTypeRepository entityTypeRepository
                     etp.PropertyId,
                     etp.Property.Name,
                     etp.Property.DataType.ToString(),
-                    etp.IsRequired))
+                    etp.IsRequired,
+                    etp.Property.IsReadonly))
                 .ToList()))
             .ToList();
     }

@@ -8,6 +8,7 @@ import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import { normalizeError } from '@/api/errors';
+import { isEntityTypeUiLocked } from '@/utils/entityTypes';
 
 const route = useRoute();
 const router = useRouter();
@@ -28,6 +29,20 @@ const filteredEntities = computed(() => {
     (e) => (e.entityTypeName ?? '').toLowerCase() === filterType.value,
   );
 });
+
+const filterTypeSchema = computed(() => {
+  if (!filterType.value) return null;
+  return (
+    entityStore.types.find(
+      (t) => t.name.toLowerCase() === filterType.value,
+    ) ?? null
+  );
+});
+
+/** When viewing a single type in the sidebar, hide manual create if that type is UI-locked. */
+const filterTypeUiLocked = computed(() =>
+  filterTypeSchema.value ? isEntityTypeUiLocked(filterTypeSchema.value) : false,
+);
 
 function formatTypeName(name: string): string {
   return name
@@ -71,6 +86,7 @@ async function load() {
     }
     wsStore.setCurrentWorkspace(workspaceId.value);
     await entityStore.fetchList(workspaceId.value);
+    await entityStore.fetchTypes();
   } catch (err) {
     errorMessage.value = normalizeError(err, 'Failed to load entities.').message;
   } finally {
@@ -116,7 +132,12 @@ onMounted(load);
           {{ headingSubtitle }}
         </p>
       </div>
-      <Button icon="pi pi-plus" label="New entity" @click="goCreate" />
+      <Button
+        v-if="!filterTypeUiLocked"
+        icon="pi pi-plus"
+        label="New entity"
+        @click="goCreate"
+      />
     </div>
 
     <Message
@@ -137,14 +158,21 @@ onMounted(load);
       <i class="pi pi-inbox text-3xl text-ink-400" />
       <p class="mt-3 text-sm text-ink-500">
         <template v-if="filterType">
-          No {{ formatTypeName(filterType) }} records yet. Create one to get
-          started.
+          <template v-if="filterTypeUiLocked">
+            No {{ formatTypeName(filterType) }} records yet. This type is
+            maintained automatically and cannot be created here.
+          </template>
+          <template v-else>
+            No {{ formatTypeName(filterType) }} records yet. Create one to get
+            started.
+          </template>
         </template>
         <template v-else>
           No entities yet. Create one to get started.
         </template>
       </p>
       <Button
+        v-if="!filterTypeUiLocked || !filterType"
         class="mt-4"
         icon="pi pi-plus"
         label="Create entity"

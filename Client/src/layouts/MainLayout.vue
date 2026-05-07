@@ -370,11 +370,11 @@ onMounted(async () => {
 
               <!-- Entity type sub-entries -->
               <div
-                v-if="entitiesExpanded && entityStore.types.length"
+                v-if="entitiesExpanded && entityStore.standaloneTypes.length"
                 class="ml-4 flex flex-col border-l border-slate-200 pl-2 mb-1"
               >
                 <RouterLink
-                  v-for="type in entityStore.types"
+                  v-for="type in entityStore.standaloneTypes"
                   :key="type.id"
                   :to="{ name: 'workspace-entities', params: { workspaceId: workspaceIdStr }, query: { entityType: type.name } }"
                   :class="[

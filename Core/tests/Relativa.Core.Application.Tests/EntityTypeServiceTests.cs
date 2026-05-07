@@ -68,6 +68,34 @@ public sealed class EntityTypeServiceTests
         prop.Name.Should().Be("Phone");
         prop.DataType.Should().Be("String");
         prop.IsRequired.Should().BeTrue();
+        prop.IsReadonly.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetAllAsync_MapsReadonlyPropertyFlag()
+    {
+        var property = new Property
+        {
+            Id = 2,
+            Name = "derived_metric",
+            DataType = PropertyDataType.Decimal,
+            IsReadonly = true
+        };
+        var entityType = new EntityType
+        {
+            Id = 1,
+            Name = "deal_analysis",
+            EntityTypeProperties =
+            [
+                new EntityTypeProperty { PropertyId = 2, Property = property, IsRequired = true }
+            ]
+        };
+        _repo.Setup(r => r.GetAllWithPropertiesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([entityType]);
+
+        var result = await _sut.GetAllAsync();
+
+        result[0].Properties[0].IsReadonly.Should().BeTrue();
     }
 
     [Fact]
