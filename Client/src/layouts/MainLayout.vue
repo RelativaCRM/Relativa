@@ -56,6 +56,14 @@ const workspaceRouteNames = new Set([
   'graph',
 ]);
 
+function formatTypeName(name: string): string {
+  return name
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 async function handleWorkspaceChange(wsId: number | null) {
   if (wsId == null) return;
   wsStore.setCurrentWorkspace(wsId);
@@ -91,6 +99,19 @@ watch(
       /* list refresh is optional when org changes from elsewhere */
     }
   },
+);
+
+watch(
+  inWorkspaceShell,
+  async (active) => {
+    if (!active || entityStore.typesLoaded) return;
+    try {
+      await entityStore.fetchTypes();
+    } catch {
+      /* sidebar can render without per-type subitems if this fails */
+    }
+  },
+  { immediate: true },
 );
 
 onMounted(async () => {
@@ -205,17 +226,37 @@ onMounted(async () => {
             >
               Workspace
             </p>
-            <div class="flex flex-col gap-0.5">
-              <RouterLink
-                :to="{
-                  name: 'workspace-entities',
-                  params: { workspaceId: workspaceIdStr },
-                }"
-                class="nav-link"
-                active-class="nav-link--active"
-              >
-                <i class="pi pi-database" />Entities
-              </RouterLink>
+            <div class="flex flex-col gap-1">
+              <div class="flex flex-col">
+                <RouterLink
+                  :to="{
+                    name: 'workspace-entities',
+                    params: { workspaceId: workspaceIdStr },
+                  }"
+                  class="px-3 py-2 rounded-lg hover:bg-surface"
+                  exact-active-class="bg-brand-50 text-brand-700 font-medium"
+                >
+                  <i class="pi pi-database mr-2" />Entities
+                </RouterLink>
+                <div
+                  v-if="entityStore.types.length"
+                  class="ml-6 mt-1 flex flex-col gap-1 border-l border-line pl-2"
+                >
+                  <RouterLink
+                    v-for="type in entityStore.types"
+                    :key="type.id"
+                    :to="{
+                      name: 'workspace-entities',
+                      params: { workspaceId: workspaceIdStr },
+                      query: { type: type.name },
+                    }"
+                    class="px-3 py-1.5 rounded-lg text-sm hover:bg-surface"
+                    exact-active-class="bg-brand-50 text-brand-700 font-medium"
+                  >
+                    {{ formatTypeName(type.name) }}
+                  </RouterLink>
+                </div>
+              </div>
               <RouterLink
                 :to="{
                   name: 'graph',
