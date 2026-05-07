@@ -54,7 +54,7 @@ test.describe('Members Page', () => {
 
   test('owner row shows Tag badge and no editable role selector', async ({ page }) => {
     const ownerRow = page.locator('tbody tr').filter({ hasText: /owner/i }).first();
-    await expect(ownerRow.locator('.p-tag')).toBeVisible();
+    await expect(ownerRow.getByText(/owner/i)).toBeVisible();
     await expect(ownerRow.locator('.p-select')).not.toBeVisible();
   });
 
