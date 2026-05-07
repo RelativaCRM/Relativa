@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-05 (ML now uses async recalculation choreography with enqueue/progress/completed domain contracts.)
+> **Last verified:** 2026-05-08 (`organization_roles.priority`; org member removal / org user archive require strictly stronger role by priority; client org role selects sorted by `priority`.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -260,6 +260,7 @@ erDiagram
   - **Data layer:** `EntityPropertyValue` holds a concrete typed value for one entity+property pair (composite PK). `EntityRelationship` holds a directed link between two entity instances, typed by `EntityRelationshipType`.
 - **`Property` scoping:** `property.organization_id = NULL` means the property is global (system-wide); non-null means it is an org-defined custom property visible only to that organization.
 - `OrganizationRole.OrganizationId` is **nullable** -- `null` for system roles, set for custom org-specific roles.
+- **`organization_roles.priority`:** integer tier where **smaller = stronger** (seeded system roles: `org_owner` = 0, `org_admin` = 1, `org_member` = 6). Values are **not unique**. **Removing another member** (`remove_org_members` on `DELETE .../organizations/{id}/members/{userId}`) and **archiving another user** (`delete_org_users` on `DELETE .../organizations/{id}/users/{userId}`) require the caller's org role to **strictly outrank** the target (`callerPriority < targetPriority`; equal priority is forbidden). Self-removal from the org skips this check; self-archive through the org user-delete endpoint is rejected (use Authentication account settings / `DELETE /me`). Custom org roles set `priority` on create/update (minimum 1 — weaker than owner).
 - `WorkspaceRole.WorkspaceId` is **nullable** -- `null` for system roles, set for custom workspace-specific roles.
 
 ---

@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
+using Relativa.Core.Application;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
@@ -49,6 +50,7 @@ public sealed class OrganizationServiceTests
             Role = new OrganizationRole
             {
                 Name = "org_admin",
+                Priority = OrganizationRolePriorityTiers.Admin,
                 RolePermissions =
                 [
                     new OrganizationRolePermission { Permission = new Permission { Name = permission } }
@@ -61,7 +63,7 @@ public sealed class OrganizationServiceTests
         {
             UserId = userId,
             OrganizationId = orgId,
-            Role = new OrganizationRole { Name = "org_viewer", RolePermissions = [] }
+            Role = new OrganizationRole { Name = "org_viewer", Priority = OrganizationRolePriorityTiers.Member, RolePermissions = [] }
         };
 
     // ── CreateAsync ────────────────────────────────────────────────────────
@@ -69,7 +71,7 @@ public sealed class OrganizationServiceTests
     [Fact]
     public async Task CreateAsync_ValidRequest_CreatesOrgAndAssignsCallerAsOwner()
     {
-        var ownerRole = new OrganizationRole { Id = 1, Name = "org_owner" };
+        var ownerRole = new OrganizationRole { Id = 1, Name = "org_owner", Priority = OrganizationRolePriorityTiers.Owner };
 
         _orgRoleRepo
             .Setup(r => r.GetSystemRoleByNameAsync("org_owner", It.IsAny<CancellationToken>()))
@@ -125,7 +127,7 @@ public sealed class OrganizationServiceTests
     [Fact]
     public async Task CreateAsync_ValidRequest_EnqueuesOrganizationCreatedAuditEvent()
     {
-        var ownerRole = new OrganizationRole { Id = 1, Name = "org_owner" };
+        var ownerRole = new OrganizationRole { Id = 1, Name = "org_owner", Priority = OrganizationRolePriorityTiers.Owner };
         _orgRoleRepo
             .Setup(r => r.GetSystemRoleByNameAsync("org_owner", It.IsAny<CancellationToken>()))
             .ReturnsAsync(ownerRole);
@@ -277,13 +279,13 @@ public sealed class OrganizationServiceTests
             {
                 UserId = 1, IsArchived = false, JoinedAt = DateTime.UtcNow,
                 User = new User { FirstName = "Taras", LastName = "K", Email = "t@r.io" },
-                Role = new OrganizationRole { Name = "org_owner" }
+                Role = new OrganizationRole { Name = "org_owner", Priority = OrganizationRolePriorityTiers.Owner }
             },
             new()
             {
                 UserId = 2, IsArchived = true, JoinedAt = DateTime.UtcNow,
                 User = new User { FirstName = "Ivan", LastName = "P", Email = "i@r.io" },
-                Role = new OrganizationRole { Name = "org_member" }
+                Role = new OrganizationRole { Name = "org_member", Priority = OrganizationRolePriorityTiers.Member }
             }
         };
 
@@ -341,7 +343,12 @@ public sealed class OrganizationServiceTests
     public async Task RemoveMemberAsync_ValidRequest_EnqueuesOrganizationMemberRemovedAuditEvent()
     {
         var caller = OrgMemberWithPermission(1, 6, "remove_org_members");
-        var target = OrgMemberNoPermissions(77, 6);
+        var target = new UserRoleOrganization
+        {
+            UserId = 77,
+            OrganizationId = 6,
+            Role = new OrganizationRole { Name = "org_member", Priority = OrganizationRolePriorityTiers.Member }
+        };
 
         _orgMemberRepo.Setup(r => r.GetAsync(1, 6, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
         _orgMemberRepo.Setup(r => r.GetAsync(77, 6, It.IsAny<CancellationToken>())).ReturnsAsync(target);
@@ -357,6 +364,48 @@ public sealed class OrganizationServiceTests
                     e.ActorUserId == 1),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_EqualRolePriority_ThrowsForbiddenAccessException()
+    {
+        var caller = OrgMemberWithPermission(1, 6, "remove_org_members");
+        var target = new UserRoleOrganization
+        {
+            UserId = 77,
+            OrganizationId = 6,
+            Role = new OrganizationRole { Name = "org_admin", Priority = OrganizationRolePriorityTiers.Admin }
+        };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 6, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+        _orgMemberRepo.Setup(r => r.GetAsync(77, 6, It.IsAny<CancellationToken>())).ReturnsAsync(target);
+
+        var act = () => _sut.RemoveMemberAsync(6, 77, 1);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("*equal or higher authority*");
+        _orgMemberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_CallerWeakerThanTarget_ThrowsForbiddenAccessException()
+    {
+        var caller = OrgMemberWithPermission(1, 6, "remove_org_members");
+        caller.Role!.Priority = OrganizationRolePriorityTiers.Admin;
+        var target = new UserRoleOrganization
+        {
+            UserId = 77,
+            OrganizationId = 6,
+            Role = new OrganizationRole { Name = "org_owner", Priority = OrganizationRolePriorityTiers.Owner }
+        };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 6, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
+        _orgMemberRepo.Setup(r => r.GetAsync(77, 6, It.IsAny<CancellationToken>())).ReturnsAsync(target);
+
+        var act = () => _sut.RemoveMemberAsync(6, 77, 1);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        _orgMemberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── ChangeMemberRoleAsync ──────────────────────────────────────────────

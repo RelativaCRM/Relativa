@@ -1,6 +1,6 @@
 # Audit log HTTP API
 
-> **Last verified:** 2026-05-02
+> **Last verified:** 2026-05-08 (`organization_member_account_archived` org-scope action for org admin user archive.)
 
 The Audit service (`relativa-audit`, port **8086**) exposes read APIs backed by PostgreSQL. Clients should call through the **Gateway** at `{origin}/audit/...` (YARP strips the `/audit` prefix upstream).
 

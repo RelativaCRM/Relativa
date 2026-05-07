@@ -1,6 +1,6 @@
 # Relativa -- AI Agent Context Guides
 
-> **Last verified:** 2026-05-07 (added FRONTEND-UI guide covering brand mark, voice, and layout primitives for the Vue SPA)
+> **Last verified:** 2026-05-08 (org role `priority` + RBAC hierarchy; audit matrix org membership actions.)
 
 Relativa is a multi-tenant CRM / sales-workspace platform built as a microservice monorepo. It includes .NET 10 backend services, a Vue 3 SPA client, a Django ML service, PostgreSQL 16, a YARP API gateway, and SignalR for real-time graph updates. Everything runs locally via Docker Compose.
 

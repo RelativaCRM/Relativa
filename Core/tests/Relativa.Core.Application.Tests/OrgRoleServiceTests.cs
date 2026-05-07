@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
+using Relativa.Core.Application;
 using Relativa.Core.Application.DTOs.OrgRole;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
@@ -19,6 +20,7 @@ public sealed class OrgRoleServiceTests
     private readonly Mock<IPermissionRepository> _permissionRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IValidator<CreateOrgRoleRequest>> _createValidator = new();
+    private readonly Mock<IValidator<UpdateOrgRoleRequest>> _updateValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly OrgRoleService _sut;
 
@@ -29,10 +31,14 @@ public sealed class OrgRoleServiceTests
             _permissionRepo.Object,
             _orgMemberRepo.Object,
             _createValidator.Object,
+            _updateValidator.Object,
             _auditOutboxWriter.Object);
 
         _createValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<CreateOrgRoleRequest>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+        _updateValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateOrgRoleRequest>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
     }
 
@@ -44,6 +50,7 @@ public sealed class OrgRoleServiceTests
             Role = new OrganizationRole
             {
                 Name = "org_admin",
+                Priority = OrganizationRolePriorityTiers.Admin,
                 RolePermissions =
                 [
                     new OrganizationRolePermission { Permission = new Permission { Name = permission } }
@@ -56,7 +63,7 @@ public sealed class OrgRoleServiceTests
         {
             UserId = userId,
             OrganizationId = orgId,
-            Role = new OrganizationRole { Name = "org_viewer", RolePermissions = [] }
+            Role = new OrganizationRole { Name = "org_viewer", Priority = OrganizationRolePriorityTiers.Member, RolePermissions = [] }
         };
 
     // ── GetByOrganizationAsync ─────────────────────────────────────────────
@@ -80,9 +87,9 @@ public sealed class OrgRoleServiceTests
         var member = OrgMemberNoPermissions(1, 3);
         var roles = new List<OrganizationRole>
         {
-            new() { Id = 1, Name = "org_owner", OrganizationId = null, IsArchived = false, RolePermissions = [] },
-            new() { Id = 2, Name = "archived-role", OrganizationId = 3, IsArchived = true, RolePermissions = [] },
-            new() { Id = 3, Name = "custom-reviewer", OrganizationId = 3, IsArchived = false, RolePermissions = [] }
+            new() { Id = 1, Name = "org_owner", OrganizationId = null, Priority = OrganizationRolePriorityTiers.Owner, IsArchived = false, RolePermissions = [] },
+            new() { Id = 2, Name = "archived-role", OrganizationId = 3, Priority = 5, IsArchived = true, RolePermissions = [] },
+            new() { Id = 3, Name = "custom-reviewer", OrganizationId = 3, Priority = 3, IsArchived = false, RolePermissions = [] }
         };
 
         _orgMemberRepo.Setup(r => r.GetAsync(1, 3, It.IsAny<CancellationToken>())).ReturnsAsync(member);
@@ -102,7 +109,7 @@ public sealed class OrgRoleServiceTests
         var member = OrgMemberNoPermissions(1, 4);
         _orgMemberRepo.Setup(r => r.GetAsync(1, 4, It.IsAny<CancellationToken>())).ReturnsAsync(member);
 
-        var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("read-only", [1]));
+        var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("read-only", [1], OrganizationRolePriorityTiers.CustomRoleMinimum));
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>()
             .WithMessage("*manage_org_roles*");
@@ -119,7 +126,7 @@ public sealed class OrgRoleServiceTests
             .Setup(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new Permission { Id = 1, Name = "view_only" }]);
 
-        var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("bad-role", [1, 999]));
+        var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("bad-role", [1, 999], OrganizationRolePriorityTiers.CustomRoleMinimum));
 
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("One or more permission IDs are invalid.");
@@ -138,9 +145,10 @@ public sealed class OrgRoleServiceTests
         _orgMemberRepo.Setup(r => r.GetAsync(1, 4, It.IsAny<CancellationToken>())).ReturnsAsync(member);
         _permissionRepo.Setup(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
 
-        var result = await _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("analyst", [1, 2]));
+        var result = await _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("analyst", [1, 2], 3));
 
         result.Name.Should().Be("analyst");
+        result.Priority.Should().Be(3);
         result.IsSystem.Should().BeFalse();
         result.Permissions.Should().HaveCount(2);
         _orgRoleRepo.Verify(r => r.AddAsync(It.IsAny<OrganizationRole>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -164,7 +172,7 @@ public sealed class OrgRoleServiceTests
         var member = OrgMemberNoPermissions(1, 5);
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(member);
 
-        var act = () => _sut.UpdateAsync(5, 3, 1, new UpdateOrgRoleRequest("renamed", null));
+        var act = () => _sut.UpdateAsync(5, 3, 1, new UpdateOrgRoleRequest("renamed", null, null));
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>();
     }
@@ -176,7 +184,7 @@ public sealed class OrgRoleServiceTests
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(member);
         _orgRoleRepo.Setup(r => r.GetByIdAsync(99, It.IsAny<CancellationToken>())).ReturnsAsync((OrganizationRole?)null);
 
-        var act = () => _sut.UpdateAsync(5, 99, 1, new UpdateOrgRoleRequest("renamed", null));
+        var act = () => _sut.UpdateAsync(5, 99, 1, new UpdateOrgRoleRequest("renamed", null, null));
 
         await act.Should().ThrowAsync<KeyNotFoundException>()
             .WithMessage("Role not found.");
@@ -191,7 +199,7 @@ public sealed class OrgRoleServiceTests
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(member);
         _orgRoleRepo.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(systemRole);
 
-        var act = () => _sut.UpdateAsync(5, 1, 1, new UpdateOrgRoleRequest("hacked", null));
+        var act = () => _sut.UpdateAsync(5, 1, 1, new UpdateOrgRoleRequest("hacked", null, null));
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("System roles cannot be modified.");
@@ -207,7 +215,7 @@ public sealed class OrgRoleServiceTests
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(member);
         _orgRoleRepo.Setup(r => r.GetByIdAsync(8, It.IsAny<CancellationToken>())).ReturnsAsync(foreignRole);
 
-        var act = () => _sut.UpdateAsync(5, 8, 1, new UpdateOrgRoleRequest("renamed", null));
+        var act = () => _sut.UpdateAsync(5, 8, 1, new UpdateOrgRoleRequest("renamed", null, null));
 
         await act.Should().ThrowAsync<KeyNotFoundException>()
             .WithMessage("Role not found in this organization.");
@@ -222,7 +230,7 @@ public sealed class OrgRoleServiceTests
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(member);
         _orgRoleRepo.Setup(r => r.GetByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(role);
 
-        await _sut.UpdateAsync(5, 9, 1, new UpdateOrgRoleRequest("new-name", null));
+        await _sut.UpdateAsync(5, 9, 1, new UpdateOrgRoleRequest("new-name", null, null));
 
         role.Name.Should().Be("new-name");
         _orgRoleRepo.Verify(r => r.UpdateAsync(role, It.IsAny<CancellationToken>()), Times.Once);
@@ -316,7 +324,7 @@ public sealed class OrgRoleServiceTests
         _orgRoleRepo.Setup(r => r.GetByIdAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync(role);
         _permissionRepo.Setup(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
 
-        await _sut.UpdateAsync(5, 9, 1, new UpdateOrgRoleRequest(null, [1, 2]));
+        await _sut.UpdateAsync(5, 9, 1, new UpdateOrgRoleRequest(null, [1, 2], null));
 
         role.RolePermissions.Should().HaveCount(2);
         role.RolePermissions.Should().Contain(rp => rp.PermissionId == 1);

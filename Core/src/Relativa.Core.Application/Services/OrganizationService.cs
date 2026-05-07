@@ -1,4 +1,5 @@
 using FluentValidation;
+using Relativa.Core.Application;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
@@ -151,13 +152,47 @@ public sealed class OrganizationService(
 
     public async Task RemoveMemberAsync(int organizationId, int targetUserId, int callerUserId, CancellationToken ct = default)
     {
-        if (targetUserId != callerUserId)
-            await RequireOrgPermission(callerUserId, organizationId, "remove_org_members", ct);
+        if (targetUserId == callerUserId)
+        {
+            var selfMember = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
+                ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
 
-        var member = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
+            await orgMemberRepository.RemoveAsync(selfMember, ct);
+
+            if (auditOutboxWriter is not null)
+            {
+                await auditOutboxWriter.EnqueueAuditAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_member_removed",
+                    FieldName: "member",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { UserId = targetUserId }),
+                    NewValueJson: null),
+                ct);
+            }
+
+            return;
+        }
+
+        await RequireOrgPermission(callerUserId, organizationId, "remove_org_members", ct);
+
+        var callerMembership = await orgMemberRepository.GetAsync(callerUserId, organizationId, ct)
+            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+        var targetMember = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
             ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
 
-        await orgMemberRepository.RemoveAsync(member, ct);
+        OrganizationRolePriorityRules.EnsureCallerOutranksTarget(
+            callerMembership.Role!.Priority,
+            targetMember.Role!.Priority);
+
+        await orgMemberRepository.RemoveAsync(targetMember, ct);
 
         if (auditOutboxWriter is not null)
         {

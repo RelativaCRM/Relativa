@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-05 (Gateway Scalar aggregated OpenAPI includes `POST /ml/api/ml/recalculate/` and batch score)
+> **Last verified:** 2026-05-08 (org role `priority` on DTOs; removal/archive hierarchy; audit matrix membership actions.)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -140,7 +140,7 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/api/v1/organizations/{id}/members` | JWT + org membership | List organization members |
-| DELETE | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove member from organization |
+| DELETE | `/api/v1/organizations/{id}/members/{userId}` | JWT + `remove_org_members` | Remove another member only if caller's org role **strictly outranks** the target by `organization_roles.priority` (lower number = stronger); self-remove allowed without permission |
 | PUT | `/api/v1/organizations/{id}/members/{userId}/role` | JWT + `assign_org_roles` | Change member's organization role |
 
 ### Endpoints -- Organization users (admin provisioning)
@@ -149,7 +149,7 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 |---|---|---|---|
 | POST | `/api/v1/organizations/{id}/users` | JWT + `create_org_users` (and `assign_org_roles` when non-default role requested) | Create user account (bcrypt password), add to org with selected role (`orgRoleId?`, default `org_member`); 201 + Location |
 | PATCH | `/api/v1/organizations/{id}/users/{userId}` | JWT + `edit_other_org_users_profile` | Update another member's first/last name (not self; use Auth `/me`) |
-| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user account (soft-delete) only when caller and target share the same email domain |
+| DELETE | `/api/v1/organizations/{id}/users/{userId}` | JWT + `delete_org_users` | Archive user (soft-delete) when caller and target share email domain **and** caller's org role **strictly outranks** target's role by `priority`; **403** if targeting self (use Auth account deletion) |
 
 ### Endpoints -- Organization Join Requests
 
@@ -174,9 +174,9 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| GET | `/api/v1/organizations/{id}/roles` | JWT + org membership | List org roles (system + custom) |
-| POST | `/api/v1/organizations/{id}/roles` | JWT + `manage_org_roles` | Create custom org role |
-| PUT | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Update custom org role |
+| GET | `/api/v1/organizations/{id}/roles` | JWT + org membership | List org roles (system + custom); each item includes numeric **`priority`** (lower = stronger) |
+| POST | `/api/v1/organizations/{id}/roles` | JWT + `manage_org_roles` | Create custom org role (`name`, `permissionIds`, **`priority`** ≥ 1) |
+| PUT | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Update custom org role (optional `priority`, etc.) |
 | DELETE | `/api/v1/organizations/{id}/roles/{roleId}` | JWT + `manage_org_roles` | Delete custom org role |
 
 ### Endpoints -- Combined Invitations (inbox)

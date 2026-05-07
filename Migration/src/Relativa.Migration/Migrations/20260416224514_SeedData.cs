@@ -36,6 +36,7 @@ INSERT INTO permissions (id, name, is_archived) VALUES
 
 -- ============================================================
 -- 2. Organization Roles (system, organization_id = NULL)
+-- Priorities are mirrored in migration AddOrganizationRolePriority (lower = stronger).
 -- ============================================================
 INSERT INTO organization_roles (id, name, organization_id, is_archived) VALUES
 (1, 'org_owner',  NULL, FALSE),

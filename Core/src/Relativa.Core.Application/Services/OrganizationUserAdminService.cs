@@ -3,6 +3,7 @@ using Relativa.Authentication.Application;
 using Relativa.Authentication.Application.DTOs;
 using Relativa.Authentication.Application.Interfaces;
 using Relativa.Authentication.Domain.Interfaces;
+using Relativa.Core.Application;
 using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
@@ -84,9 +85,12 @@ public sealed class OrganizationUserAdminService(
 
     public async Task DeleteOrgUserAsync(int organizationId, int targetUserId, int callerUserId, CancellationToken ct = default)
     {
+        if (targetUserId == callerUserId)
+            throw new ForbiddenAccessException("Archive your own account via the account settings endpoint.");
+
         await RequireOrgPermission(callerUserId, organizationId, OrganizationPermissions.DeleteOrgUsers, ct);
 
-        _ = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
+        var targetMembership = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
             ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
 
         var caller = await userRepository.GetByIdAsync(callerUserId, ct)
@@ -96,7 +100,37 @@ public sealed class OrganizationUserAdminService(
         if (!EmailDomainMatches(caller.Email, target.Email))
             throw new ForbiddenAccessException("You can archive only users with the same email domain.");
 
+        var callerMembership = await orgMemberRepository.GetAsync(callerUserId, organizationId, ct)
+            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+        OrganizationRolePriorityRules.EnsureCallerOutranksTarget(
+            callerMembership.Role!.Priority,
+            targetMembership.Role!.Priority);
+
         await userProvisioning.ArchiveUserAsync(targetUserId, callerUserId, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAuditAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: callerUserId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_member_account_archived",
+                    FieldName: "users.is_archived",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        targetUserId,
+                        OrgRoleId = targetMembership.OrgRoleId,
+                        RoleName = targetMembership.Role?.Name
+                    }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { targetUserId, Archived = true })),
+                ct);
+        }
     }
 
     private async Task<OrganizationRole> ResolveTargetRoleAsync(int organizationId, int callerUserId, int? requestedRoleId, CancellationToken ct)
