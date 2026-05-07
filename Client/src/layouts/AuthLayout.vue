@@ -12,7 +12,7 @@ import BrandMark from '@/components/layout/BrandMark.vue';
       </header>
 
       <section
-        class="mt-7 rounded-2xl border border-line/80 bg-white/95 backdrop-blur-sm shadow-card px-9 py-10"
+        class="border border-line/80 bg-white/95 backdrop-blur-sm shadow-card px-9 py-10"
       >
         <slot />
       </section>

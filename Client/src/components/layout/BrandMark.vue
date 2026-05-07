@@ -7,9 +7,9 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), { size: 'md' });
 
 const heightClass = {
-  sm: 'h-10',
+  sm: 'h-12',
   md: 'h-12',
-  lg: 'h-16',
+  lg: 'h-18',
 }[props.size];
 </script>
 
