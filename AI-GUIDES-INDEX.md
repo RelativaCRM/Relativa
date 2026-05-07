@@ -1,6 +1,6 @@
 # Relativa -- AI Agent Context Guides
 
-> **Last verified:** 2026-05-04 (Users: partial unique `users.email` + `ExistsAsync` active-only; PROJECT-STATUS + ARCHITECTURE + MICROSERVICES synced)
+> **Last verified:** 2026-05-07 (added FRONTEND-UI guide covering brand mark, voice, and layout primitives for the Vue SPA)
 
 Relativa is a multi-tenant CRM / sales-workspace platform built as a microservice monorepo. It includes .NET 10 backend services, a Vue 3 SPA client, a Django ML service, PostgreSQL 16, a YARP API gateway, and SignalR for real-time graph updates. Everything runs locally via Docker Compose.
 
@@ -12,6 +12,7 @@ Relativa is a multi-tenant CRM / sales-workspace platform built as a microservic
 
 | What you changed | Update these guides |
 |---|---|
+| Touched **frontend layouts, brand mark, design tokens, or user-facing copy** | [FRONTEND-UI.md](docs/ai-guides/FRONTEND-UI.md) |
 | Added, removed, or changed an **endpoint** | [MICROSERVICES.md](docs/ai-guides/MICROSERVICES.md) |
 | Added or removed a **service** | [MICROSERVICES.md](docs/ai-guides/MICROSERVICES.md), [DOCKER-SETUP.md](docs/ai-guides/DOCKER-SETUP.md), [PROJECT-OVERVIEW.md](docs/ai-guides/PROJECT-OVERVIEW.md) |
 | Changed **Docker Compose, Dockerfiles, networking, or env vars** | [DOCKER-SETUP.md](docs/ai-guides/DOCKER-SETUP.md) |
@@ -32,6 +33,7 @@ Relativa is a multi-tenant CRM / sales-workspace platform built as a microservic
 
 | Guide | Path | What it covers |
 |---|---|---|
+| **Frontend UI** | [docs/ai-guides/FRONTEND-UI.md](docs/ai-guides/FRONTEND-UI.md) | Brand mark, color tokens, voice/terminology rules, layout primitives, form conventions for the Vue SPA |
 | **Project Overview** | [docs/ai-guides/PROJECT-OVERVIEW.md](docs/ai-guides/PROJECT-OVERVIEW.md) | General purpose, business domain, tech stack, repo layout, existing docs map |
 | **Microservices** | [docs/ai-guides/MICROSERVICES.md](docs/ai-guides/MICROSERVICES.md) | Per-service catalog: purpose, endpoints, status, key files |
 | **Architecture** | [docs/ai-guides/ARCHITECTURE.md](docs/ai-guides/ARCHITECTURE.md) | Layered structure, persistence library, validation, auth flow, domain model, conventions |

@@ -10,7 +10,6 @@ import Select from 'primevue/select';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
-import Tag from 'primevue/tag';
 
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useOrganizationStore } from '@/stores/organization';
@@ -21,6 +20,7 @@ import {
   type AuditScope,
 } from '@/api/audit';
 import { ApiError } from '@/api/http';
+import { scopeDisplayName, scopeBadgeFullClass } from '@/utils/auditBadge';
 
 const router = useRouter();
 const wsStore = useWorkspaceStore();
@@ -166,21 +166,6 @@ function actorEmail(row: AuditLogEntryDto): string {
   return row.actor?.email ?? '—';
 }
 
-function scopeSeverity(value: string): string {
-  switch (value) {
-    case 'entity':
-      return 'info';
-    case 'workspace':
-      return 'success';
-    case 'organization':
-      return 'warn';
-    case 'user':
-      return 'secondary';
-    default:
-      return 'secondary';
-  }
-}
-
 function entityIdOf(row: AuditLogEntryDto): number | null {
   return row.entity?.id ?? null;
 }
@@ -240,12 +225,12 @@ function toggle(rowId: string, slot: 'old' | 'next') {
     <div class="flex items-center justify-between mb-6 gap-4">
       <div class="min-w-0">
         <h1 class="text-2xl font-bold text-ink-900">Audit log</h1>
-        <p class="mt-1 text-sm text-ink-500">
+        <p class="mt-3 text-sm text-ink-500">
           Change history for
-          <span v-if="wsStore.currentWorkspace" class="font-medium text-ink-700">
+          <span v-if="wsStore.currentWorkspace" class="font-semibold text-brand-600">
             {{ wsStore.currentWorkspace.name }}
           </span>
-          <span v-else class="font-medium text-ink-700">
+          <span v-else class="font-semibold text-brand-600">
             {{ orgStore.currentOrg?.name ?? 'this account' }}
           </span>
         </p>
@@ -352,12 +337,11 @@ function toggle(rowId: string, slot: 'old' | 'next') {
           </template>
         </Column>
 
-        <Column field="entity_type" header="Type" style="width: 130px">
+        <Column field="entity_type" header="Type" style="width: 150px">
           <template #body="{ data }">
-            <Tag
-              :value="data.entity_type"
-              :severity="scopeSeverity(data.entity_type)"
-            />
+            <span :class="scopeBadgeFullClass(data.entity_type)">
+              {{ scopeDisplayName(data.entity_type) }}
+            </span>
           </template>
         </Column>
 
@@ -479,9 +463,10 @@ function toggle(rowId: string, slot: 'old' | 'next') {
     <div class="rounded-xl border border-line bg-white p-10 text-center">
       <i class="pi pi-lock text-3xl text-ink-400" />
       <p class="mt-3 text-sm text-ink-500">
-        You need <span class="font-medium">ws_admin</span> or
-        <span class="font-medium">ws_analyst</span> role in this workspace to
-        view the audit log.
+        Only workspace
+        <span class="font-medium text-ink-700">Admins</span> and
+        <span class="font-medium text-ink-700">Analysts</span> can view the
+        audit log. Ask a workspace admin to grant you access.
       </p>
     </div>
   </section>

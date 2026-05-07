@@ -6,12 +6,12 @@ import Button from 'primevue/button';
 import Select from 'primevue/select';
 import Dialog from 'primevue/dialog';
 import Message from 'primevue/message';
-import Tag from 'primevue/tag';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { ApiError } from '@/api/http';
 import { useApiErrorHandler } from '@/api/errorToast';
+import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
 
 const route = useRoute();
 const router = useRouter();
@@ -94,20 +94,7 @@ const canSubmitAdd = computed(
     !addMemberSending.value,
 );
 
-function displayRole(roleName: string): string {
-  if (roleName === 'ws_admin') return 'Admin';
-  if (roleName === 'ws_manager') return 'Manager';
-  if (roleName === 'ws_analyst') return 'Analyst';
-  if (roleName === 'ws_member') return 'Member';
-  return roleName;
-}
-
-function roleSeverity(roleName: string): string {
-  if (roleName === 'ws_admin') return 'info';
-  if (roleName === 'ws_manager') return 'warn';
-  if (roleName === 'ws_analyst') return 'success';
-  return 'secondary';
-}
+const displayRole = roleDisplayName;
 
 function roleIdByName(roleName: string): number | undefined {
   return wsStore.roles.find((r) => r.name === roleName)?.id;
@@ -259,7 +246,7 @@ onMounted(loadAll);
         <h1 class="text-2xl font-bold text-ink-900">
           {{ wsStore.currentWorkspace?.name ?? 'Workspace' }}
         </h1>
-        <p class="mt-1 text-sm text-ink-500">Manage workspace members.</p>
+        <p class="mt-3 text-sm text-ink-500">Manage workspace members.</p>
       </div>
       <div class="flex items-center gap-2">
         <Button
@@ -319,11 +306,9 @@ onMounted(loadAll);
                 class="!h-8 !text-xs !min-w-[120px]"
                 @update:model-value="handleRoleChange(member.userId, $event)"
               />
-              <Tag
-                v-else
-                :value="displayRole(member.roleName)"
-                :severity="roleSeverity(member.roleName)"
-              />
+              <span v-else :class="roleBadgeFullClass(member.roleName)">
+                {{ displayRole(member.roleName) }}
+              </span>
             </td>
             <td class="px-5 py-3 text-ink-500">
               {{ new Date(member.joinedAt).toLocaleDateString() }}

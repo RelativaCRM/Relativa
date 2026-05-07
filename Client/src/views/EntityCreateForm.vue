@@ -48,6 +48,10 @@ function isPropertyEmpty(prop: EntityTypePropertyDto): boolean {
   return isEmpty(values.value[prop.propertyId] ?? null);
 }
 
+function isPropertyRequired(prop: EntityTypePropertyDto): boolean {
+  return prop.isRequired || prop.dataType !== 'Bool';
+}
+
 function propertyFieldError(prop: EntityTypePropertyDto): string | null {
   if (submitAttempted.value && isPropertyEmpty(prop)) {
     return 'This field is required.';
@@ -290,7 +294,7 @@ onMounted(loadTypes);
             class="text-xs font-medium text-ink-600"
           >
             {{ humanize(prop.name) }}
-            <span v-if="prop.isRequired" class="text-danger">*</span>
+            <span v-if="isPropertyRequired(prop)" class="text-danger">*</span>
           </label>
 
           <InputText
