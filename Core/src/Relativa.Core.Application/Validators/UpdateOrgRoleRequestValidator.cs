@@ -12,7 +12,7 @@ public sealed class UpdateOrgRoleRequestValidator : AbstractValidator<UpdateOrgR
             .When(x => x.Name is not null);
 
         RuleFor(x => x.Priority)
-            .Must(p => !p.HasValue || p.Value >= OrganizationRolePriorityTiers.CustomRoleMinimum)
-            .WithMessage($"Priority must be at least {OrganizationRolePriorityTiers.CustomRoleMinimum} when set.");
+            .Must(p => !p.HasValue || p.Value >= 1)
+            .WithMessage("Priority must be at least 1 when set.");
     }
 }

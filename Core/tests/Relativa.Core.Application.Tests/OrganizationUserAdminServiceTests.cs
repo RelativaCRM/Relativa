@@ -5,7 +5,6 @@ using Moq;
 using Relativa.Authentication.Application.DTOs;
 using Relativa.Authentication.Application.Interfaces;
 using Relativa.Authentication.Domain.Interfaces;
-using Relativa.Core.Application;
 using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
@@ -49,7 +48,7 @@ public sealed class OrganizationUserAdminServiceTests
         new("Alice", "Smith", "alice@company.com", "Password123", orgRoleId);
 
     private static OrganizationRole DefaultMemberRole() =>
-        new() { Id = 2, Name = "org_member", IsArchived = false, Priority = OrganizationRolePriorityTiers.Member };
+        new() { Id = 2, Name = "org_member", IsArchived = false, Priority = 6 };
 
     private static UserRoleOrganization OrgMember(int userId, int organizationId, params string[] permissions) =>
         new()
@@ -59,7 +58,7 @@ public sealed class OrganizationUserAdminServiceTests
             Role = new OrganizationRole
             {
                 Name = "org_custom",
-                Priority = OrganizationRolePriorityTiers.Owner,
+                Priority = 0,
                 RolePermissions = permissions
                     .Select(p => new OrganizationRolePermission
                     {
@@ -270,7 +269,7 @@ public sealed class OrganizationUserAdminServiceTests
                 UserId = 7,
                 OrganizationId = 10,
                 OrgRoleId = 2,
-                Role = new OrganizationRole { Name = "org_member", Priority = OrganizationRolePriorityTiers.Member }
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
             });
         var expected = new UserProfileDto(7, "jane@co.com", "Jane", "Doe");
         _userProvisioning
@@ -318,7 +317,7 @@ public sealed class OrganizationUserAdminServiceTests
                 UserId = 7,
                 OrganizationId = 10,
                 OrgRoleId = 2,
-                Role = new OrganizationRole { Name = "org_member", Priority = OrganizationRolePriorityTiers.Member }
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
             });
         _userRepository
             .Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
@@ -341,7 +340,7 @@ public sealed class OrganizationUserAdminServiceTests
                 UserId = 7,
                 OrganizationId = 10,
                 OrgRoleId = 2,
-                Role = new OrganizationRole { Name = "org_member", Priority = OrganizationRolePriorityTiers.Member }
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
             });
         _userRepository
             .Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
@@ -397,7 +396,7 @@ public sealed class OrganizationUserAdminServiceTests
                 Role = new OrganizationRole
                 {
                     Name = "org_admin",
-                    Priority = OrganizationRolePriorityTiers.Admin,
+                    Priority = 1,
                     RolePermissions =
                     [
                         new OrganizationRolePermission
@@ -414,7 +413,7 @@ public sealed class OrganizationUserAdminServiceTests
                 UserId = 7,
                 OrganizationId = 10,
                 OrgRoleId = 2,
-                Role = new OrganizationRole { Name = "org_admin", Priority = OrganizationRolePriorityTiers.Admin }
+                Role = new OrganizationRole { Name = "org_admin", Priority = 1 }
             });
         _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 5, Email = "a@corp.com" });
@@ -448,7 +447,7 @@ public sealed class OrganizationUserAdminServiceTests
                 UserId = 7,
                 OrganizationId = 10,
                 OrgRoleId = 2,
-                Role = new OrganizationRole { Name = "org_member", Priority = OrganizationRolePriorityTiers.Member }
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
             });
         _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 5, Email = "admin@corp.com" });
@@ -480,7 +479,7 @@ public sealed class OrganizationUserAdminServiceTests
                 UserId = 7,
                 OrganizationId = 10,
                 OrgRoleId = 2,
-                Role = new OrganizationRole { Name = "org_member", Priority = OrganizationRolePriorityTiers.Member }
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
             });
         _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 5, Email = "adminnoemail" });
@@ -504,7 +503,7 @@ public sealed class OrganizationUserAdminServiceTests
                 UserId = 7,
                 OrganizationId = 10,
                 OrgRoleId = 2,
-                Role = new OrganizationRole { Name = "org_member", Priority = OrganizationRolePriorityTiers.Member }
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
             });
         _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 5, Email = "admin@" });

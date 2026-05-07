@@ -3,7 +3,6 @@ using Relativa.Authentication.Application;
 using Relativa.Authentication.Application.DTOs;
 using Relativa.Authentication.Application.Interfaces;
 using Relativa.Authentication.Domain.Interfaces;
-using Relativa.Core.Application;
 using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
@@ -102,9 +101,11 @@ public sealed class OrganizationUserAdminService(
 
         var callerMembership = await orgMemberRepository.GetAsync(callerUserId, organizationId, ct)
             ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
-        OrganizationRolePriorityRules.EnsureCallerOutranksTarget(
-            callerMembership.Role!.Priority,
-            targetMembership.Role!.Priority);
+        if (callerMembership.Role!.Priority >= targetMembership.Role!.Priority)
+        {
+            throw new ForbiddenAccessException(
+                "You cannot perform this action on a member whose organization role has equal or higher authority than yours.");
+        }
 
         await userProvisioning.ArchiveUserAsync(targetUserId, callerUserId, ct);
 

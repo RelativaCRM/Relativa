@@ -1,5 +1,4 @@
 using FluentValidation.TestHelper;
-using Relativa.Core.Application;
 using Relativa.Core.Application.DTOs.Entity;
 using Relativa.Core.Application.DTOs.JoinRequest;
 using Relativa.Core.Application.DTOs.Member;
@@ -164,34 +163,34 @@ public sealed class CreateOrgRoleRequestValidatorTests
 
     [Fact]
     public void Valid_ReturnsNoErrors() =>
-        _sut.TestValidate(new CreateOrgRoleRequest("Manager", [3], OrganizationRolePriorityTiers.CustomRoleMinimum))
+        _sut.TestValidate(new CreateOrgRoleRequest("Manager", [3], 1))
             .ShouldNotHaveAnyValidationErrors();
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
     public void EmptyOrWhitespaceName_FailsValidation(string name) =>
-        _sut.TestValidate(new CreateOrgRoleRequest(name, [1], OrganizationRolePriorityTiers.CustomRoleMinimum))
+        _sut.TestValidate(new CreateOrgRoleRequest(name, [1], 1))
             .ShouldHaveValidationErrorFor(x => x.Name);
 
     [Fact]
     public void NameAtMaxLength_ReturnsNoErrors() =>
-        _sut.TestValidate(new CreateOrgRoleRequest(new string('O', 100), [1], OrganizationRolePriorityTiers.CustomRoleMinimum))
+        _sut.TestValidate(new CreateOrgRoleRequest(new string('O', 100), [1], 1))
             .ShouldNotHaveAnyValidationErrors();
 
     [Fact]
     public void NameExceedsMaxLength_FailsValidation() =>
-        _sut.TestValidate(new CreateOrgRoleRequest(new string('O', 101), [1], OrganizationRolePriorityTiers.CustomRoleMinimum))
+        _sut.TestValidate(new CreateOrgRoleRequest(new string('O', 101), [1], 1))
             .ShouldHaveValidationErrorFor(x => x.Name);
 
     [Fact]
     public void EmptyPermissionIds_FailsValidation() =>
-        _sut.TestValidate(new CreateOrgRoleRequest("Lead", [], OrganizationRolePriorityTiers.CustomRoleMinimum))
+        _sut.TestValidate(new CreateOrgRoleRequest("Lead", [], 1))
             .ShouldHaveValidationErrorFor(x => x.PermissionIds);
 
     [Fact]
     public void NullPermissionIds_FailsValidation() =>
-        _sut.TestValidate(new CreateOrgRoleRequest("Lead", null!, OrganizationRolePriorityTiers.CustomRoleMinimum))
+        _sut.TestValidate(new CreateOrgRoleRequest("Lead", null!, 1))
             .ShouldHaveValidationErrorFor(x => x.PermissionIds);
 
     [Fact]

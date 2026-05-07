@@ -2,7 +2,6 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
-using Relativa.Core.Application;
 using Relativa.Core.Application.DTOs.OrgRole;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
@@ -50,7 +49,7 @@ public sealed class OrgRoleServiceTests
             Role = new OrganizationRole
             {
                 Name = "org_admin",
-                Priority = OrganizationRolePriorityTiers.Admin,
+                Priority = 1,
                 RolePermissions =
                 [
                     new OrganizationRolePermission { Permission = new Permission { Name = permission } }
@@ -63,7 +62,7 @@ public sealed class OrgRoleServiceTests
         {
             UserId = userId,
             OrganizationId = orgId,
-            Role = new OrganizationRole { Name = "org_viewer", Priority = OrganizationRolePriorityTiers.Member, RolePermissions = [] }
+            Role = new OrganizationRole { Name = "org_viewer", Priority = 6, RolePermissions = [] }
         };
 
     // ── GetByOrganizationAsync ─────────────────────────────────────────────
@@ -87,7 +86,7 @@ public sealed class OrgRoleServiceTests
         var member = OrgMemberNoPermissions(1, 3);
         var roles = new List<OrganizationRole>
         {
-            new() { Id = 1, Name = "org_owner", OrganizationId = null, Priority = OrganizationRolePriorityTiers.Owner, IsArchived = false, RolePermissions = [] },
+            new() { Id = 1, Name = "org_owner", OrganizationId = null, Priority = 0, IsArchived = false, RolePermissions = [] },
             new() { Id = 2, Name = "archived-role", OrganizationId = 3, Priority = 5, IsArchived = true, RolePermissions = [] },
             new() { Id = 3, Name = "custom-reviewer", OrganizationId = 3, Priority = 3, IsArchived = false, RolePermissions = [] }
         };
@@ -109,7 +108,7 @@ public sealed class OrgRoleServiceTests
         var member = OrgMemberNoPermissions(1, 4);
         _orgMemberRepo.Setup(r => r.GetAsync(1, 4, It.IsAny<CancellationToken>())).ReturnsAsync(member);
 
-        var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("read-only", [1], OrganizationRolePriorityTiers.CustomRoleMinimum));
+        var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("read-only", [1], 1));
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>()
             .WithMessage("*manage_org_roles*");
@@ -126,7 +125,7 @@ public sealed class OrgRoleServiceTests
             .Setup(r => r.GetByIdsAsync(It.IsAny<List<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new Permission { Id = 1, Name = "view_only" }]);
 
-        var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("bad-role", [1, 999], OrganizationRolePriorityTiers.CustomRoleMinimum));
+        var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("bad-role", [1, 999], 1));
 
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("One or more permission IDs are invalid.");

@@ -1,5 +1,4 @@
 using FluentValidation;
-using Relativa.Core.Application;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
@@ -188,9 +187,11 @@ public sealed class OrganizationService(
         var targetMember = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
             ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
 
-        OrganizationRolePriorityRules.EnsureCallerOutranksTarget(
-            callerMembership.Role!.Priority,
-            targetMember.Role!.Priority);
+        if (callerMembership.Role!.Priority >= targetMember.Role!.Priority)
+        {
+            throw new ForbiddenAccessException(
+                "You cannot perform this action on a member whose organization role has equal or higher authority than yours.");
+        }
 
         await orgMemberRepository.RemoveAsync(targetMember, ct);
 
