@@ -5,11 +5,11 @@ import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Dialog from 'primevue/dialog';
 import Message from 'primevue/message';
-import Tag from 'primevue/tag';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
+import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
 
 const router = useRouter();
 const orgStore = useOrganizationStore();
@@ -69,14 +69,7 @@ function openEntities(id: number) {
   });
 }
 
-function displayRole(roleName: string | null): string {
-  if (!roleName) return 'Member';
-  if (roleName === 'ws_admin') return 'Admin';
-  if (roleName === 'ws_manager') return 'Manager';
-  if (roleName === 'ws_analyst') return 'Analyst';
-  if (roleName === 'ws_member') return 'Member';
-  return roleName;
-}
+const displayRole = roleDisplayName;
 
 onMounted(async () => {
   try {
@@ -94,9 +87,9 @@ onMounted(async () => {
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold text-ink-900">Workspaces</h1>
-        <p class="mt-1 text-sm text-ink-500">
+        <p class="mt-3 text-sm text-ink-500">
           Workspaces in
-          <span class="font-medium text-ink-700">{{
+          <span class="font-semibold text-brand-600">{{
             orgStore.currentOrg?.name ?? 'your organization'
           }}</span>
         </p>
@@ -146,11 +139,9 @@ onMounted(async () => {
                 {{ ws.memberCount === 1 ? 'member' : 'members' }}
               </p>
             </div>
-            <Tag
-              :value="displayRole(ws.userRole)"
-              severity="secondary"
-              class="shrink-0"
-            />
+            <span :class="[roleBadgeFullClass(ws.userRole), 'shrink-0']">
+              {{ displayRole(ws.userRole) }}
+            </span>
           </div>
         </button>
         <div class="mt-4 flex items-center justify-between text-xs">

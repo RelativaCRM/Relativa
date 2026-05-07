@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
-import Tag from 'primevue/tag';
 import { useToast } from 'primevue/usetoast';
+import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
 import { orgApi } from '@/api/organizations';
 import {
   workspaceApi,
@@ -82,17 +82,7 @@ function roleIdByName(roleName: string): number | null {
   return orgStore.roles.find((r) => r.name === roleName)?.id ?? null;
 }
 
-function displayRole(roleName: string): string {
-  if (roleName === 'org_owner') return 'Owner';
-  if (roleName === 'org_admin') return 'Admin';
-  return 'Member';
-}
-
-function roleSeverity(roleName: string): string {
-  if (roleName === 'org_owner') return 'warn';
-  if (roleName === 'org_admin') return 'info';
-  return 'secondary';
-}
+const displayRole = roleDisplayName;
 
 function emailDomain(email: string | null | undefined): string {
   if (!email) return '';
@@ -335,15 +325,16 @@ onMounted(async () => {
           @click="router.push({ name: 'members' })"
         />
         <h1 class="text-2xl font-bold text-ink-900">Member</h1>
-        <p v-if="member" class="mt-1 text-sm text-ink-500">
-          {{ member.firstName }} {{ member.lastName }} ({{ member.email }})
+        <p v-if="member" class="mt-3 text-sm text-ink-500">
+          <span class="font-semibold text-brand-600">
+            {{ member.firstName }} {{ member.lastName }}
+          </span>
+          · {{ member.email }}
         </p>
       </div>
-      <Tag
-        v-if="member"
-        :value="displayRole(member.roleName)"
-        :severity="roleSeverity(member.roleName)"
-      />
+      <span v-if="member" :class="roleBadgeFullClass(member.roleName)">
+        {{ displayRole(member.roleName) }}
+      </span>
     </div>
 
     <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>

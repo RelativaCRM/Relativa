@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router';
-import Button from 'primevue/button';
 import Select from 'primevue/select';
 import BrandMark from '@/components/layout/BrandMark.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -108,10 +107,12 @@ onMounted(async () => {
 <template>
   <div class="min-h-screen flex flex-col bg-surface">
     <header
-      class="h-16 border-b border-line bg-white flex items-center justify-between px-6 gap-4"
+      class="h-16 border-b border-line bg-white/95 backdrop-blur-sm flex items-center justify-between px-6 gap-4 sticky top-0 z-30"
     >
       <div class="flex items-center gap-4 min-w-0 flex-1">
-        <BrandMark size="sm" />
+        <RouterLink :to="{ name: 'home' }" class="flex items-center" aria-label="Relativa home">
+          <BrandMark size="sm" />
+        </RouterLink>
         <div
           v-if="orgStore.currentOrg"
           class="hidden md:flex items-center gap-3 min-w-0 border-l border-line pl-4"
@@ -152,55 +153,48 @@ onMounted(async () => {
         >
           {{ auth.user.firstName }} {{ auth.user.lastName }}
         </RouterLink>
-        <Button
-          label="Sign out"
-          severity="secondary"
-          text
-          icon="pi pi-sign-out"
-          @click="handleLogout"
-        />
       </div>
     </header>
 
     <div class="flex-1 flex">
-      <aside class="w-60 border-r border-line bg-white py-6 px-4 hidden md:block">
-        <nav class="flex flex-col gap-4 text-sm text-ink-700">
+      <aside class="w-60 border-r border-line bg-white py-6 px-3 hidden md:flex md:flex-col">
+        <nav class="nav flex flex-col gap-5 text-sm text-ink-700 flex-1">
           <div>
             <p
               class="px-3 mb-2 text-[11px] font-semibold text-ink-400 uppercase tracking-wider"
             >
               Organization
             </p>
-            <div class="flex flex-col gap-1">
+            <div class="flex flex-col gap-0.5">
               <RouterLink
                 to="/"
-                class="px-3 py-2 rounded-lg hover:bg-surface"
+                class="nav-link"
                 active-class=""
-                exact-active-class="bg-brand-50 text-brand-700 font-medium"
+                exact-active-class="nav-link--active"
               >
-                <i class="pi pi-home mr-2" />Home
+                <i class="pi pi-home" />Home
               </RouterLink>
               <RouterLink
                 to="/members"
-                class="px-3 py-2 rounded-lg hover:bg-surface"
-                active-class="bg-brand-50 text-brand-700 font-medium"
+                class="nav-link"
+                active-class="nav-link--active"
               >
-                <i class="pi pi-users mr-2" />Members
+                <i class="pi pi-users" />Members
               </RouterLink>
               <RouterLink
                 to="/workspaces"
-                class="px-3 py-2 rounded-lg hover:bg-surface"
-                active-class="bg-brand-50 text-brand-700 font-medium"
+                class="nav-link"
+                active-class="nav-link--active"
               >
-                <i class="pi pi-folder mr-2" />Workspaces
+                <i class="pi pi-folder" />Workspaces
               </RouterLink>
               <RouterLink
                 v-if="canViewAuditLog"
                 to="/audit-log"
-                class="px-3 py-2 rounded-lg hover:bg-surface"
-                active-class="bg-brand-50 text-brand-700 font-medium"
+                class="nav-link"
+                active-class="nav-link--active"
               >
-                <i class="pi pi-history mr-2" />Audit log
+                <i class="pi pi-history" />Audit log
               </RouterLink>
             </div>
           </div>
@@ -211,26 +205,26 @@ onMounted(async () => {
             >
               Workspace
             </p>
-            <div class="flex flex-col gap-1">
+            <div class="flex flex-col gap-0.5">
               <RouterLink
                 :to="{
                   name: 'workspace-entities',
                   params: { workspaceId: workspaceIdStr },
                 }"
-                class="px-3 py-2 rounded-lg hover:bg-surface"
-                active-class="bg-brand-50 text-brand-700 font-medium"
+                class="nav-link"
+                active-class="nav-link--active"
               >
-                <i class="pi pi-database mr-2" />Entities
+                <i class="pi pi-database" />Entities
               </RouterLink>
               <RouterLink
                 :to="{
                   name: 'graph',
                   params: { workspaceId: workspaceIdStr },
                 }"
-                class="px-3 py-2 rounded-lg hover:bg-surface"
-                active-class="bg-brand-50 text-brand-700 font-medium"
+                class="nav-link"
+                active-class="nav-link--active"
               >
-                <i class="pi pi-share-alt mr-2" />Graph
+                <i class="pi pi-share-alt" />Graph
               </RouterLink>
               <RouterLink
                 :to="{
@@ -247,24 +241,34 @@ onMounted(async () => {
                   name: 'workspace-members',
                   params: { workspaceId: workspaceIdStr },
                 }"
-                class="px-3 py-2 rounded-lg hover:bg-surface"
-                active-class="bg-brand-50 text-brand-700 font-medium"
+                class="nav-link"
+                active-class="nav-link--active"
               >
-                <i class="pi pi-user-edit mr-2" />Workspace members
+                <i class="pi pi-user-edit" />Workspace members
               </RouterLink>
             </div>
           </div>
 
-          <div class="pt-2 border-t border-line">
+          <div class="pt-3 border-t border-line">
             <RouterLink
               to="/account"
-              class="px-3 py-2 rounded-lg hover:bg-surface"
-              active-class="bg-brand-50 text-brand-700 font-medium"
+              class="nav-link"
+              active-class="nav-link--active"
             >
-              <i class="pi pi-user mr-2" />Account
+              <i class="pi pi-user" />Account
             </RouterLink>
           </div>
         </nav>
+
+        <div class="pt-4 mt-4 border-t border-line">
+          <button
+            type="button"
+            class="nav-link nav-link--logout w-full text-left"
+            @click="handleLogout"
+          >
+            <i class="pi pi-sign-out" />Sign out
+          </button>
+        </div>
       </aside>
 
       <main class="flex-1 p-6">
@@ -273,3 +277,60 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  color: rgb(51 65 85);
+  position: relative;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.nav-link i {
+  font-size: 0.875rem;
+  color: rgb(100 116 139);
+  width: 1rem;
+  display: inline-flex;
+  justify-content: center;
+}
+.nav-link:hover {
+  background-color: rgb(248 250 252);
+  color: rgb(15 23 42);
+}
+.nav-link--active {
+  background-color: rgb(239 246 255);
+  color: rgb(29 78 216);
+  font-weight: 500;
+}
+.nav-link--active i {
+  color: rgb(37 99 235);
+}
+.nav-link--active::before {
+  content: '';
+  position: absolute;
+  left: -0.75rem;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background-color: rgb(37 99 235);
+}
+
+.nav-link--logout {
+  color: rgb(71 85 105);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  font: inherit;
+}
+.nav-link--logout:hover {
+  background-color: rgb(254 242 242);
+  color: rgb(185 28 28);
+}
+.nav-link--logout:hover i {
+  color: rgb(220 38 38);
+}
+</style>

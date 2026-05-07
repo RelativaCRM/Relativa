@@ -5,7 +5,6 @@ import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import ProgressSpinner from 'primevue/progressspinner';
-import Tag from 'primevue/tag';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
@@ -13,6 +12,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import { normalizeError } from '@/api/errors';
 import type { WorkspaceDto } from '@/api/workspaces';
+import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -34,14 +34,7 @@ const canCreate = computed(
     !!orgStore.currentOrgId,
 );
 
-function displayRole(roleName: string | null): string {
-  if (!roleName) return 'Member';
-  if (roleName === 'ws_admin') return 'Admin';
-  if (roleName === 'ws_manager') return 'Manager';
-  if (roleName === 'ws_analyst') return 'Analyst';
-  if (roleName === 'ws_member') return 'Member';
-  return roleName;
-}
+const displayRole = roleDisplayName;
 
 function chooseWorkspace(ws: WorkspaceDto) {
   wsStore.setCurrentWorkspace(ws.id);
@@ -202,11 +195,9 @@ onMounted(async () => {
               {{ ws.memberCount === 1 ? 'member' : 'members' }}
             </span>
           </span>
-          <Tag
-            :value="displayRole(ws.userRole)"
-            severity="secondary"
-            class="shrink-0"
-          />
+          <span :class="[roleBadgeFullClass(ws.userRole), 'shrink-0']">
+            {{ displayRole(ws.userRole) }}
+          </span>
           <i
             class="pi pi-arrow-right text-ink-400 transition-colors group-hover:text-brand-600"
           />

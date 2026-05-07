@@ -7,8 +7,8 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
-import Tag from 'primevue/tag';
 import { normalizeError } from '@/api/errors';
+import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
 import { useApiErrorHandler } from '@/api/errorToast';
 import { orgApi, type JoinRequestDto } from '@/api/organizations';
 import { useOrganizationStore } from '@/stores/organization';
@@ -48,17 +48,7 @@ const pendingJoinRequests = computed(() =>
   joinRequests.value.filter((r) => r.status === 'Pending'),
 );
 
-function displayRole(roleName: string): string {
-  if (roleName === 'org_owner') return 'Owner';
-  if (roleName === 'org_admin') return 'Admin';
-  return 'Member';
-}
-
-function roleSeverity(roleName: string): string {
-  if (roleName === 'org_owner') return 'warn';
-  if (roleName === 'org_admin') return 'info';
-  return 'secondary';
-}
+const displayRole = roleDisplayName;
 
 /* ── Create user dialog ─────────────────────────────── */
 const showCreateUser = ref(false);
@@ -258,12 +248,12 @@ onMounted(async () => {
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold text-ink-900">Members</h1>
-        <p class="mt-1 text-sm text-ink-500">
+        <p class="mt-3 text-sm text-ink-500">
           Click a row to open the member details view.
         </p>
         <p class="mt-1 text-sm text-ink-500">
           Organization:
-          <span class="font-medium text-ink-700">{{
+          <span class="font-semibold text-brand-600">{{
             orgStore.currentOrg?.name ?? 'organization'
           }}</span>
         </p>
@@ -310,10 +300,9 @@ onMounted(async () => {
             </td>
             <td class="px-5 py-3 text-ink-600">{{ member.email }}</td>
             <td class="px-5 py-3">
-              <Tag
-                :value="displayRole(member.roleName)"
-                :severity="roleSeverity(member.roleName)"
-              />
+              <span :class="roleBadgeFullClass(member.roleName)">
+                {{ displayRole(member.roleName) }}
+              </span>
             </td>
             <td class="px-5 py-3 text-ink-500">
               {{ new Date(member.joinedAt).toLocaleDateString() }}
@@ -335,11 +324,9 @@ onMounted(async () => {
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <p class="text-sm text-ink-700 truncate">{{ inv.email }}</p>
-              <Tag
-                v-if="inv.roleName"
-                :value="displayRole(inv.roleName)"
-                :severity="roleSeverity(inv.roleName)"
-              />
+              <span v-if="inv.roleName" :class="roleBadgeFullClass(inv.roleName)">
+                {{ displayRole(inv.roleName) }}
+              </span>
             </div>
             <p class="text-xs text-ink-400">
               Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
