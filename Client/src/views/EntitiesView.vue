@@ -18,7 +18,7 @@ const entityStore = useEntityStore();
 const workspaceId = computed(() => Number(route.params.workspaceId));
 const entities = computed(() => entityStore.entitiesFor(workspaceId.value));
 const filterType = computed(() => {
-  const raw = route.query.type;
+  const raw = route.query.entityType;
   if (typeof raw !== 'string' || !raw.trim()) return null;
   return raw.trim().toLowerCase();
 });
