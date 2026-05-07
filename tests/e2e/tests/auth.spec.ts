@@ -119,6 +119,7 @@ test.describe('Login', () => {
 test.describe('Sign Out', () => {
   test('sign out clears session and redirects to /login', async ({ page }) => {
     await loginAsAdmin(page);
+    await page.locator('aside button').filter({ hasText: ADMIN_EMAIL }).click();
     await page.getByRole('button', { name: /sign out/i }).click();
     await expect(page).toHaveURL(/\/login/);
     await page.goto(`${BASE}/`);
