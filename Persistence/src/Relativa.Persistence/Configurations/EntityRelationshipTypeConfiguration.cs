@@ -15,6 +15,7 @@ public class EntityRelationshipTypeConfiguration : IEntityTypeConfiguration<Enti
         builder.HasIndex(e => e.Name).IsUnique().HasDatabaseName("ix_entity_relationship_type_name");
         builder.Property(e => e.SourceEntityTypeId).HasColumnName("source_entity_type_id").IsRequired();
         builder.Property(e => e.TargetEntityTypeId).HasColumnName("target_entity_type_id").IsRequired();
+        builder.Property(e => e.IsRequired).HasColumnName("is_required").IsRequired();
         builder.HasOne(e => e.SourceEntityType)
             .WithMany(t => t.SourceRelationshipTypes)
             .HasForeignKey(e => e.SourceEntityTypeId)

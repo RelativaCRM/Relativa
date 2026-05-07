@@ -17,6 +17,11 @@ export const useEntityStore = defineStore('entity', () => {
 
   const typesLoaded = computed(() => types.value.length > 0);
 
+  /** Types shown in the workspace sidebar (top-level / creatable-from-nav only). */
+  const standaloneTypes = computed(() =>
+    types.value.filter((t) => t.isStandalone),
+  );
+
   function entitiesFor(workspaceId: number): EntityListItemDto[] {
     return entitiesByWorkspace.value[workspaceId] ?? [];
   }
@@ -102,6 +107,7 @@ export const useEntityStore = defineStore('entity', () => {
 
   return {
     types,
+    standaloneTypes,
     entitiesByWorkspace,
     detailById,
     selectedId,

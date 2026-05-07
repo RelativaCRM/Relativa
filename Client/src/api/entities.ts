@@ -12,11 +12,23 @@ export interface EntityTypePropertyDto {
   name: string;
   dataType: EntityPropertyDataType;
   isRequired: boolean;
+  /** From `property.is_readonly`; if all properties are readonly, creation/editing is blocked in the UI. */
+  isReadonly: boolean;
+}
+
+export interface OutgoingRelationshipDto {
+  relationshipTypeId: number;
+  name: string;
+  targetEntityTypeId: number;
+  targetEntityTypeName: string;
+  isRequired: boolean;
 }
 
 export interface EntityTypeDto {
   id: number;
   name: string;
+  isStandalone: boolean;
+  outgoingRelationships: OutgoingRelationshipDto[];
   properties: EntityTypePropertyDto[];
 }
 

@@ -16,6 +16,7 @@ public class PropertyConfiguration : IEntityTypeConfiguration<Property>
             .HasColumnName("data_type")
             .HasConversion<string>()
             .IsRequired();
+        builder.Property(p => p.IsReadonly).HasColumnName("is_readonly").IsRequired();
         builder.Property(p => p.OrganizationId).HasColumnName("organization_id");
         builder.HasOne(p => p.Organization)
             .WithMany()

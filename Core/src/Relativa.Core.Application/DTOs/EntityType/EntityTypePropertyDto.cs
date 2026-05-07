@@ -4,4 +4,5 @@ public sealed record EntityTypePropertyDto(
     int PropertyId,
     string Name,
     string DataType,
-    bool IsRequired);
+    bool IsRequired,
+    bool IsReadonly);

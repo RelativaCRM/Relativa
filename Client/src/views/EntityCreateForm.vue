@@ -21,6 +21,7 @@ import {
   type EntityTypeDto,
   type EntityTypePropertyDto,
 } from '@/api/entities';
+import { isEntityTypeUiLocked } from '@/utils/entityTypes';
 
 type FieldValue = string | number | boolean | Date | null;
 
@@ -34,6 +35,10 @@ const entityStore = useEntityStore();
 const workspaceId = computed(() => Number(route.params.workspaceId));
 
 const types = computed<EntityTypeDto[]>(() => entityStore.types);
+/** Types the user is allowed to create manually (excludes e.g. deal_analysis with all-readonly fields). */
+const creatableTypes = computed(() =>
+  types.value.filter((t) => !isEntityTypeUiLocked(t)),
+);
 const selectedTypeId = ref<number | null>(null);
 const values = ref<Record<number, FieldValue>>({});
 const loadingTypes = ref(true);
@@ -79,7 +84,8 @@ function clearPropertyFieldError(prop: EntityTypePropertyDto) {
 }
 
 const selectedType = computed(
-  () => types.value.find((t) => t.id === selectedTypeId.value) ?? null,
+  () =>
+    creatableTypes.value.find((t) => t.id === selectedTypeId.value) ?? null,
 );
 
 const properties = computed<EntityTypePropertyDto[]>(
@@ -185,6 +191,12 @@ async function loadTypes() {
 
 async function handleSubmit() {
   submitAttempted.value = true;
+  const picked = types.value.find((t) => t.id === selectedTypeId.value);
+  if (picked && isEntityTypeUiLocked(picked)) {
+    errorMessage.value =
+      'This entity type cannot be created from the UI.';
+    return;
+  }
   if (!isFormValid.value || selectedTypeId.value === null) {
     errorMessage.value = 'Please fill in all fields before submitting.';
     return;
@@ -265,6 +277,17 @@ onMounted(loadTypes);
       </p>
     </div>
 
+    <div
+      v-else-if="!creatableTypes.length"
+      class="rounded-xl border border-line bg-white p-10 text-center"
+    >
+      <i class="pi pi-lock text-3xl text-ink-400" />
+      <p class="mt-3 text-sm text-ink-500">
+        No entity types can be created manually. Derived or system-maintained
+        types are hidden here.
+      </p>
+    </div>
+
     <form
       v-else
       class="rounded-xl border border-line bg-white p-6 flex flex-col gap-4"
@@ -278,7 +301,7 @@ onMounted(loadTypes);
         <Select
           id="entityType"
           v-model="selectedTypeId"
-          :options="types"
+          :options="creatableTypes"
           option-label="name"
           option-value="id"
           placeholder="Select type"
