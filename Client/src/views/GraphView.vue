@@ -51,6 +51,19 @@ function buildLabel(item: EntityListItemDto): string {
   return firstNonEmpty ? valueToString(firstNonEmpty.value) : fallback;
 }
 
+const NODE_COLOR = {
+  background: '#dbeafe', // brand-100
+  border: '#2563eb',     // brand-600
+  highlight: {
+    background: '#1d4ed8', // brand-700
+    border: '#1e3a8a',     // brand-900
+  },
+  hover: {
+    background: '#bfdbfe', // brand-200
+    border: '#1d4ed8',     // brand-700
+  },
+};
+
 async function render() {
   await nextTick();
   if (!container.value) return;
@@ -58,7 +71,6 @@ async function render() {
   const nodes = items.map((e) => ({
     id: e.id,
     label: buildLabel(e),
-    group: e.entityTypeName,
     title: `${e.entityTypeName} · #${e.id}`,
   }));
   const edges: { from: number; to: number }[] = [];
@@ -71,8 +83,24 @@ async function render() {
       physics: { enabled: true, stabilization: { iterations: 120 } },
       nodes: {
         shape: 'dot',
-        size: 14,
-        font: { size: 13, face: 'Inter, sans-serif' },
+        size: 18,
+        borderWidth: 2,
+        borderWidthSelected: 3,
+        color: NODE_COLOR,
+        font: {
+          size: 13,
+          face: 'Inter, sans-serif',
+          color: '#0f172a',   // ink-900
+          strokeWidth: 0,
+          vadjust: 4,
+        },
+        shadow: {
+          enabled: true,
+          color: 'rgba(37, 99, 235, 0.12)',
+          size: 6,
+          x: 0,
+          y: 2,
+        },
       },
       interaction: { hover: true },
     },
@@ -113,9 +141,9 @@ onUnmounted(() => {
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold text-ink-900">Graph</h1>
-        <p class="mt-1 text-sm text-ink-500">
+        <p class="mt-3 text-sm text-ink-500">
           Entities in
-          <span class="font-medium text-ink-700">{{
+          <span class="font-semibold text-brand-600">{{
             wsStore.currentWorkspace?.name ?? 'this workspace'
           }}</span>
           rendered as nodes. Relationships will appear once the Graph service
@@ -189,5 +217,7 @@ onUnmounted(() => {
 .graph-host {
   width: 100%;
   height: 520px;
+  background-image: radial-gradient(rgba(37, 99, 235, 0.08) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 </style>

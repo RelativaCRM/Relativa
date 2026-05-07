@@ -117,7 +117,7 @@ async function handleConfirmDelete() {
 <template>
   <section class="max-w-xl">
     <h1 class="text-2xl font-bold text-ink-900">Account</h1>
-    <p class="mt-1 text-sm text-ink-500">
+    <p class="mt-3 text-sm text-ink-500">
       Update how your name appears across Relativa. Email cannot be changed here.
     </p>
 

@@ -76,10 +76,12 @@ onMounted(load);
           @click="goBack"
         />
         <h1 class="text-2xl font-bold text-ink-900">
-          {{ wsStore.currentWorkspace?.name ?? 'Workspace' }} — entities
+          <span class="text-brand-600">{{ wsStore.currentWorkspace?.name ?? 'Workspace' }}</span>
+          <span class="text-ink-400 mx-1">—</span>
+          entities
         </h1>
-        <p class="mt-1 text-sm text-ink-500">
-          Records (clients, deals, …) in this workspace.
+        <p class="mt-3 text-sm text-ink-500">
+          All clients and deals you’re tracking in this workspace.
         </p>
       </div>
       <Button icon="pi pi-plus" label="New entity" @click="goCreate" />

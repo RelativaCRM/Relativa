@@ -131,7 +131,7 @@ defineExpose({ loadInbox });
   <section class="max-w-3xl">
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-ink-900">Invitations and join requests</h1>
-      <p class="mt-1 text-sm text-ink-500">
+      <p class="mt-3 text-sm text-ink-500">
         Organization invitations you can accept, and join requests you have submitted.
       </p>
     </div>

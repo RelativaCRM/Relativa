@@ -20,20 +20,28 @@ const form = reactive({
 });
 const submitting = ref(false);
 const serverError = ref<string | null>(null);
+const showValidation = ref(false);
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const emailInvalid = computed(
   () => form.email.length > 0 && !emailPattern.test(form.email),
 );
-const canSubmit = computed(
-  () =>
-    !submitting.value &&
-    emailPattern.test(form.email) &&
-    form.password.length > 0,
+const isFormValid = computed(
+  () => emailPattern.test(form.email) && form.password.length > 0,
 );
 
 async function handleSubmit() {
-  if (!canSubmit.value) return;
+  showValidation.value = true;
+  if (!isFormValid.value || submitting.value) {
+    if (!form.email && !form.password) {
+      serverError.value = 'Please enter your email and password to sign in.';
+    } else if (!emailPattern.test(form.email)) {
+      serverError.value = 'Please enter a valid email address.';
+    } else if (!form.password) {
+      serverError.value = 'Please enter your password.';
+    }
+    return;
+  }
   serverError.value = null;
   submitting.value = true;
   try {
@@ -56,22 +64,18 @@ async function handleSubmit() {
     <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">
       Welcome back
     </h1>
-    <p class="mt-1 text-[13px] text-ink-500">
-      Sign in to your Relativa workspace
-    </p>
 
     <form class="mt-6 flex flex-col gap-5" novalidate @submit.prevent="handleSubmit">
       <div class="flex flex-col gap-1.5">
         <label for="email" class="text-xs font-medium text-ink-600">
-          Email address <span class="text-danger">*</span>
+          Email address
         </label>
         <InputText
           id="email"
           v-model="form.email"
           type="email"
           autocomplete="email"
-          :invalid="emailInvalid"
-          placeholder="you@example.com"
+          :invalid="emailInvalid || (showValidation && !form.email)"
           class="!h-10"
         />
         <small v-if="emailInvalid" class="text-xs text-danger">
@@ -81,7 +85,7 @@ async function handleSubmit() {
 
       <div class="flex flex-col gap-1.5">
         <label for="password" class="text-xs font-medium text-ink-600">
-          Password <span class="text-danger">*</span>
+          Password
         </label>
         <Password
           v-model="form.password"
@@ -89,9 +93,9 @@ async function handleSubmit() {
           :feedback="false"
           toggle-mask
           autocomplete="current-password"
-          placeholder="••••••••"
           input-class="!h-10 w-full"
           class="w-full"
+          :invalid="showValidation && !form.password"
         />
       </div>
 
@@ -118,12 +122,10 @@ async function handleSubmit() {
 
       <Button
         type="submit"
-        :disabled="!canSubmit"
+        label="Sign in"
         :loading="submitting"
         class="!h-11 !rounded-[10px] !font-semibold"
-      >
-        {{ canSubmit ? 'Sign in to Relativa' : 'Fill all required fields' }}
-      </Button>
+      />
 
       <p class="text-center text-[13px] text-ink-500">
         Don’t have an account?
@@ -131,7 +133,7 @@ async function handleSubmit() {
           :to="{ name: 'register' }"
           class="font-medium text-brand-600 hover:underline"
         >
-          Create one
+          Sign up
         </RouterLink>
       </p>
     </form>
