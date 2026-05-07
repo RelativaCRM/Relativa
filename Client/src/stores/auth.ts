@@ -61,9 +61,9 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value;
   }
 
-  async function login(payload: LoginRequest) {
+  async function login(payload: LoginRequest, rememberMe = false) {
     const res = await authApi.login(payload);
-    setToken(res.accessToken, res.expiresAt);
+    setToken(res.accessToken, rememberMe ? null : res.expiresAt);
     setWorkspace('');
     try {
       await fetchProfile();

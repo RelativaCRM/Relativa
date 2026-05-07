@@ -45,7 +45,7 @@ async function handleSubmit() {
   serverError.value = null;
   submitting.value = true;
   try {
-    await auth.login({ email: form.email, password: form.password });
+    await auth.login({ email: form.email, password: form.password }, form.rememberMe);
     const redirect = router.currentRoute.value.query.redirect as string | undefined;
     router.push(redirect ?? { name: 'home' });
   } catch (err) {
@@ -124,7 +124,12 @@ async function handleSubmit() {
         type="submit"
         label="Sign in"
         :loading="submitting"
-        class="!h-11 !rounded-[10px] !font-semibold"
+        :class="[
+          '!h-11 !rounded-none !font-semibold w-full transition-colors',
+          isFormValid
+            ? '!bg-blue-600 !border-blue-600 hover:!bg-blue-700 hover:!border-blue-700 active:!bg-blue-800 !text-white'
+            : '!bg-slate-200 !border-slate-200 !text-slate-400',
+        ]"
       />
 
       <p class="text-center text-[13px] text-ink-500">
