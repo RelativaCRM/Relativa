@@ -71,6 +71,8 @@ const isSelf = computed(() => member.value?.userId === auth.user?.id);
 const orgRoleOptions = computed(() =>
   orgStore.roles
     .filter((r) => r.name === 'org_admin' || r.name === 'org_member')
+    .slice()
+    .sort((a, b) => a.priority - b.priority)
     .map((r) => ({
       label: r.name === 'org_admin' ? 'Admin' : 'Member',
       value: r.id,

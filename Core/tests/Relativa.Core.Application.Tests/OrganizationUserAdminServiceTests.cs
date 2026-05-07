@@ -48,7 +48,7 @@ public sealed class OrganizationUserAdminServiceTests
         new("Alice", "Smith", "alice@company.com", "Password123", orgRoleId);
 
     private static OrganizationRole DefaultMemberRole() =>
-        new() { Id = 2, Name = "org_member", IsArchived = false };
+        new() { Id = 2, Name = "org_member", IsArchived = false, Priority = 6 };
 
     private static UserRoleOrganization OrgMember(int userId, int organizationId, params string[] permissions) =>
         new()
@@ -58,6 +58,7 @@ public sealed class OrganizationUserAdminServiceTests
             Role = new OrganizationRole
             {
                 Name = "org_custom",
+                Priority = 0,
                 RolePermissions = permissions
                     .Select(p => new OrganizationRolePermission
                     {
@@ -263,7 +264,13 @@ public sealed class OrganizationUserAdminServiceTests
         SetupCallerMembership(5, 10, OrganizationPermissions.EditOtherOrgUsersProfile);
         _orgMemberRepository
             .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserRoleOrganization { UserId = 7, OrganizationId = 10 });
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 7,
+                OrganizationId = 10,
+                OrgRoleId = 2,
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
+            });
         var expected = new UserProfileDto(7, "jane@co.com", "Jane", "Doe");
         _userProvisioning
             .Setup(s => s.UpdateUserProfileAsync(7, "Jane", "Doe", 5, It.IsAny<CancellationToken>()))
@@ -305,7 +312,13 @@ public sealed class OrganizationUserAdminServiceTests
         SetupCallerMembership(5, 10, OrganizationPermissions.DeleteOrgUsers);
         _orgMemberRepository
             .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserRoleOrganization { UserId = 7, OrganizationId = 10 });
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 7,
+                OrganizationId = 10,
+                OrgRoleId = 2,
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
+            });
         _userRepository
             .Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
@@ -322,7 +335,13 @@ public sealed class OrganizationUserAdminServiceTests
         SetupCallerMembership(5, 10, OrganizationPermissions.DeleteOrgUsers);
         _orgMemberRepository
             .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserRoleOrganization { UserId = 7, OrganizationId = 10 });
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 7,
+                OrganizationId = 10,
+                OrgRoleId = 2,
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
+            });
         _userRepository
             .Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 5, Email = "admin@corp.com" });
@@ -355,20 +374,98 @@ public sealed class OrganizationUserAdminServiceTests
     }
 
     [Fact]
-    public async Task DeleteOrgUserAsync_Valid_ArchivesUser()
+    public async Task DeleteOrgUserAsync_SelfTarget_ThrowsForbiddenAccessException()
     {
+        SetupCallerMembership(5, 10, OrganizationPermissions.DeleteOrgUsers);
+
+        var act = () => _sut.DeleteOrgUserAsync(10, targetUserId: 5, callerUserId: 5);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("*account settings*");
+    }
+
+    [Fact]
+    public async Task DeleteOrgUserAsync_EqualRolePriority_ThrowsForbiddenAccessException()
+    {
+        _orgMemberRepository
+            .Setup(r => r.GetAsync(5, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 5,
+                OrganizationId = 10,
+                Role = new OrganizationRole
+                {
+                    Name = "org_admin",
+                    Priority = 1,
+                    RolePermissions =
+                    [
+                        new OrganizationRolePermission
+                        {
+                            Permission = new Permission { Name = OrganizationPermissions.DeleteOrgUsers }
+                        }
+                    ]
+                }
+            });
+        _orgMemberRepository
+            .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 7,
+                OrganizationId = 10,
+                OrgRoleId = 2,
+                Role = new OrganizationRole { Name = "org_admin", Priority = 1 }
+            });
+        _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = 5, Email = "a@corp.com" });
+        _userRepository.Setup(r => r.GetByIdAsync(7, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = 7, Email = "b@corp.com" });
+
+        var act = () => _sut.DeleteOrgUserAsync(10, 7, 5);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("*equal or higher authority*");
+    }
+
+    [Fact]
+    public async Task DeleteOrgUserAsync_Valid_ArchivesUserAndEnqueuesOrgAudit()
+    {
+        var auditWriter = new Mock<IOutboxWriter>();
+        var sut = new OrganizationUserAdminService(
+            _userProvisioning.Object,
+            _userRepository.Object,
+            _orgMemberRepository.Object,
+            _orgRoleRepository.Object,
+            _createValidator.Object,
+            _updateValidator.Object,
+            auditWriter.Object);
+
         SetupCallerMembership(5, 10, OrganizationPermissions.DeleteOrgUsers);
         _orgMemberRepository
             .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserRoleOrganization { UserId = 7, OrganizationId = 10 });
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 7,
+                OrganizationId = 10,
+                OrgRoleId = 2,
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
+            });
         _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 5, Email = "admin@corp.com" });
         _userRepository.Setup(r => r.GetByIdAsync(7, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 7, Email = "member@corp.com" });
 
-        await _sut.DeleteOrgUserAsync(10, 7, 5);
+        await sut.DeleteOrgUserAsync(10, 7, 5);
 
         _userProvisioning.Verify(s => s.ArchiveUserAsync(7, 5, It.IsAny<CancellationToken>()), Times.Once);
+        auditWriter.Verify(
+            w => w.EnqueueAuditAsync(
+                It.Is<AuditEventContract>(e =>
+                    e.Action == "organization_member_account_archived" &&
+                    e.AuditScope == AuditRouting.ScopeOrganization &&
+                    e.TargetId == 10 &&
+                    e.ActorUserId == 5),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -377,7 +474,13 @@ public sealed class OrganizationUserAdminServiceTests
         SetupCallerMembership(5, 10, OrganizationPermissions.DeleteOrgUsers);
         _orgMemberRepository
             .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserRoleOrganization { UserId = 7, OrganizationId = 10 });
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 7,
+                OrganizationId = 10,
+                OrgRoleId = 2,
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
+            });
         _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 5, Email = "adminnoemail" });
         _userRepository.Setup(r => r.GetByIdAsync(7, It.IsAny<CancellationToken>()))
@@ -395,7 +498,13 @@ public sealed class OrganizationUserAdminServiceTests
         SetupCallerMembership(5, 10, OrganizationPermissions.DeleteOrgUsers);
         _orgMemberRepository
             .Setup(r => r.GetAsync(7, 10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserRoleOrganization { UserId = 7, OrganizationId = 10 });
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 7,
+                OrganizationId = 10,
+                OrgRoleId = 2,
+                Role = new OrganizationRole { Name = "org_member", Priority = 6 }
+            });
         _userRepository.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = 5, Email = "admin@" });
         _userRepository.Setup(r => r.GetByIdAsync(7, It.IsAny<CancellationToken>()))

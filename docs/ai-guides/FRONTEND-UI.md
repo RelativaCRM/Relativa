@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-07 (logo PNG is alpha-transparent; header uses `size="sm"` = 40 px; en-US locale on the home greeting; entity-create form `*` is driven by `isPropertyRequired()`)
+> **Last verified:** 2026-05-08 (org role select ordering by `priority`; `OrgRoleDto.priority` on API types.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -101,6 +101,8 @@ The UI must speak in **end-user language**, not in backend identifiers.
 | `Entity` (generic) | "Clients and deals" / record / item depending on context |
 
 Each role-bearing view exposes a local `displayRole(roleName)` helper that converts the snake-cased identifier into a friendly label. When you add a new role-aware view, add a `displayRole` helper rather than rendering `roleName` directly. The same applies to permission strings — keep them as constants in `<script setup>`, never bind them to text.
+
+**Org role `<Select>` lists:** `OrgRoleDto.priority` uses the same rule as the backend (**lower = stronger**). Build options from `orgStore.roles` sorted by `priority` ascending (see [MembersView.vue](../../Client/src/views/MembersView.vue) / [MemberView.vue](../../Client/src/views/MemberView.vue)) so higher-authority choices appear first. Do not show the raw priority integer to end users unless building an explicit admin-facing control.
 
 Avoid programmer-y phrasings in user-visible copy: parentheticals with code-style examples (`Records (clients, deals, …)`), trailing ellipses, snake_case strings, and `ws_*` / `org_*` identifiers must not reach the rendered DOM.
 

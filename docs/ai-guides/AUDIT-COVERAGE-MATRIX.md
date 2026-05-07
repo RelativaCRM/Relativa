@@ -1,6 +1,6 @@
 # Audit Coverage Matrix
 
-> **Last verified:** 2026-05-04 (Org-only invitations: dropped `workspace_invitations` / `workspace_join_requests` tables; workspace audit actions for those flows are **legacy** in historical `workspace_audit_log` rows only.)
+> **Last verified:** 2026-05-08 (org membership audit actions completed in matrix; `organization_member_account_archived` for org-scoped user archive.)
 
 This matrix defines which database tables are currently required to be audited, and whether both prerequisites are present:
 - audit table exists
@@ -16,7 +16,7 @@ This matrix defines which database tables are currently required to be audited, 
 | `organization_invitations` | Core | Yes | Yes (`organization_audit_log`) | Yes (`organization_invitation_created`, `organization_invitation_cancelled`, `organization_invitation_resent`, `organization_invitation_accepted`) | No |
 | `workspace_invitations` | — | — | — | **Retired** (table removed; historical `workspace_audit_log` rows may still reference `workspace_invitation_*` / `workspace_member_added_via_invitation`) | — |
 | `workspace_join_requests` | — | — | — | **Retired** (table removed; historical rows may reference `workspace_join_request_*` / `workspace_member_added_via_join_request`) | — |
-| `user_role_organization` | Core | Yes | Yes (`organization_audit_log`) | Yes (`organization_member_added_via_join_request`, `organization_member_added_via_invitation`, `organization_member_added_via_user_provisioning`) | No |
+| `user_role_organization` | Core | Yes | Yes (`organization_audit_log`) | Yes (`organization_member_added_via_join_request`, `organization_member_added_via_invitation`, `organization_member_added_via_user_provisioning`, `organization_member_removed`, `organization_member_role_changed`, `organization_member_account_archived`) | No |
 | `user_role_workspace` | Core | Yes | Yes (`workspace_audit_log`) | Yes (`workspace_member_added`, `workspace_member_removed`, `workspace_member_role_changed`; legacy only: `workspace_member_added_via_invitation`, `workspace_member_added_via_join_request`) | No |
 | `organization_roles` | Core | Yes | Yes (`organization_audit_log`) | Yes (`organization_role_created`, `organization_role_updated`, `organization_role_archived`) | No |
 | `workspace_roles` | Core | Yes | Yes (`workspace_audit_log`) | Yes (`workspace_role_created`, `workspace_role_updated`, `workspace_role_archived`) | No |

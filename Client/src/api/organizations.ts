@@ -23,6 +23,8 @@ export interface OrgRoleDto {
   id: number;
   name: string;
   isSystem: boolean;
+  /** Lower value = stronger authority in the org hierarchy (0 is strongest). */
+  priority: number;
   permissions: { id: number; name: string }[];
 }
 

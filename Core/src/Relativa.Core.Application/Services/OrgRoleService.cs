@@ -13,6 +13,7 @@ public sealed class OrgRoleService(
     IPermissionRepository permissionRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IValidator<CreateOrgRoleRequest> createValidator,
+    IValidator<UpdateOrgRoleRequest> updateValidator,
     IOutboxWriter? auditOutboxWriter = null) : IOrgRoleService
 {
     public async Task<List<OrgRoleDto>> GetByOrganizationAsync(int organizationId, int userId, CancellationToken ct = default)
@@ -26,6 +27,7 @@ public sealed class OrgRoleService(
                 r.Id,
                 r.Name,
                 r.OrganizationId is null,
+                r.Priority,
                 r.RolePermissions.Select(rp => new PermissionDto(rp.Permission.Id, rp.Permission.Name)).ToList()))
             .ToList();
     }
@@ -43,6 +45,7 @@ public sealed class OrgRoleService(
         {
             Name = request.Name,
             OrganizationId = organizationId,
+            Priority = request.Priority,
             IsArchived = false
         };
 
@@ -73,7 +76,7 @@ public sealed class OrgRoleService(
                     FieldName: "organization_roles",
                     EntityType: null,
                     OldValueJson: null,
-                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { role.Id, role.Name, request.PermissionIds })),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { role.Id, role.Name, request.PermissionIds, request.Priority })),
                 ct);
         }
 
@@ -81,11 +84,13 @@ public sealed class OrgRoleService(
             role.Id,
             role.Name,
             false,
+            role.Priority,
             permissions.Select(p => new PermissionDto(p.Id, p.Name)).ToList());
     }
 
     public async Task UpdateAsync(int organizationId, int roleId, int userId, UpdateOrgRoleRequest request, CancellationToken ct = default)
     {
+        await updateValidator.ValidateAndThrowAsync(request, ct);
         await RequireOrgPermission(userId, organizationId, "manage_org_roles", ct);
 
         var role = await orgRoleRepository.GetByIdAsync(roleId, ct)
@@ -99,6 +104,9 @@ public sealed class OrgRoleService(
 
         if (request.Name is not null)
             role.Name = request.Name;
+
+        if (request.Priority.HasValue)
+            role.Priority = request.Priority.Value;
 
         if (request.PermissionIds is not null)
         {
@@ -133,7 +141,14 @@ public sealed class OrgRoleService(
                     FieldName: "organization_roles",
                     EntityType: null,
                     OldValueJson: null,
-                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { role.Id, role.Name, request.PermissionIds })),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        role.Id,
+                        role.Name,
+                        request.PermissionIds,
+                        request.Priority,
+                        FinalPriority = role.Priority
+                    })),
                 ct);
         }
     }

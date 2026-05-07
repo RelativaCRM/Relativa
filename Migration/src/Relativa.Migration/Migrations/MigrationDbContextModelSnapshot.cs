@@ -689,6 +689,10 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("organization_id");
 
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId");
