@@ -27,7 +27,7 @@ test.describe('Home Page', () => {
   });
 
   test('shows session email, token expiry and org name', async ({ page }) => {
-    await expect(page.getByText(ADMIN_EMAIL)).toBeVisible();
+    await expect(page.getByText(ADMIN_EMAIL).first()).toBeVisible();
     await expect(page.getByText(/token expiry/i)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Organization' })).toBeVisible();
   });

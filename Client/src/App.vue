@@ -19,5 +19,5 @@ onMounted(async () => {
 
 <template>
   <RouterView />
-  <Toast position="top-right" />
+  <Toast position="bottom-right" />
 </template>

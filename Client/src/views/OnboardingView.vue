@@ -298,9 +298,13 @@ function handleLogout() {
 
       <Button
         type="submit"
-        :disabled="!newOrgName.trim() || creating"
         :loading="creating"
-        class="!h-11 !rounded-[10px] !font-semibold"
+        :class="[
+          '!h-11 !rounded-none !font-semibold w-full transition-colors',
+          newOrgName.trim()
+            ? '!bg-blue-600 !border-blue-600 hover:!bg-blue-700 hover:!border-blue-700 active:!bg-blue-800 !text-white'
+            : '!bg-slate-200 !border-slate-200 !text-slate-400',
+        ]"
       >
         Create organization
       </Button>
