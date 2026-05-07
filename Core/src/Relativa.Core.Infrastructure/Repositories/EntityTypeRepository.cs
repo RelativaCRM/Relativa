@@ -13,6 +13,8 @@ public sealed class EntityTypeRepository(RelativaDbContext db) : IEntityTypeRepo
             .AsNoTracking()
             .Include(et => et.EntityTypeProperties)
                 .ThenInclude(etp => etp.Property)
+            .Include(et => et.SourceRelationshipTypes)
+                .ThenInclude(rt => rt.TargetEntityType)
             .OrderBy(et => et.Id)
             .ToListAsync(ct);
     }

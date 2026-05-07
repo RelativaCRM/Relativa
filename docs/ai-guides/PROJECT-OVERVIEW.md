@@ -26,12 +26,12 @@ Relativa is a **multi-tenant CRM / sales-workspace platform**. It lets organizat
 | **OrganizationRole** | Named role scoped to an organization (e.g. `org_owner`, `org_admin`, `org_member`). Linked to permissions via `OrganizationRolePermission`. `OrganizationId` is nullable: `null` for system roles, set for custom org-specific roles. |
 | **WorkspaceRole** | Named role scoped to a workspace (e.g. `ws_admin`, `ws_manager`, `ws_analyst`, `ws_member`). Linked to permissions via `WorkspaceRolePermission`. `WorkspaceId` is nullable: `null` for system roles, set for custom workspace-specific roles. |
 | **Permission** | Granular capability shared by both org and ws role hierarchies. Includes org `manage_org_workspace_members` (add/remove users in any workspace of that org) and workspace `add_ws_members` / `remove_ws_members` for workspace-local admins. |
-| **EntityType** | Named type discriminator (`client`, `deal`). Extensible — new types can be added by inserting a row. |
+| **EntityType** | Named type discriminator (`client`, `deal`). Extensible — new types can be added by inserting a row. Includes `is_standalone` for UI/navigation (top-level types vs child-only types such as `deal_analysis`). |
 | **Entity** | A business record typed by `EntityType`. Lives in workspaces via `EntityWorkspace`. All entity types share the same EAV storage — no per-type tables. |
 | **Property** | A named attribute definition with a data type (`String`, `Int`, `Decimal`, `Bool`, `Date`). Global (`organization_id = NULL`) or org-specific (`organization_id` set). |
 | **EntityTypeProperty** | Schema-layer mapping: which `Property` definitions belong to which `EntityType`, with an `is_required` flag. Composite PK on `(entity_type_id, property_id)`. |
 | **EntityPropertyValue** | Data-layer storage: one row per entity+property pair holding the actual typed value. Only one of `value_string / value_int / value_decimal / value_bool / value_date` is populated per row. |
-| **EntityRelationshipType** | Schema-layer definition of a valid directed link between two entity types (e.g. `deal_client`: deal → client). |
+| **EntityRelationshipType** | Schema-layer definition of a valid directed link between two entity types (e.g. `deal_client`: deal → client). Includes `is_required` so create flows can mandate a linked target (distinct from `EntityTypeProperty.is_required` on scalar fields). |
 | **EntityRelationship** | Data-layer instance of a directed link between two entity records, typed by `EntityRelationshipType`. Replaces the old hard-coded `deal_property_values.client_id` FK. |
 
 The domain model lives entirely in the shared Persistence library (`Persistence/src/Relativa.Persistence/Entities/`).

@@ -14,9 +14,19 @@ export interface EntityTypePropertyDto {
   isRequired: boolean;
 }
 
+export interface OutgoingRelationshipDto {
+  relationshipTypeId: number;
+  name: string;
+  targetEntityTypeId: number;
+  targetEntityTypeName: string;
+  isRequired: boolean;
+}
+
 export interface EntityTypeDto {
   id: number;
   name: string;
+  isStandalone: boolean;
+  outgoingRelationships: OutgoingRelationshipDto[];
   properties: EntityTypePropertyDto[];
 }
 

@@ -41,6 +41,8 @@ public sealed class EntityTypeServiceTests
         result.Should().HaveCount(1);
         result[0].Id.Should().Be(7);
         result[0].Name.Should().Be("Client");
+        result[0].IsStandalone.Should().BeTrue();
+        result[0].OutgoingRelationships.Should().BeEmpty();
     }
 
     [Fact]
@@ -122,6 +124,49 @@ public sealed class EntityTypeServiceTests
 
         result[0].Properties.Select(p => p.DataType)
             .Should().BeEquivalentTo(dataTypes.Select(dt => dt.ToString()));
+    }
+
+    [Fact]
+    public async Task GetAllAsync_MapsOutgoingRelationshipsOrderedById()
+    {
+        var clientType = new EntityType { Id = 1, Name = "client", IsStandalone = true };
+        var dealType = new EntityType { Id = 2, Name = "deal", IsStandalone = true };
+        var relLater = new EntityRelationshipType
+        {
+            Id = 5,
+            Name = "deal_contract",
+            SourceEntityTypeId = dealType.Id,
+            TargetEntityTypeId = 9,
+            TargetEntityType = new EntityType { Id = 9, Name = "contract", IsStandalone = true },
+            IsRequired = false
+        };
+        var relEarlier = new EntityRelationshipType
+        {
+            Id = 2,
+            Name = "deal_client",
+            SourceEntityTypeId = dealType.Id,
+            TargetEntityTypeId = clientType.Id,
+            TargetEntityType = clientType,
+            IsRequired = true
+        };
+        dealType.SourceRelationshipTypes.Add(relLater);
+        dealType.SourceRelationshipTypes.Add(relEarlier);
+
+        var entityTypes = new List<EntityType> { clientType, dealType };
+        _repo.Setup(r => r.GetAllWithPropertiesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entityTypes);
+
+        var result = await _sut.GetAllAsync();
+
+        var dealDto = result.Single(t => t.Name == "deal");
+        dealDto.OutgoingRelationships.Should().HaveCount(2);
+        dealDto.OutgoingRelationships[0].RelationshipTypeId.Should().Be(2);
+        dealDto.OutgoingRelationships[0].Name.Should().Be("deal_client");
+        dealDto.OutgoingRelationships[0].TargetEntityTypeId.Should().Be(1);
+        dealDto.OutgoingRelationships[0].TargetEntityTypeName.Should().Be("client");
+        dealDto.OutgoingRelationships[0].IsRequired.Should().BeTrue();
+        dealDto.OutgoingRelationships[1].RelationshipTypeId.Should().Be(5);
+        dealDto.OutgoingRelationships[1].IsRequired.Should().BeFalse();
     }
 
     [Fact]
