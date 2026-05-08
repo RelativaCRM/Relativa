@@ -339,6 +339,16 @@ def _ensure_deal_analysis_entities(deal_ids, config, deadline):
                     """,
                     [deal_id, analysis_id, rel_type_id],
                 )
+                cursor.execute(
+                    """
+                    INSERT INTO entity_workspace (entity_id, workspace_id)
+                    SELECT %s, ew.workspace_id
+                    FROM entity_workspace ew
+                    WHERE ew.entity_id = %s
+                    ON CONFLICT (entity_id, workspace_id) DO NOTHING
+                    """,
+                    [analysis_id, deal_id],
+                )
 
 
 def _load_analysis_state(deal_ids, config):
