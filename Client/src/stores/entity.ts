@@ -6,8 +6,10 @@ import {
   type EntityDetailDto,
   type EntityListItemDto,
   type EntityTypeDto,
+  type ListEntitiesQuery,
   type UpdateEntityRequest,
 } from '@/api/entities';
+import { entityGraphApi } from '@/api/entityGraph';
 
 export const useEntityStore = defineStore('entity', () => {
   const types = ref<EntityTypeDto[]>([]);
@@ -36,8 +38,11 @@ export const useEntityStore = defineStore('entity', () => {
     return types.value;
   }
 
-  async function fetchList(workspaceId: number): Promise<EntityListItemDto[]> {
-    const list = await entityApi.list(workspaceId);
+  async function fetchList(
+    workspaceId: number,
+    query?: ListEntitiesQuery,
+  ): Promise<EntityListItemDto[]> {
+    const list = await entityApi.list(workspaceId, query);
     entitiesByWorkspace.value = {
       ...entitiesByWorkspace.value,
       [workspaceId]: list,
@@ -59,13 +64,26 @@ export const useEntityStore = defineStore('entity', () => {
     payload: CreateEntityRequest,
   ): Promise<EntityDetailDto> {
     const detail = await entityApi.create(workspaceId, payload);
+    mergeAfterCreate(workspaceId, detail);
+    return detail;
+  }
+
+  async function createViaGraph(
+    workspaceId: number,
+    payload: CreateEntityRequest,
+  ): Promise<EntityDetailDto> {
+    const detail = await entityGraphApi.create(workspaceId, payload);
+    mergeAfterCreate(workspaceId, detail);
+    return detail;
+  }
+
+  function mergeAfterCreate(workspaceId: number, detail: EntityDetailDto) {
     detailById.value = { ...detailById.value, [detail.id]: detail };
     const current = entitiesByWorkspace.value[workspaceId] ?? [];
     entitiesByWorkspace.value = {
       ...entitiesByWorkspace.value,
       [workspaceId]: [...current, detail],
     };
-    return detail;
   }
 
   async function update(
@@ -118,6 +136,7 @@ export const useEntityStore = defineStore('entity', () => {
     fetchList,
     fetchDetail,
     create,
+    createViaGraph,
     update,
     archive,
     clearWorkspace,

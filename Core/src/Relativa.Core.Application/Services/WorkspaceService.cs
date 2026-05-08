@@ -54,6 +54,9 @@ public sealed class WorkspaceService(
 
         await memberRepository.AddAsync(member, ct);
 
+        var membershipLoaded = await memberRepository.GetAsync(userId, workspace.Id, ct);
+        var myPermissions = MapWorkspacePermissionNames(membershipLoaded);
+
         if (auditOutboxWriter is not null)
         {
             await auditOutboxWriter.EnqueueAuditAsync(
@@ -82,7 +85,7 @@ public sealed class WorkspaceService(
                 ct);
         }
 
-        return new WorkspaceDto(workspace.Id, workspace.OrganizationId, workspace.Name, 1, adminRole.Name);
+        return new WorkspaceDto(workspace.Id, workspace.OrganizationId, workspace.Name, 1, adminRole.Name, myPermissions);
     }
 
     public async Task<List<WorkspaceDto>> GetByUserAsync(int userId, int? organizationId, CancellationToken ct = default)
@@ -113,7 +116,13 @@ public sealed class WorkspaceService(
             var membership = await memberRepository.GetAsync(userId, ws.Id, ct);
             var members = await memberRepository.GetByWorkspaceIdAsync(ws.Id, ct);
             var memberCount = members.Count(m => !m.IsArchived);
-            result.Add(new WorkspaceDto(ws.Id, ws.OrganizationId, ws.Name, memberCount, membership?.Role?.Name));
+            result.Add(new WorkspaceDto(
+                ws.Id,
+                ws.OrganizationId,
+                ws.Name,
+                memberCount,
+                membership?.Role?.Name,
+                MapWorkspacePermissionNames(membership)));
         }
 
         return result;
@@ -134,7 +143,8 @@ public sealed class WorkspaceService(
             workspace.OrganizationId,
             workspace.Name,
             members.Count(m => !m.IsArchived),
-            membership?.Role?.Name);
+            membership?.Role?.Name,
+            MapWorkspacePermissionNames(membership));
     }
 
     public async Task UpdateAsync(int workspaceId, int userId, UpdateWorkspaceRequest request, CancellationToken ct = default)
@@ -265,5 +275,19 @@ public sealed class WorkspaceService(
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
             throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this workspace.");
+    }
+
+    private static IReadOnlyList<string> MapWorkspacePermissionNames(UserRoleWorkspace? membership)
+    {
+        if (membership?.Role?.RolePermissions is null)
+            return [];
+
+        return membership.Role.RolePermissions
+            .Select(rp => rp.Permission?.Name)
+            .Where(n => !string.IsNullOrEmpty(n))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .Cast<string>()
+            .ToList();
     }
 }

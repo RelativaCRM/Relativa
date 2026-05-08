@@ -107,11 +107,30 @@ public sealed class WorkspaceServiceTests
             .Setup(r => r.AddAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()))
             .Callback<UserRoleWorkspace, CancellationToken>((m, _) => capturedMember = m);
 
+        _memberRepo
+            .Setup(r => r.GetAsync(42, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int u, int wid, CancellationToken _) => new UserRoleWorkspace
+            {
+                UserId = u,
+                WorkspaceId = wid,
+                Role = new WorkspaceRole
+                {
+                    Name = "ws_admin",
+                    RolePermissions =
+                    [
+                        new WorkspaceRolePermission { Permission = new Permission { Name = "create_entities" } },
+                        new WorkspaceRolePermission { Permission = new Permission { Name = "view_entities" } }
+                    ]
+                }
+            });
+
         var result = await _sut.CreateAsync(42, request);
 
         result.Name.Should().Be(request.Name);
         result.UserRole.Should().Be("ws_admin");
         result.MemberCount.Should().Be(1);
+        result.MyPermissions.Should().Contain("create_entities");
+        result.MyPermissions.Should().Contain("view_entities");
         capturedWorkspace!.CreatedByUserId.Should().Be(42);
         capturedMember!.UserId.Should().Be(42);
         capturedMember.WsRoleId.Should().Be(adminRole.Id);
@@ -190,6 +209,21 @@ public sealed class WorkspaceServiceTests
         SetupValidCreate();
         _orgMemberRepo.Setup(r => r.GetAsync(7, 1, It.IsAny<CancellationToken>())).ReturnsAsync(orgMember);
         _roleRepo.Setup(r => r.GetSystemRoleByNameAsync("ws_admin", It.IsAny<CancellationToken>())).ReturnsAsync(adminRole);
+        _memberRepo
+            .Setup(r => r.GetAsync(7, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int u, int wid, CancellationToken _) => new UserRoleWorkspace
+            {
+                UserId = u,
+                WorkspaceId = wid,
+                Role = new WorkspaceRole
+                {
+                    Name = "ws_admin",
+                    RolePermissions =
+                    [
+                        new WorkspaceRolePermission { Permission = new Permission { Name = "create_entities" } }
+                    ]
+                }
+            });
 
         await _sut.CreateAsync(7, new CreateWorkspaceRequest("Audit Team", 1));
 
@@ -214,6 +248,14 @@ public sealed class WorkspaceServiceTests
         SetupValidCreate();
         _orgMemberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberWithPermission(1, 1, "create_workspaces"));
         _roleRepo.Setup(r => r.GetSystemRoleByNameAsync("ws_admin", It.IsAny<CancellationToken>())).ReturnsAsync(new WorkspaceRole { Id = 1, Name = "ws_admin" });
+        _memberRepo
+            .Setup(r => r.GetAsync(1, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int u, int wid, CancellationToken _) => new UserRoleWorkspace
+            {
+                UserId = u,
+                WorkspaceId = wid,
+                Role = new WorkspaceRole { Name = "ws_admin", RolePermissions = [] }
+            });
 
         var act = () => sut.CreateAsync(1, new CreateWorkspaceRequest("No Audit", 1));
 

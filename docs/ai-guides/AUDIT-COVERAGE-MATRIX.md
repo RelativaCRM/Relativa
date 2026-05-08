@@ -1,6 +1,6 @@
 # Audit Coverage Matrix
 
-> **Last verified:** 2026-05-08 (org membership audit actions completed in matrix; `organization_member_account_archived` for org-scoped user archive.)
+> **Last verified:** 2026-05-08 (entity graph Rabbit path uses same Core `EntityService` audits as HTTP create.)
 
 This matrix defines which database tables are currently required to be audited, and whether both prerequisites are present:
 - audit table exists
@@ -26,3 +26,4 @@ This matrix defines which database tables are currently required to be audited, 
 - Required-now scope includes principal entities, **organization** invitations and join requests, memberships, and role lifecycle flows. Workspace-scoped invitation/join-request **tables are removed**; do not add new code paths that assume those tables exist.
 - New entities/tables introduced in future work must be added to this matrix and evaluated before completion.
 - `rabbitmq_processed_delivery` (`RabbitMqProcessedDelivery`) is **infrastructure inbox deduplication**, not CRM user-auditable data — it is intentionally absent from this matrix.
+- **Entity graph create (Rabbit → Core):** the Core consumer for `EntityGraphCreateRpcV1` calls `EntityService.CreateAsync`, which enqueues the same **`entity_created`** audit path as the HTTP `POST .../entities` handler — no separate matrix row is required.

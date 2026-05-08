@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
@@ -20,8 +20,11 @@ import { useEntityStore } from '@/stores/entity';
 import {
   type EntityTypeDto,
   type EntityTypePropertyDto,
+  type EntityListItemDto,
+  entityApi,
 } from '@/api/entities';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
+import { hasWorkspacePermission } from '@/utils/workspacePermissions';
 
 type FieldValue = string | number | boolean | Date | null;
 
@@ -92,8 +95,66 @@ const properties = computed<EntityTypePropertyDto[]>(
   () => selectedType.value?.properties ?? [],
 );
 
+const requiredOutgoing = computed(
+  () => selectedType.value?.outgoingRelationships.filter((r) => r.isRequired) ?? [],
+);
+
+const linkPick = reactive<Record<number, number | null>>({});
+const candidatesByRel = ref<Record<number, EntityListItemDto[]>>({});
+const orchestrateViaGraph = ref(false);
+
+function entityOptionLabel(e: EntityListItemDto): string {
+  const bits = e.propertyValues
+    .slice(0, 2)
+    .map((p) => `${p.propertyName}=${p.value ?? '—'}`);
+  return `#${e.id}${bits.length ? ` · ${bits.join(', ')}` : ''}`;
+}
+
+function linkSelectOptions(relationshipTypeId: number) {
+  return (candidatesByRel.value[relationshipTypeId] ?? []).map((e) => ({
+    label: entityOptionLabel(e),
+    value: e.id,
+  }));
+}
+
+watch(selectedTypeId, async (typeId) => {
+  for (const k of Object.keys(linkPick)) {
+    delete linkPick[Number(k)];
+  }
+  candidatesByRel.value = {};
+  if (typeId == null || !workspaceId.value) return;
+  const type = types.value.find((t) => t.id === typeId);
+  if (!type) return;
+  for (const rel of type.outgoingRelationships.filter((r) => r.isRequired)) {
+    linkPick[rel.relationshipTypeId] = null;
+    try {
+      const items = await entityApi.list(workspaceId.value, {
+        entityTypeId: rel.targetEntityTypeId,
+        take: 400,
+      });
+      candidatesByRel.value = {
+        ...candidatesByRel.value,
+        [rel.relationshipTypeId]: items,
+      };
+    } catch {
+      candidatesByRel.value = {
+        ...candidatesByRel.value,
+        [rel.relationshipTypeId]: [],
+      };
+    }
+  }
+});
+
 function humanize(name: string): string {
   return name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+}
+
+function formatTypeName(name: string): string {
+  return name
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
 function isEmpty(v: FieldValue): boolean {
@@ -145,10 +206,18 @@ function resetTypeFields() {
   submitAttempted.value = false;
 }
 
+function listQuery(): Record<string, string> {
+  const q: Record<string, string> = {};
+  const et = route.query.entityType;
+  if (typeof et === 'string' && et.trim()) q.entityType = et.trim();
+  return q;
+}
+
 function gotoList() {
   router.push({
     name: 'workspace-entities',
     params: { workspaceId: String(workspaceId.value) },
+    query: listQuery(),
   });
 }
 
@@ -180,7 +249,23 @@ async function loadTypes() {
   try {
     const ok = await ensureWorkspaceAccess();
     if (!ok) return;
+    if (!hasWorkspacePermission(wsStore.currentWorkspace, 'create_entities')) {
+      accessDenied.value = true;
+      errorMessage.value = 'You do not have permission to create entities in this workspace.';
+      return;
+    }
     await entityStore.fetchTypes();
+    const wanted = route.query.entityType;
+    if (typeof wanted === 'string' && wanted.trim()) {
+      const match = creatableTypes.value.find(
+        (t) => t.name.toLowerCase() === wanted.trim().toLowerCase(),
+      );
+      if (match) {
+        selectedTypeId.value = match.id;
+        await nextTick();
+        resetTypeFields();
+      }
+    }
   } catch (err) {
     const normalized = normalizeError(err, 'Failed to load entity types.');
     errorMessage.value = normalized.message;
@@ -201,25 +286,53 @@ async function handleSubmit() {
     errorMessage.value = 'Please fill in all fields before submitting.';
     return;
   }
+  for (const rel of requiredOutgoing.value) {
+    if (linkPick[rel.relationshipTypeId] == null) {
+      errorMessage.value = `Select a linked ${rel.targetEntityTypeName.replace(/_/g, ' ')} for "${humanize(rel.name)}".`;
+      return;
+    }
+  }
   submitting.value = true;
   errorMessage.value = null;
   fieldErrors.value = {};
   try {
-    const payload = {
+    const base = {
       entityTypeId: selectedTypeId.value,
       properties: properties.value.map((p) => ({
         propertyId: p.propertyId,
         value: serializeValue(p, values.value[p.propertyId] ?? null),
       })),
     };
-    await entityStore.create(workspaceId.value, payload);
+    const req = requiredOutgoing.value;
+    const body =
+      req.length > 0
+        ? {
+            ...base,
+            links: req.map((rel) => ({
+              relationshipTypeId: rel.relationshipTypeId,
+              targetEntityId: linkPick[rel.relationshipTypeId]!,
+            })),
+          }
+        : base;
+
+    const detail = orchestrateViaGraph.value
+      ? await entityStore.createViaGraph(workspaceId.value, body)
+      : await entityStore.create(workspaceId.value, body);
     const typeLabel = selectedType.value?.name ?? 'Entity';
     toast.add({
       severity: 'success',
       summary: `${typeLabel} created`,
       life: 3000,
     });
-    gotoList();
+    router.push({
+      name: 'workspace-entities',
+      params: { workspaceId: String(workspaceId.value) },
+      query: {
+        ...listQuery(),
+        id: String(detail.id),
+        entityType: detail.entityTypeName,
+      },
+    });
   } catch (err) {
     const normalized = normalizeError(err, 'Failed to create entity.');
     fieldErrors.value = normalized.fieldErrors;
@@ -234,6 +347,22 @@ function handleCancel() {
 }
 
 onMounted(loadTypes);
+
+watch(
+  () => route.query.entityType,
+  () => {
+    if (loadingTypes.value || !creatableTypes.value.length) return;
+    const wanted = route.query.entityType;
+    if (typeof wanted !== 'string' || !wanted.trim()) return;
+    const match = creatableTypes.value.find(
+      (t) => t.name.toLowerCase() === wanted.trim().toLowerCase(),
+    );
+    if (match && match.id !== selectedTypeId.value) {
+      selectedTypeId.value = match.id;
+      resetTypeFields();
+    }
+  },
+);
 </script>
 
 <template>
@@ -308,6 +437,46 @@ onMounted(loadTypes);
           class="!h-10"
           @update:model-value="resetTypeFields"
         />
+      </div>
+
+      <template v-for="rel in requiredOutgoing" :key="rel.relationshipTypeId">
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-ink-600">
+            {{ humanize(rel.name) }}
+            <span class="text-danger">*</span>
+            <span class="text-ink-400 font-normal normal-case">
+              → {{ formatTypeName(rel.targetEntityTypeName) }}</span>
+          </label>
+          <Select
+            v-model="linkPick[rel.relationshipTypeId]"
+            :options="linkSelectOptions(rel.relationshipTypeId)"
+            option-label="label"
+            option-value="value"
+            :placeholder="`Choose ${formatTypeName(rel.targetEntityTypeName)}`"
+            class="w-full"
+            filter
+          />
+          <p
+            v-if="(candidatesByRel[rel.relationshipTypeId] ?? []).length === 0"
+            class="text-xs text-ink-500"
+          >
+            No matching records in this workspace. Create the linked record first, or widen your filters from the list view.
+          </p>
+        </div>
+      </template>
+
+      <div
+        v-if="selectedTypeId"
+        class="flex items-start gap-3 rounded-lg border border-line bg-surface/40 px-3 py-2.5"
+      >
+        <ToggleSwitch
+          v-model="orchestrateViaGraph"
+          input-id="orch-graph"
+          class="mt-0.5"
+        />
+        <label for="orch-graph" class="text-xs text-ink-600 leading-snug cursor-pointer">
+          Submit through Graph orchestration (RabbitMQ → Core). Optional; use when your environment routes creates through the graph service.
+        </label>
       </div>
 
       <template v-for="prop in properties" :key="prop.propertyId">

@@ -4,11 +4,15 @@ import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
 import Message from 'primevue/message';
+import InputText from 'primevue/inputtext';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import { normalizeError } from '@/api/errors';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
+import { hasWorkspacePermission } from '@/utils/workspacePermissions';
+import EntityReadView from '@/views/EntityReadView.vue';
+import EntityCreateForm from '@/views/EntityCreateForm.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -18,11 +22,24 @@ const entityStore = useEntityStore();
 
 const workspaceId = computed(() => Number(route.params.workspaceId));
 const entities = computed(() => entityStore.entitiesFor(workspaceId.value));
+
 const filterType = computed(() => {
   const raw = route.query.entityType;
   if (typeof raw !== 'string' || !raw.trim()) return null;
   return raw.trim().toLowerCase();
 });
+
+const searchInput = ref('');
+const searchDebounced = ref('');
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(searchInput, (v) => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchDebounced.value = typeof v === 'string' ? v.trim() : '';
+  }, 350);
+});
+
 const filteredEntities = computed(() => {
   if (!filterType.value) return entities.value;
   return entities.value.filter(
@@ -39,10 +56,22 @@ const filterTypeSchema = computed(() => {
   );
 });
 
-/** When viewing a single type in the sidebar, hide manual create if that type is UI-locked. */
 const filterTypeUiLocked = computed(() =>
   filterTypeSchema.value ? isEntityTypeUiLocked(filterTypeSchema.value) : false,
 );
+
+const canCreateEntities = computed(() =>
+  hasWorkspacePermission(wsStore.currentWorkspace, 'create_entities'),
+);
+
+const detailEntityId = computed(() => {
+  const raw = route.query.id;
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+});
+
+const showCreate = computed(() => route.query.action === 'create');
 
 function formatTypeName(name: string): string {
   return name
@@ -85,8 +114,17 @@ async function load() {
       return;
     }
     wsStore.setCurrentWorkspace(workspaceId.value);
-    await entityStore.fetchList(workspaceId.value);
-    await entityStore.fetchTypes();
+    if (detailEntityId.value || showCreate.value) {
+      await entityStore.fetchTypes();
+    } else {
+      const listQuery = {
+        entityTypeId: filterTypeSchema.value?.id,
+        q: searchDebounced.value || undefined,
+        take: 500,
+      };
+      await entityStore.fetchList(workspaceId.value, listQuery);
+      await entityStore.fetchTypes();
+    }
   } catch (err) {
     errorMessage.value = normalizeError(err, 'Failed to load entities.').message;
   } finally {
@@ -96,8 +134,9 @@ async function load() {
 
 function goCreate() {
   router.push({
-    name: 'workspace-entity-create',
+    name: 'workspace-entities',
     params: { workspaceId: String(workspaceId.value) },
+    query: { ...route.query, action: 'create' },
   });
 }
 
@@ -105,15 +144,53 @@ function goBack() {
   router.push({ name: 'workspaces' });
 }
 
+function openRow(ent: { id: number; entityTypeName: string }) {
+  router.push({
+    name: 'workspace-entities',
+    params: { workspaceId: String(workspaceId.value) },
+    query: {
+      ...route.query,
+      entityType: ent.entityTypeName,
+      id: String(ent.id),
+    },
+  });
+}
+
+async function onDetailUpdated() {
+  const listQuery = {
+    entityTypeId: filterTypeSchema.value?.id,
+    q: searchDebounced.value || undefined,
+    take: 500,
+  };
+  await entityStore.fetchList(workspaceId.value, listQuery);
+}
+
 watch(workspaceId, (id) => {
   if (id) load();
 });
+
+watch(
+  () => [filterTypeSchema.value?.id, searchDebounced.value, detailEntityId.value, showCreate.value] as const,
+  () => {
+    if (!workspaceId.value) return;
+    if (detailEntityId.value || showCreate.value) return;
+    load();
+  },
+);
 
 onMounted(load);
 </script>
 
 <template>
-  <section class="max-w-4xl">
+  <EntityCreateForm v-if="showCreate" />
+  <EntityReadView
+    v-else-if="detailEntityId"
+    :workspace-id="workspaceId"
+    :entity-id="detailEntityId"
+    @close="load"
+    @updated="onDetailUpdated"
+  />
+  <section v-else class="max-w-4xl">
     <div class="flex items-center justify-between mb-6">
       <div class="min-w-0">
         <Button
@@ -133,7 +210,7 @@ onMounted(load);
         </p>
       </div>
       <Button
-        v-if="!filterTypeUiLocked"
+        v-if="canCreateEntities && !filterTypeUiLocked"
         icon="pi pi-plus"
         label="New entity"
         @click="goCreate"
@@ -148,6 +225,15 @@ onMounted(load);
     >
       {{ errorMessage }}
     </Message>
+
+    <div class="mb-4 flex flex-col sm:flex-row sm:items-center gap-3">
+      <span class="text-xs font-medium text-ink-500 uppercase tracking-wide shrink-0">Search</span>
+      <InputText
+        v-model="searchInput"
+        placeholder="Filter by property text…"
+        class="w-full sm:max-w-md !h-10"
+      />
+    </div>
 
     <div v-if="loading && !entities.length" class="text-center py-12 text-ink-500">Loading...</div>
 
@@ -172,7 +258,7 @@ onMounted(load);
         </template>
       </p>
       <Button
-        v-if="!filterTypeUiLocked || !filterType"
+        v-if="canCreateEntities && (!filterTypeUiLocked || !filterType)"
         class="mt-4"
         icon="pi pi-plus"
         label="Create entity"
@@ -191,17 +277,30 @@ onMounted(load);
           >
             <th class="px-5 py-3">ID</th>
             <th class="px-5 py-3">Type</th>
+            <th class="px-5 py-3 w-full">Preview</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="ent in filteredEntities"
             :key="ent.id"
-            class="border-b border-line last:border-0 hover:bg-surface/50"
+            role="button"
+            tabindex="0"
+            class="border-b border-line last:border-0 hover:bg-surface/50 cursor-pointer"
+            @click="openRow(ent)"
+            @keydown.enter.prevent="openRow(ent)"
           >
             <td class="px-5 py-3 font-mono text-xs text-ink-700">{{ ent.id }}</td>
             <td class="px-5 py-3">
               <Tag :value="ent.entityTypeName" severity="secondary" />
+            </td>
+            <td class="px-5 py-3 text-ink-600 text-xs">
+              {{
+                ent.propertyValues
+                  .slice(0, 3)
+                  .map((p) => `${p.propertyName}: ${p.value ?? '—'}`)
+                  .join(' · ') || '—'
+              }}
             </td>
           </tr>
         </tbody>

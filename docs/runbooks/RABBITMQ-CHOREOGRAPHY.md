@@ -57,3 +57,10 @@ Envelope `DomainMessageEnvelope` carries `MessageId`, `CorrelationId`, and optio
 ## Automated tests
 
 - `Messaging/tests/Relativa.Messaging.Tests` — router unit tests + Testcontainers integration for exchange declare/publish/consume smoke test (requires Docker).
+
+## Entity graph create (Graph → Core RPC)
+
+- **Exchange:** `relativa.entity_graph` (`EntityGraphRouting.ExchangeName` in `Persistence/Contracts/EntityGraphRouting.cs`).
+- **Routing key:** `entity_graph.create` (`EntityGraphRouting.CommandRoutingKey`). **Queue:** `core.entity_graph.create` (`EntityGraphRouting.CommandQueueName`) — declared/consumed by **Core** `EntityGraphCommandConsumerHostedService` and used by **Graph** `EntityGraphEndpoints` as publisher (`RabbitMqGraph` in each service `appsettings.json`).
+- **Flow:** Graph HTTP handler publishes `EntityGraphCreateRpcV1` with `ReplyTo` + `CorrelationId` on a private exclusive reply queue; Core processes the command, runs `EntityService.CreateAsync`, replies with `EntityGraphCreateRpcReplyV1`. Graph maps timeouts to **504** and failures to problem responses via `GraphGlobalExceptionHandler`.
+- **Operational note:** this path shares the same EF transaction + **`entity_created`** audit enqueue as HTTP `POST .../entities`. Monitor the command queue depth like other durable consumers.

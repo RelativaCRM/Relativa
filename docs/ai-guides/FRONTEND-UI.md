@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-08 (org role select ordering by `priority`; `OrgRoleDto.priority` on API types.)
+> **Last verified:** 2026-05-08 (query-driven entities UI; workspacePermissions; Graph create client path.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -38,6 +38,22 @@ The PrimeVue Aura preset is overridden in [Client/src/main.ts](../../Client/src/
 The official mark is the **3-circle network icon + "Relativa" wordmark + "CRM PLATFORM" subtitle** in `Client/src/assets/relativa-logo.png`. It is rendered through [Client/src/components/layout/BrandMark.vue](../../Client/src/components/layout/BrandMark.vue) — never hardcode an `<img>` to the asset directly elsewhere; use `<BrandMark size="sm|md|lg" />` so size stays consistent (`sm` for app headers, `lg` for auth pages).
 
 Do not introduce a fallback "blue square + R" placeholder — the legacy mark has been removed.
+
+---
+
+## Workspace entities (routing & APIs)
+
+The workspace **Entities** experience uses one named route (`workspace-entities` → `/w/:workspaceId/entities`) and **query switches** instead of extra path segments:
+
+| Query | Behavior |
+|---|---|
+| `entityType` | List filter / context by entity type **name** (e.g. `deal`). |
+| `id` | Read/detail view with inbound + outbound relationship links (`EntityReadView.vue`). |
+| `action=create` | Embeds `EntityCreateForm.vue`. `/w/:id/entities/new` **redirects** to `?action=create`. |
+
+**Permissions:** Core includes `myPermissions` on workspace DTOs. Use [`Client/src/utils/workspacePermissions.ts`](../../Client/src/utils/workspacePermissions.ts) (`hasWorkspacePermission`) — **New entity** → `create_entities`; **Edit** on detail → `edit_entities`; **Archive** → `delete_entities`.
+
+**HTTP clients:** [`Client/src/api/entities.ts`](../../Client/src/api/entities.ts) prefixes `/core/api/v1`. Optional orchestrated create uses [`Client/src/api/entityGraph.ts`](../../Client/src/api/entityGraph.ts) → `POST /graph/api/v1/workspaces/{workspaceId}/entity-graph/create` (Gateway strips `/graph`; same bearer token and `gatewayFetch` as the rest of the SPA). List search uses `GET .../entities?entityTypeId=&q=`.
 
 ---
 

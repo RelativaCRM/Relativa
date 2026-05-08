@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-08 (org role `priority` on DTOs; removal/archive hierarchy; audit matrix membership actions.)
+> **Last verified:** 2026-05-08 (entity permissions split; Graph entity-graph HTTP + Core Rabbit consumer; SPA query-driven entities.)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -13,7 +13,7 @@
 | Gateway | 8080 | .NET 10, YARP | Functional |
 | Authentication | 8081 | .NET 10, JWT, BCrypt, FluentValidation | Functional |
 | Core | 8082 | .NET 10, EF Core | Functional (org + workspace RBAC) |
-| Graph | 8083 | .NET 10, SignalR, RabbitMQ | Stub hub + choreography consumer (broadcasts lifecycle envelope) |
+| Graph | 8083 | .NET 10, SignalR, RabbitMQ | Hub + workspace choreography consumer + **HTTP** `POST .../entity-graph/create` (RPC to Core via Rabbit); graph visualization still placeholder |
 | Audit | 8086 | .NET 10, EF Core, RabbitMQ | Functional |
 | Migration | -- | .NET 10, EF Core (console) | Functional |
 | ML | 8084 | Django 5.1, DRF, pika | Functional batch scoring API + choreography subscriber |
@@ -224,17 +224,17 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| GET | `/api/v1/entity-types` | **None** (anonymous via Gateway) | List all entity types with their property definitions. Returns `[{ id, name, properties: [{ propertyId, name, dataType, isRequired }] }]`. |
+| GET | `/api/v1/entity-types` | **None** (anonymous via Gateway) | List all entity types with property definitions, `isStandalone`, `outgoingRelationships` (incl. `isRequired`, `relationshipCardinality`), and per-property `isReadonly`. |
 
 ### Endpoints -- Entities
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| GET | `/api/v1/workspaces/{workspaceId}/entities` | JWT + `view_entities` | List non-archived entities in the workspace with all property values. |
-| GET | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `view_entities` | Get entity detail; **404** if entity does not belong to this workspace. |
-| POST | `/api/v1/workspaces/{workspaceId}/entities` | JWT + `manage_entities` | Create entity + property values + workspace link in one atomic transaction. FluentValidation + required-property enforcement. |
-| PUT | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `manage_entities` | Replace all property values for an entity (not allowed if archived). |
-| DELETE | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `manage_entities` | Soft-delete: sets `is_archived = true`. |
+| GET | `/api/v1/workspaces/{workspaceId}/entities` | JWT + `view_entities` | List non-archived entities with property values. Optional query: `entityTypeId`, `q` (search string/number values), `take` (default 500, max 500). |
+| GET | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `view_entities` | Get entity detail (includes archived); DTO includes `isArchived`, `isReadonly` per property value, inbound/outbound relationship refs with previews. |
+| POST | `/api/v1/workspaces/{workspaceId}/entities` | JWT + `create_entities` | Create entity + optional relationship **links** in one atomic transaction (standalone + readonly + required-outgoing rules enforced server-side). |
+| PATCH | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `edit_entities` | Merge-update writable property values (omitted keys unchanged; readonly properties rejected if changed). |
+| DELETE | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `delete_entities` | Soft-delete: sets `is_archived = true`. |
 
 ### Endpoints -- Infrastructure
 
@@ -266,7 +266,7 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 - `Core/src/Relativa.Core.Infrastructure/Data/RelativaDbContext.cs` -- full DbSet registration
 - `Core/src/Relativa.Core.Infrastructure/Repositories/` -- EF repository implementations
 - `Core/src/Relativa.Core.Infrastructure/Services/Audit/OutboxWriter.cs` — persists `audit_outbox` rows for audit **and choreography**
-- `Core/src/Relativa.Core.Infrastructure/Services/Audit/AuditOutboxDispatcher.cs` — background publisher (uses `Relativa.Messaging`)
+- `Core/src/Relativa.Core.Infrastructure/Messaging/EntityGraphCommandConsumerHostedService.cs` — consumes graph create RPC; runs `EntityService.CreateAsync` inside scoped DI (audit + same validation as HTTP create)
 
 ---
 
@@ -283,17 +283,19 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/` | None | Returns `{"service":"relativa-graph"}` |
+| POST | `/api/v1/workspaces/{workspaceId}/entity-graph/create` | Gateway JWT → forwarded `X-User-Id` | Publishes **`EntityGraphCreateRpcV1`** to exchange **`relativa.entity_graph`** with routing key **`entity_graph.create`**; waits on private reply queue (timeout → **504**). Body is JSON matching Core **`CreateEntityRequest`** (MVP single-node). Response body is Core **`EntityDetailDto`** JSON. |
 | WebSocket | `/hubs/graph` | None | SignalR hub (`GraphHub`) |
 | GET | `/scalar/v1` | None | Scalar (dev only) |
 
-### Status: Stub (consumer active)
+### Status: Partial (choreography + entity-graph entry)
 
-SignalR lifecycle events are hydrated from choreography: **`DomainEventConsumerHostedService`** binds queue `domain.events.graph.workspace.v1` to **`relativa.domain`** (`core.workspace.*`), deduplicates inserts into `rabbitmq_processed_delivery`, and broadcasts **`domain.workspace.lifecycle.v1`** to all connected hubs. Actual graph-domain projection + RBAC on hub groups remain TODO.
+Workspace lifecycle choreography remains: **`DomainEventConsumerHostedService`** binds `domain.events.graph.workspace.v1`, deduplicates, broadcasts **`domain.workspace.lifecycle.v1`**. **Entity graph create** is additionally exposed over HTTP and delegates persistence to **Core** via Rabbit request–reply (Graph must not call Core HTTP). Vis-network / RBAC hub groups for entity projection remain TODO.
 
 ### Key Files
 
-- `Graph/src/Relativa.Graph/Program.cs` — configures Postgres `NpgsqlDataSource`, choreography consumer options (`RabbitMqGraph`)
-- `Graph/src/Relativa.Graph/Messaging/` — consumer + options + SignalR constants
+- `Graph/src/Relativa.Graph/Program.cs` — Postgres `GraphDbContext`, `DomainEventConsumerHostedService`, **`EntityGraphEndpoints`**, global exception handler
+- `Graph/src/Relativa.Graph/Messaging/` — choreography consumer + Rabbit options
+- `Graph/src/Relativa.Graph/EntityGraphEndpoints.cs` — HTTP surface for graph create
 - `Graph/src/Relativa.Graph/Hubs/GraphHub.cs`
 
 ---

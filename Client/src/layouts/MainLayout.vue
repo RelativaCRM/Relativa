@@ -71,7 +71,6 @@ async function handleOrgChange(orgId: number | null) {
 
 const workspaceRouteNames = new Set([
   'workspace-entities',
-  'workspace-entity-create',
   'workspace-members',
   'workspace-users',
   'workspace-user',

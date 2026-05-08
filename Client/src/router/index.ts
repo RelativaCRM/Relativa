@@ -19,7 +19,6 @@ const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
 const UserListView = () => import('@/views/UserListView.vue');
 const UserProfileView = () => import('@/views/UserProfileView.vue');
-const EntityCreateForm = () => import('@/views/EntityCreateForm.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
 const AuditLogView = () => import('@/views/AuditLogView.vue');
 const AccountSettingsView = () => import('@/views/AccountSettingsView.vue');
@@ -115,9 +114,11 @@ const router = createRouter({
             },
             {
               path: 'entities/new',
-              name: 'workspace-entity-create',
-              component: EntityCreateForm,
-              meta: workspaceMeta,
+              redirect: (to) => ({
+                name: 'workspace-entities',
+                params: to.params,
+                query: { ...to.query, action: 'create' },
+              }),
             },
             {
               path: 'members',

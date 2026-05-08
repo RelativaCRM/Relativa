@@ -5,4 +5,5 @@ public sealed record OutgoingRelationshipDto(
     string Name,
     int TargetEntityTypeId,
     string TargetEntityTypeName,
-    bool IsRequired);
+    bool IsRequired,
+    string RelationshipCardinality);
