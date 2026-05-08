@@ -270,7 +270,7 @@ jobs:
             -reports:"./coverage-xml/**/coverage.cobertura.xml" \
             -targetdir:"./CoverageReport" \
             -reporttypes:Html \
-            -assemblyfilters:"+Relativa.*"
+            "-assemblyfilters:+Relativa.*.Application;+Relativa.*.Domain;+Relativa.Messaging;+Relativa.Persistence"
 
       - name: Upload combined coverage report
         if: always()

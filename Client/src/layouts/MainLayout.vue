@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router';
+import Dialog from 'primevue/dialog';
+import InputText from 'primevue/inputtext';
+import Button from 'primevue/button';
+import Message from 'primevue/message';
 import BrandMark from '@/components/layout/BrandMark.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
+import { normalizeError } from '@/api/errors';
 
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
@@ -17,10 +22,43 @@ const router = useRouter();
 const showOrgPanel = ref(false);
 const showWsPanel = ref(false);
 const showProfilePanel = ref(false);
+const showCreateWs = ref(false);
 const orgExpanded = ref(true);
 const wsExpanded = ref(true);
 const wsListExpanded = ref(false);
 const entitiesExpanded = ref(true);
+
+const newWsName = ref('');
+const creatingWs = ref(false);
+const createWsError = ref<string | null>(null);
+
+function openCreateWs() {
+  showWsPanel.value = false;
+  newWsName.value = '';
+  createWsError.value = null;
+  showCreateWs.value = true;
+}
+
+function closeCreateWs() {
+  showCreateWs.value = false;
+  newWsName.value = '';
+  createWsError.value = null;
+}
+
+async function handleCreateWs() {
+  if (!newWsName.value.trim() || creatingWs.value || !orgStore.currentOrgId) return;
+  creatingWs.value = true;
+  createWsError.value = null;
+  try {
+    const ws = await wsStore.createWorkspace(newWsName.value.trim(), orgStore.currentOrgId);
+    closeCreateWs();
+    router.push({ name: 'workspace-members', params: { workspaceId: String(ws.id) } });
+  } catch (err) {
+    createWsError.value = normalizeError(err, 'Failed to create workspace.').message;
+  } finally {
+    creatingWs.value = false;
+  }
+}
 
 const userInitials = computed(() => {
   if (!auth.user) return '';
@@ -192,10 +230,17 @@ onMounted(async () => {
       v-if="showWsPanel"
       class="fixed left-[248px] top-44 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
     >
-      <div class="px-4 py-2.5 border-b border-line">
+      <div class="px-4 py-2.5 border-b border-line flex items-center justify-between">
         <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Workspace</span>
+        <button
+          type="button"
+          class="w-5 h-5 flex items-center justify-center text-brand-600 hover:bg-brand-50"
+          @click="openCreateWs"
+        >
+          <i class="pi pi-plus text-[10px]" />
+        </button>
       </div>
-      <div class="overflow-y-auto max-h-72 divide-y divide-slate-100">
+      <div class="overflow-y-auto max-h-64 divide-y divide-slate-100">
         <button
           v-for="ws in wsStore.workspaces"
           :key="ws.id"
@@ -287,7 +332,7 @@ onMounted(async () => {
               <hr class="border-t border-slate-200 mx-1 my-1" />
 
               <!-- Workspaces (collapsible sub-list) -->
-              <div class="relative flex items-stretch nav-entry">
+              <div class="relative flex items-stretch nav-entry" :class="{ 'nav-entry--active': showWsPanel }">
                 <button
                   type="button"
                   class="group flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
@@ -298,6 +343,13 @@ onMounted(async () => {
                     <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', wsListExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
                   </span>
                   <span class="truncate">Workspaces</span>
+                </button>
+                <button
+                  type="button"
+                  :class="['flex items-center px-2 shrink-0 transition-colors', showWsPanel ? 'bg-brand-50 text-brand-600' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600']"
+                  @click="showWsPanel = true"
+                >
+                  <i class="pi pi-chevron-right text-[10px]" />
                 </button>
               </div>
 
@@ -327,6 +379,16 @@ onMounted(async () => {
                   <span :class="['w-1.5 h-1.5 rounded-full shrink-0', inWorkspaceShell && ws.id === wsStore.currentWorkspaceId ? 'bg-brand-500' : 'bg-slate-300']" />
                   <span class="truncate">{{ ws.name }}</span>
                 </button>
+                <RouterLink
+                  to="/workspaces"
+                  :class="[
+                    'flex items-center gap-2.5 px-2 py-1.5 text-xs w-full transition-colors hover:bg-brand-50',
+                    route.path === '/workspaces' ? 'text-brand-700 font-medium' : 'text-ink-400 hover:text-brand-600',
+                  ]"
+                >
+                  <span :class="['w-1.5 h-1.5 rounded-full shrink-0', route.path === '/workspaces' ? 'bg-brand-500' : 'bg-slate-200']" />
+                  <span>View more...</span>
+                </RouterLink>
               </div>
 
               <template v-if="canViewAuditLog">
@@ -340,7 +402,7 @@ onMounted(async () => {
 
           <!-- Workspace section -->
           <div v-if="inWorkspaceShell && workspaceIdStr" class="flex flex-col mt-3 pt-3 border-t border-slate-200">
-            <div class="relative flex items-stretch nav-entry" :class="{ 'nav-entry--active': showWsPanel }">
+            <div class="relative flex items-stretch nav-entry">
               <button
                 type="button"
                 class="group flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
@@ -351,13 +413,6 @@ onMounted(async () => {
                   <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', wsExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
                 </span>
                 <span class="truncate font-medium">{{ wsStore.currentWorkspace?.name ?? 'Workspace' }}</span>
-              </button>
-              <button
-                type="button"
-                :class="['flex items-center px-2 shrink-0 transition-colors', showWsPanel ? 'bg-brand-50 text-brand-600' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600']"
-                @click="showWsPanel = true"
-              >
-                <i class="pi pi-chevron-right text-[10px]" />
               </button>
             </div>
 
@@ -434,6 +489,41 @@ onMounted(async () => {
         <RouterView />
       </main>
     </div>
+
+    <!-- Create workspace modal -->
+    <Dialog
+      v-model:visible="showCreateWs"
+      header="Create workspace"
+      modal
+      :style="{ width: '420px' }"
+      @hide="closeCreateWs"
+    >
+      <form class="flex flex-col gap-4" novalidate @submit.prevent="handleCreateWs">
+        <div class="flex flex-col gap-1.5">
+          <label for="sidebarWsName" class="text-xs font-medium text-ink-600">
+            Workspace name <span class="text-danger">*</span>
+          </label>
+          <InputText
+            id="sidebarWsName"
+            v-model="newWsName"
+            placeholder="e.g. Sales team"
+            class="!h-10"
+          />
+        </div>
+        <Message v-if="createWsError" severity="error" :closable="false" class="!my-0">
+          {{ createWsError }}
+        </Message>
+        <div class="flex justify-end gap-2">
+          <Button type="button" label="Cancel" severity="secondary" text @click="closeCreateWs" />
+          <Button
+            type="submit"
+            label="Create"
+            :disabled="!newWsName.trim() || creatingWs"
+            :loading="creatingWs"
+          />
+        </div>
+      </form>
+    </Dialog>
   </div>
 </template>
 
