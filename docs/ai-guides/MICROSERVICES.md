@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-08 (ML `score/batch` returns `unavailable_reason`; deal `closure_score` + new `churn_score` flagged readonly; deal-side relationship cardinalities corrected; SPA renders deal scores via gateway.)
+> **Last verified:** 2026-05-08 (Graph service now serves full RBAC-filtered graph via `GET /api/v1/graph`; graph route moved to org scope; `GraphQueryDbContext` added to Graph service; client GraphView fully rewritten.)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -13,7 +13,7 @@
 | Gateway | 8080 | .NET 10, YARP | Functional |
 | Authentication | 8081 | .NET 10, JWT, BCrypt, FluentValidation | Functional |
 | Core | 8082 | .NET 10, EF Core | Functional (org + workspace RBAC) |
-| Graph | 8083 | .NET 10, SignalR, RabbitMQ | Hub + workspace choreography consumer + **HTTP** `POST .../entity-graph/create` (RPC to Core via Rabbit); graph visualization still placeholder |
+| Graph | 8083 | .NET 10, SignalR, RabbitMQ | Functional — `GET /api/v1/graph` (RBAC-filtered user-centric graph), `POST .../entity-graph/create` (RPC to Core), SignalR hub, workspace choreography consumer |
 | Audit | 8086 | .NET 10, EF Core, RabbitMQ | Functional |
 | Migration | -- | .NET 10, EF Core (console) | Functional |
 | ML | 8084 | Django 5.1, DRF, pika | Functional batch scoring API + choreography subscriber |
@@ -272,7 +272,7 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 
 ## 4. Graph (`relativa-graph`)
 
-**Purpose:** Real-time graph visualization service using SignalR. Will serve entity-relationship graph data and push live updates.
+**Purpose:** Real-time graph visualization service. Serves RBAC-filtered user-centric graph data via HTTP and pushes live workspace lifecycle updates via SignalR.
 
 **Solution:** `Graph/Relativa.Graph.sln`
 **Project:** `Graph/src/Relativa.Graph/`
@@ -283,17 +283,24 @@ Full clean-architecture layers are implemented: Domain (repository interfaces), 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/` | None | Returns `{"service":"relativa-graph"}` |
+| GET | `/api/v1/graph?organizationId={int}` | Gateway JWT → forwarded `X-User-Id` | Returns full RBAC-filtered graph for the authenticated user in the given organization. Response: `{ nodes: GraphNodeDto[], edges: GraphEdgeDto[] }`. Nodes represent: focal user (`user_self`), accessible workspaces (`workspace`), entities in those workspaces (`entity`), and manageable org members (`user`). Edges represent membership, containment, EAV relationships, and user-user management links. Each node carries `permissions` (e.g. `["view","edit","delete"]`) computed from the caller's workspace/org role permissions. Requires `view_entities` per workspace for entity nodes; `remove_org_members` or `manage_org_workspace_members` for user nodes. |
 | POST | `/api/v1/workspaces/{workspaceId}/entity-graph/create` | Gateway JWT → forwarded `X-User-Id` | Publishes **`EntityGraphCreateRpcV1`** to exchange **`relativa.entity_graph`** with routing key **`entity_graph.create`**; waits on private reply queue (timeout → **504**). Body is JSON matching Core **`CreateEntityRequest`** (MVP single-node). Response body is Core **`EntityDetailDto`** JSON. |
 | WebSocket | `/hubs/graph` | None | SignalR hub (`GraphHub`) |
 | GET | `/scalar/v1` | None | Scalar (dev only) |
 
-### Status: Partial (choreography + entity-graph entry)
+### Status: Functional
 
-Workspace lifecycle choreography remains: **`DomainEventConsumerHostedService`** binds `domain.events.graph.workspace.v1`, deduplicates, broadcasts **`domain.workspace.lifecycle.v1`**. **Entity graph create** is additionally exposed over HTTP and delegates persistence to **Core** via Rabbit request–reply (Graph must not call Core HTTP). Vis-network / RBAC hub groups for entity projection remain TODO.
+`GET /api/v1/graph` is served by `GraphDataService` which performs 6 targeted DB queries via `GraphQueryDbContext` (a read-oriented DbContext that applies the full Persistence model via `ApplyAllEntityConfigurations()`). Permission resolution mirrors the Core pattern: reads `X-User-Id` from the trusted gateway-injected header, then queries `user_role_organization` / `user_role_workspace` to build org and per-workspace permission sets before filtering entity and user visibility.
+
+Workspace lifecycle choreography also remains: **`DomainEventConsumerHostedService`** binds `domain.events.graph.workspace.v1`, deduplicates, broadcasts **`domain.workspace.lifecycle.v1`**. **Entity graph create** delegates persistence to Core via Rabbit RPC (Graph must not call Core HTTP).
 
 ### Key Files
 
-- `Graph/src/Relativa.Graph/Program.cs` — Postgres `GraphDbContext`, `DomainEventConsumerHostedService`, **`EntityGraphEndpoints`**, global exception handler
+- `Graph/src/Relativa.Graph/Program.cs` — registers both `GraphDbContext` (idempotency) and `GraphQueryDbContext` (read queries), `IGraphDataService`, all endpoints
+- `Graph/src/Relativa.Graph/Data/GraphQueryDbContext.cs` — read DbContext; applies full entity model
+- `Graph/src/Relativa.Graph/Graph/GraphDataService.cs` — RBAC-filtered graph assembly (6 queries)
+- `Graph/src/Relativa.Graph/Graph/GraphQueryEndpoints.cs` — `GET /api/v1/graph`
+- `Graph/src/Relativa.Graph/Graph/GraphDtos.cs` — `GraphNodeDto`, `GraphEdgeDto`, `GraphResponseDto`
 - `Graph/src/Relativa.Graph/Messaging/` — choreography consumer + Rabbit options
 - `Graph/src/Relativa.Graph/EntityGraphEndpoints.cs` — HTTP surface for graph create
 - `Graph/src/Relativa.Graph/Hubs/GraphHub.cs`
@@ -394,7 +401,7 @@ Docker runs `manage.py run_domain_consumer` and `manage.py run_recalculate_consu
 
 **Purpose:** Vue 3 single-page application. The user-facing frontend that communicates exclusively through the Gateway.
 
-**Stack:** Vue 3, Vite, Node 20, vis-network (graph placeholder)
+**Stack:** Vue 3, Vite, Node 20, vis-network
 **Project:** `Client/`
 **Port:** 3000 (configurable via `CLIENT_PORT` in `.env`)
 
@@ -402,9 +409,9 @@ Docker runs `manage.py run_domain_consumer` and `manage.py run_recalculate_consu
 
 Not applicable -- this is a client-side SPA served by Vite dev server.
 
-### Status: Scaffold
+### Status: Functional (core CRM + full graph view)
 
-Vue 3 project with routing set up. `GraphView.vue` contains a vis-network placeholder. The app reads `VITE_GATEWAY_URL` from environment to know where the Gateway lives. D3 integration noted as "for later" in the code.
+Vue 3 project with routing, org/workspace management, entity CRUD, audit log, and full graph visualization. `GraphView.vue` fetches from `GET /graph/api/v1/graph` and renders all nodes and edges via vis-network with dynamic per-type color assignment. Graph is org-scoped (route `/graph`), not workspace-scoped. Node click surfaces a detail panel with View / Edit / Delete actions gated by the `permissions` array returned by the graph service. The app reads `VITE_GATEWAY_URL` from environment to know where the Gateway lives.
 
 ### Key Files
 

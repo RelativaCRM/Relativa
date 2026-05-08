@@ -90,6 +90,12 @@ const router = createRouter({
           meta: orgMeta,
         },
         {
+          path: 'graph',
+          name: 'graph',
+          component: GraphView,
+          meta: orgMeta,
+        },
+        {
           path: 'account',
           name: 'account',
           component: AccountSettingsView,
@@ -137,12 +143,6 @@ const router = createRouter({
               name: 'workspace-user',
               component: UserProfileView,
               meta: workspaceMeta,
-            },
-            {
-              path: 'graph',
-              name: 'graph',
-              component: GraphView,
-              meta: { ...workspaceMeta, roles: ['User', 'Admin', 'Analyst'] },
             },
           ],
         },

@@ -74,7 +74,6 @@ const workspaceRouteNames = new Set([
   'workspace-members',
   'workspace-users',
   'workspace-user',
-  'graph',
 ]);
 
 function formatTypeName(name: string): string {
@@ -282,6 +281,9 @@ onMounted(async () => {
               <RouterLink to="/members" class="nav-link" active-class="nav-link--active">
                 <i class="pi pi-users" />Members
               </RouterLink>
+              <RouterLink to="/graph" class="nav-link" active-class="nav-link--active">
+                <i class="pi pi-share-alt" />Graph
+              </RouterLink>
               <hr class="border-t border-slate-200 mx-1 my-1" />
 
               <!-- Workspaces (collapsible sub-list) -->
@@ -386,14 +388,6 @@ onMounted(async () => {
                 </RouterLink>
               </div>
 
-              <hr class="border-t border-slate-200 mx-1 my-1" />
-              <RouterLink
-                :to="{ name: 'graph', params: { workspaceId: workspaceIdStr } }"
-                class="nav-link"
-                active-class="nav-link--active"
-              >
-                <i class="pi pi-share-alt" />Graph
-              </RouterLink>
               <hr class="border-t border-slate-200 mx-1 my-1" />
               <RouterLink
                 :to="{ name: 'workspace-members', params: { workspaceId: workspaceIdStr } }"
