@@ -17,6 +17,8 @@ public static class PersistenceModelBuilderExtensions
         // graph. Cut both chains at the root so the Auth context stays User-only.
         modelBuilder.Ignore<UserRoleWorkspace>();
         modelBuilder.Ignore<UserRoleOrganization>();
+        // User.CreatedEntities would pull Entity -> EntityWorkspace -> Workspace -> Organization -> JoinRequests.
+        modelBuilder.Ignore<Entity>();
 
         return modelBuilder;
     }

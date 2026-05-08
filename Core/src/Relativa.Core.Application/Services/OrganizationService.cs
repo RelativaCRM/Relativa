@@ -1,5 +1,4 @@
 using FluentValidation;
-using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
@@ -13,7 +12,6 @@ public sealed class OrganizationService(
     IOrganizationRepository organizationRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
-    IPermissionRepository permissionRepository,
     IValidator<CreateOrganizationRequest> createValidator,
     IValidator<UpdateOrganizationRequest> updateValidator,
     IOutboxWriter? auditOutboxWriter = null) : IOrganizationService
@@ -22,14 +20,10 @@ public sealed class OrganizationService(
     {
         await createValidator.ValidateAndThrowAsync(request, ct);
 
-        var allPermissionNames = (await permissionRepository.GetAllAsync(ct))
-            .Where(p => !p.IsArchived)
-            .Select(p => p.Name)
-            .ToHashSet(StringComparer.Ordinal);
         var ownerRole = (await orgRoleRepository.GetSystemRolesAsync(ct))
-            .OrderBy(r => r.Id)
-            .FirstOrDefault(r => RolePermissionEvaluator.HasAllPermissions(r, allPermissionNames))
-            ?? throw new InvalidOperationException("System org owner-equivalent role not found.");
+            .OrderBy(r => r.Priority)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException("No system organization role is configured.");
 
         var organization = new Organization
         {
@@ -74,7 +68,12 @@ public sealed class OrganizationService(
             organization.Name,
             1,
             ownerRole.Name,
-            ownerRole.RolePermissions.Select(rp => rp.Permission.Name).OrderBy(x => x, StringComparer.Ordinal).ToList());
+            ownerRole.RolePermissions
+                .Select(rp => rp.Permission?.Name)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Cast<string>()
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToList());
     }
 
     public async Task<List<OrganizationDto>> GetByUserAsync(int userId, CancellationToken ct = default)

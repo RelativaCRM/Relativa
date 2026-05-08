@@ -18,7 +18,6 @@ public sealed class OrganizationServiceTests
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IOrganizationRoleRepository> _orgRoleRepo = new();
-    private readonly Mock<IPermissionRepository> _permissionRepo = new();
     private readonly Mock<IValidator<CreateOrganizationRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateOrganizationRequest>> _updateValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
@@ -30,7 +29,6 @@ public sealed class OrganizationServiceTests
             _orgRepo.Object,
             _orgMemberRepo.Object,
             _orgRoleRepo.Object,
-            _permissionRepo.Object,
             _createValidator.Object,
             _updateValidator.Object,
             _auditOutboxWriter.Object);
@@ -41,17 +39,6 @@ public sealed class OrganizationServiceTests
         _updateValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateOrganizationRequest>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
-        _permissionRepo
-            .Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([
-                new Permission { Id = 1, Name = "manage_org_settings" },
-                new Permission { Id = 2, Name = "invite_to_org" },
-                new Permission { Id = 3, Name = "manage_join_requests" },
-                new Permission { Id = 4, Name = "remove_org_members" },
-                new Permission { Id = 5, Name = "assign_org_roles" },
-                new Permission { Id = 6, Name = "manage_org_roles" },
-                new Permission { Id = 7, Name = "create_workspaces" }
-            ]);
     }
 
     private UserRoleOrganization OrgMemberWithPermission(int userId, int orgId, string permission) =>
@@ -120,7 +107,7 @@ public sealed class OrganizationServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_OrgOwnerRoleNotFound_ThrowsInvalidOperationException()
+    public async Task CreateAsync_NoSystemOrgRoleConfigured_ThrowsInvalidOperationException()
     {
         _orgRoleRepo
             .Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
@@ -129,7 +116,7 @@ public sealed class OrganizationServiceTests
         var act = () => _sut.CreateAsync(1, new CreateOrganizationRequest("Orphan Org"));
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("System org owner-equivalent role not found.");
+            .WithMessage("No system organization role is configured.");
         _orgRepo.Verify(r => r.AddAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
