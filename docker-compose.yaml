@@ -119,6 +119,10 @@ services:
       RabbitMqAudit__Password: "${RABBITMQ_PASS:-relativa}"
       RabbitMqAudit__Exchange: audit.events
       RabbitMqAudit__DomainExchange: relativa.domain
+      RabbitMqGraph__Host: rabbitmq
+      RabbitMqGraph__Port: 5672
+      RabbitMqGraph__Username: "${RABBITMQ_USER:-relativa}"
+      RabbitMqGraph__Password: "${RABBITMQ_PASS:-relativa}"
     ports:
       - "8082:8082"
     depends_on:
