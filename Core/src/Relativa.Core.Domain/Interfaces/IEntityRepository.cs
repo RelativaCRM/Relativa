@@ -9,6 +9,8 @@ public interface IEntityRepository
     Task<List<EntityTypeProperty>> GetTypePropertiesAsync(int entityTypeId, CancellationToken ct = default);
     Task<List<Entity>> GetByWorkspaceAsync(
         int workspaceId,
+        int requesterUserId,
+        int requesterRolePriority,
         int? entityTypeId,
         string? searchQuery,
         int take,

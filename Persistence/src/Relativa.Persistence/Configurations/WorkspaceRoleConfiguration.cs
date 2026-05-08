@@ -13,6 +13,7 @@ public class WorkspaceRoleConfiguration : IEntityTypeConfiguration<WorkspaceRole
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.Name).HasColumnName("name").IsRequired();
         builder.Property(e => e.WorkspaceId).HasColumnName("workspace_id").IsRequired(false);
+        builder.Property(e => e.Priority).HasColumnName("priority").IsRequired();
         builder.HasIndex(e => new { e.Name, e.WorkspaceId })
             .IsUnique()
             .HasDatabaseName("ix_workspace_roles_name_workspace");

@@ -17,6 +17,21 @@ public sealed class UserRoleWorkspaceRepository(RelativaDbContext db) : IUserRol
             .FirstOrDefaultAsync(urw => urw.UserId == userId && urw.WorkspaceId == workspaceId && !urw.IsArchived, ct);
     }
 
+    public async Task<Dictionary<int, int>> GetRolePrioritiesByUserIdsAsync(
+        int workspaceId,
+        IReadOnlyCollection<int> userIds,
+        CancellationToken ct = default)
+    {
+        if (userIds.Count == 0)
+            return new Dictionary<int, int>();
+
+        return await db.UserRoleWorkspaces
+            .AsNoTracking()
+            .Where(urw => urw.WorkspaceId == workspaceId && !urw.IsArchived && userIds.Contains(urw.UserId))
+            .Select(urw => new { urw.UserId, urw.Role.Priority })
+            .ToDictionaryAsync(x => x.UserId, x => x.Priority, ct);
+    }
+
     public async Task<List<UserRoleWorkspace>> GetByWorkspaceIdAsync(int workspaceId, CancellationToken ct = default)
     {
         return await db.UserRoleWorkspaces

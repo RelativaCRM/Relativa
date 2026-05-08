@@ -12,11 +12,19 @@ public class EntityConfiguration : IEntityTypeConfiguration<Entity>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.EntityTypeId).HasColumnName("entity_type_id").IsRequired();
+        builder.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id").IsRequired();
         builder.Property(e => e.IsArchived).HasColumnName("is_archived").HasDefaultValue(false);
         builder.HasOne(e => e.EntityType)
             .WithMany(t => t.Entities)
             .HasForeignKey(e => e.EntityTypeId)
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_entity_entity_type");
+        builder.HasIndex(e => e.CreatedByUserId)
+            .HasDatabaseName("ix_entity_created_by_user");
+        builder.HasOne(e => e.CreatedByUser)
+            .WithMany(u => u.CreatedEntities)
+            .HasForeignKey(e => e.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_entity_created_by_user");
     }
 }
