@@ -8,6 +8,7 @@ export interface OrganizationDto {
   name: string;
   memberCount: number;
   userRole: string;
+  myPermissions?: string[];
 }
 
 export interface OrgMemberDto {

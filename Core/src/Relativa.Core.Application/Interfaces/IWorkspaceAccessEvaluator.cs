@@ -1,11 +1,11 @@
 namespace Relativa.Core.Application.Interfaces;
 
 /// <summary>
-/// Workspace RBAC including organization owner bypass for all workspaces in their org(s).
+/// Workspace RBAC including organization super-role bypass for all workspaces in their org(s).
 /// </summary>
 public interface IWorkspaceAccessEvaluator
 {
-    /// <summary>True when the user is <c>org_owner</c> of the organization that owns the workspace.</summary>
+    /// <summary>True when the user's organization role has full permission coverage for the workspace's organization.</summary>
     Task<bool> IsOrgOwnerOfWorkspaceAsync(int userId, int workspaceId, CancellationToken ct = default);
 
     /// <summary>Member with role permission OR org owner of workspace's organization.</summary>
@@ -15,7 +15,7 @@ public interface IWorkspaceAccessEvaluator
     Task EnsureCanAccessWorkspaceAsync(int userId, int workspaceId, CancellationToken ct = default);
 
     /// <summary>
-    /// Permission names for the UI: role permissions, or full workspace-superset when org_owner (via <c>ws_admin</c> system role).
+    /// Permission names for the UI: role permissions, or full workspace-superset when organization super-role applies.
     /// </summary>
     Task<IReadOnlyList<string>> GetEffectiveWorkspacePermissionNamesAsync(int userId, int workspaceId, CancellationToken ct = default);
 }

@@ -29,14 +29,11 @@ const auditStore = useAuditStore();
 
 /* ── Role gating ─────────────────────────────────────────── */
 
-const wsRole = computed(() => wsStore.currentWorkspace?.userRole ?? null);
-const orgRole = computed(() => orgStore.currentOrg?.userRole ?? null);
-
 const canViewWorkspaceScope = computed(
-  () => wsRole.value === 'ws_admin' || wsRole.value === 'ws_analyst',
+  () => (wsStore.currentWorkspace?.myPermissions ?? []).includes('view_analytics'),
 );
 const canViewOrgScope = computed(
-  () => orgRole.value === 'org_owner' || orgRole.value === 'org_admin',
+  () => (orgStore.currentOrg?.myPermissions ?? []).includes('manage_org_settings'),
 );
 const canViewPage = computed(
   () => canViewWorkspaceScope.value || canViewOrgScope.value,
@@ -463,10 +460,8 @@ function toggle(rowId: string, slot: 'old' | 'next') {
     <div class="rounded-xl border border-line bg-white p-10 text-center">
       <i class="pi pi-lock text-3xl text-ink-400" />
       <p class="mt-3 text-sm text-ink-500">
-        Only workspace
-        <span class="font-medium text-ink-700">Admins</span> and
-        <span class="font-medium text-ink-700">Analysts</span> can view the
-        audit log. Ask a workspace admin to grant you access.
+        You need workspace analytics visibility or equivalent organization-level
+        permissions to view the audit log.
       </p>
     </div>
   </section>

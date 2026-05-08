@@ -1,4 +1,5 @@
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Authorization;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Entities;
 
@@ -8,7 +9,8 @@ public sealed class WorkspaceAccessEvaluator(
     IUserRoleWorkspaceRepository memberRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IWorkspaceRepository workspaceRepository,
-    IWorkspaceRoleRepository workspaceRoleRepository) : IWorkspaceAccessEvaluator
+    IWorkspaceRoleRepository? workspaceRoleRepository = null,
+    IPermissionRepository? permissionRepository = null) : IWorkspaceAccessEvaluator
 {
     public const string OrgOwnerRoleName = "org_owner";
 
@@ -19,8 +21,15 @@ public sealed class WorkspaceAccessEvaluator(
             return false;
 
         var orgM = await orgMemberRepository.GetAsync(userId, workspace.OrganizationId, ct);
-        return orgM is { Role: { } role } &&
-               string.Equals(role.Name, OrgOwnerRoleName, StringComparison.Ordinal);
+        if (orgM?.Role is null)
+            return false;
+
+        if (permissionRepository is null &&
+            string.Equals(orgM.Role.Name, OrgOwnerRoleName, StringComparison.Ordinal))
+            return true;
+
+        var allPermissionNames = await GetAllActivePermissionNamesAsync(ct);
+        return RolePermissionEvaluator.HasAllPermissions(orgM.Role, allPermissionNames);
     }
 
     public async Task EnsureCanAccessWorkspaceAsync(int userId, int workspaceId, CancellationToken ct = default)
@@ -57,24 +66,43 @@ public sealed class WorkspaceAccessEvaluator(
         await EnsureCanAccessWorkspaceAsync(userId, workspaceId, ct);
 
         if (await IsOrgOwnerOfWorkspaceAsync(userId, workspaceId, ct))
-            return await GetWsAdminPermissionNamesAsync(ct);
+            return WorkspacePermissions.FullWorkspaceAuthority
+                .OrderBy(p => p, StringComparer.Ordinal)
+                .ToList();
 
         var m = await memberRepository.GetAsync(userId, workspaceId, ct);
         return MapRolePermissionNames(m);
     }
 
-    private async Task<IReadOnlyList<string>> GetWsAdminPermissionNamesAsync(CancellationToken ct)
+    private async Task<IReadOnlySet<string>> GetAllActivePermissionNamesAsync(CancellationToken ct)
     {
-        var admin = await workspaceRoleRepository.GetSystemRoleByNameAsync("ws_admin", ct)
-            ?? throw new InvalidOperationException("System ws_admin role not found.");
+        if (permissionRepository is null)
+        {
+            var fallback = new HashSet<string>(StringComparer.Ordinal)
+            {
+                OrganizationPermissions.ManageOrgSettings,
+                OrganizationPermissions.InviteToOrg,
+                OrganizationPermissions.ManageJoinRequests,
+                OrganizationPermissions.RemoveOrgMembers,
+                OrganizationPermissions.AssignOrgRoles,
+                OrganizationPermissions.ManageOrgRoles,
+                OrganizationPermissions.CreateWorkspaces,
+                OrganizationPermissions.ManageOrgWorkspaceMembers,
+                OrganizationPermissions.CreateOrgUsers,
+                OrganizationPermissions.EditOtherOrgUsersProfile,
+                OrganizationPermissions.DeleteOrgUsers
+            };
+            foreach (var permissionName in WorkspacePermissions.FullWorkspaceAuthority)
+                fallback.Add(permissionName);
+            return fallback;
+        }
 
-        return admin.RolePermissions?
-            .Select(rp => rp.Permission?.Name)
-            .Where(n => !string.IsNullOrEmpty(n))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(n => n, StringComparer.Ordinal)
-            .Cast<string>()
-            .ToList() ?? [];
+        var allPermissions = await permissionRepository.GetAllAsync(ct);
+        return allPermissions
+            .Where(p => !p.IsArchived)
+            .Select(p => p.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static IReadOnlyList<string> MapRolePermissionNames(UserRoleWorkspace? membership)

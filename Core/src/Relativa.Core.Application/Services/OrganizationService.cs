@@ -1,4 +1,5 @@
 using FluentValidation;
+using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
@@ -12,6 +13,7 @@ public sealed class OrganizationService(
     IOrganizationRepository organizationRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
+    IPermissionRepository permissionRepository,
     IValidator<CreateOrganizationRequest> createValidator,
     IValidator<UpdateOrganizationRequest> updateValidator,
     IOutboxWriter? auditOutboxWriter = null) : IOrganizationService
@@ -20,8 +22,14 @@ public sealed class OrganizationService(
     {
         await createValidator.ValidateAndThrowAsync(request, ct);
 
-        var ownerRole = await orgRoleRepository.GetSystemRoleByNameAsync("org_owner", ct)
-            ?? throw new InvalidOperationException("System org_owner role not found.");
+        var allPermissionNames = (await permissionRepository.GetAllAsync(ct))
+            .Where(p => !p.IsArchived)
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var ownerRole = (await orgRoleRepository.GetSystemRolesAsync(ct))
+            .OrderBy(r => r.Id)
+            .FirstOrDefault(r => RolePermissionEvaluator.HasAllPermissions(r, allPermissionNames))
+            ?? throw new InvalidOperationException("System org owner-equivalent role not found.");
 
         var organization = new Organization
         {
@@ -61,7 +69,12 @@ public sealed class OrganizationService(
             ct);
         }
 
-        return new OrganizationDto(organization.Id, organization.Name, 1, ownerRole.Name);
+        return new OrganizationDto(
+            organization.Id,
+            organization.Name,
+            1,
+            ownerRole.Name,
+            ownerRole.RolePermissions.Select(rp => rp.Permission.Name).OrderBy(x => x, StringComparer.Ordinal).ToList());
     }
 
     public async Task<List<OrganizationDto>> GetByUserAsync(int userId, CancellationToken ct = default)
@@ -73,7 +86,17 @@ public sealed class OrganizationService(
         {
             var membership = await orgMemberRepository.GetAsync(userId, org.Id, ct);
             var memberCount = (await orgMemberRepository.GetByOrganizationIdAsync(org.Id, ct)).Count;
-            result.Add(new OrganizationDto(org.Id, org.Name, memberCount, membership?.Role?.Name));
+            result.Add(new OrganizationDto(
+                org.Id,
+                org.Name,
+                memberCount,
+                membership?.Role?.Name,
+                membership?.Role?.RolePermissions
+                    .Select(rp => rp.Permission?.Name)
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Cast<string>()
+                    .OrderBy(x => x, StringComparer.Ordinal)
+                    .ToList() ?? []));
         }
 
         return result;
@@ -89,7 +112,17 @@ public sealed class OrganizationService(
         var membership = await orgMemberRepository.GetAsync(userId, organizationId, ct);
         var members = await orgMemberRepository.GetByOrganizationIdAsync(organizationId, ct);
 
-        return new OrganizationDto(organization.Id, organization.Name, members.Count, membership?.Role?.Name);
+        return new OrganizationDto(
+            organization.Id,
+            organization.Name,
+            members.Count,
+            membership?.Role?.Name,
+            membership?.Role?.RolePermissions
+                .Select(rp => rp.Permission?.Name)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Cast<string>()
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToList() ?? []);
     }
 
     public async Task UpdateAsync(int organizationId, int userId, UpdateOrganizationRequest request, CancellationToken ct = default)

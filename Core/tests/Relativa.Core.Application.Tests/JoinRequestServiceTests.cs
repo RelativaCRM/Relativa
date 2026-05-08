@@ -290,7 +290,8 @@ public sealed class JoinRequestServiceTests
 
         _orgMemberRepo.Setup(r => r.GetAsync(1, 3, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
         _joinRequestRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(joinRequest);
-        _orgRoleRepo.Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>())).ReturnsAsync(memberRole);
+        _orgRoleRepo.Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OrganizationRole { Id = 1, Name = "org_owner", Priority = 0 }, memberRole]);
 
         await _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
 
@@ -317,12 +318,13 @@ public sealed class JoinRequestServiceTests
 
         _orgMemberRepo.Setup(r => r.GetAsync(1, 3, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
         _joinRequestRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(joinRequest);
-        _orgRoleRepo.Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>())).ReturnsAsync((OrganizationRole?)null);
+        _orgRoleRepo.Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("System org_member role not found.");
+            .WithMessage("Default system organization role not found.");
     }
 
     [Fact]

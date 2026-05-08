@@ -24,6 +24,15 @@ public sealed class OrganizationRoleRepository(RelativaDbContext db) : IOrganiza
             .ToListAsync(ct);
     }
 
+    public async Task<List<OrganizationRole>> GetSystemRolesAsync(CancellationToken ct = default)
+    {
+        return await db.OrganizationRoles
+            .Include(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
+            .Where(r => r.OrganizationId == null && !r.IsArchived)
+            .ToListAsync(ct);
+    }
+
     public async Task<OrganizationRole?> GetSystemRoleByNameAsync(string name, CancellationToken ct = default)
     {
         return await db.OrganizationRoles

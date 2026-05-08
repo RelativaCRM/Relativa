@@ -46,10 +46,10 @@ const workspaceIdStr = computed(() =>
 );
 
 const canViewAuditLog = computed(() => {
-  const wsRole = wsStore.currentWorkspace?.userRole;
-  if (wsRole === 'ws_admin' || wsRole === 'ws_analyst') return true;
-  const orgRole = orgStore.currentOrg?.userRole;
-  return orgRole === 'org_owner' || orgRole === 'org_admin';
+  const wsPermissions = new Set(wsStore.currentWorkspace?.myPermissions ?? []);
+  if (wsPermissions.has('view_analytics')) return true;
+  const orgPermissions = new Set(orgStore.currentOrg?.myPermissions ?? []);
+  return orgPermissions.has('manage_org_settings');
 });
 
 async function handleOrgChange(orgId: number | null) {

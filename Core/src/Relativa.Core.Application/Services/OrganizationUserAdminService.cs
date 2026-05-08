@@ -136,8 +136,11 @@ public sealed class OrganizationUserAdminService(
 
     private async Task<OrganizationRole> ResolveTargetRoleAsync(int organizationId, int callerUserId, int? requestedRoleId, CancellationToken ct)
     {
-        var defaultRole = await orgRoleRepository.GetSystemRoleByNameAsync("org_member", ct)
-            ?? throw new InvalidOperationException("System org_member role not found.");
+        var defaultRole = ((await orgRoleRepository.GetSystemRolesAsync(ct)) ?? [])
+            .OrderByDescending(r => r.Priority)
+            .ThenBy(r => r.Id)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException("Default system organization role not found.");
 
         if (!requestedRoleId.HasValue || requestedRoleId.Value == defaultRole.Id)
             return defaultRole;

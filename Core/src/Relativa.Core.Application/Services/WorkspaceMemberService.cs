@@ -1,4 +1,5 @@
 using Relativa.Core.Application.DTOs.Member;
+using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -45,11 +46,28 @@ public sealed class WorkspaceMemberService(
         if (role.WorkspaceId.HasValue && role.WorkspaceId.Value != workspaceId)
             throw new ArgumentException("The specified role does not belong to this workspace.");
 
-        if (targetMember.Role?.Name == "ws_admin" && role.Name != "ws_admin")
+        var targetHasFullAuthority = RolePermissionEvaluator.HasAllPermissions(
+            targetMember.Role,
+            WorkspacePermissions.FullWorkspaceAuthority);
+        var targetIsWsAdminFallback = string.Equals(targetMember.Role?.Name, "ws_admin", StringComparison.Ordinal);
+        var newRoleHasFullAuthority = RolePermissionEvaluator.HasAllPermissions(
+            role,
+            WorkspacePermissions.FullWorkspaceAuthority);
+        var newRoleIsWsAdminFallback = string.Equals(role.Name, "ws_admin", StringComparison.Ordinal);
+        if ((targetHasFullAuthority || targetIsWsAdminFallback) &&
+            !(newRoleHasFullAuthority || newRoleIsWsAdminFallback))
         {
             var allMembers = await memberRepository.GetByWorkspaceIdAsync(workspaceId, ct);
-            var wsAdminCount = allMembers.Count(m => !m.IsArchived && m.Role?.Name == "ws_admin");
-            if (wsAdminCount <= 1)
+            var fullAuthorityCount = allMembers.Count(m =>
+                !m.IsArchived &&
+                RolePermissionEvaluator.HasAllPermissions(m.Role, WorkspacePermissions.FullWorkspaceAuthority));
+            if (fullAuthorityCount == 0)
+            {
+                fullAuthorityCount = allMembers.Count(m =>
+                    !m.IsArchived &&
+                    string.Equals(m.Role?.Name, "ws_admin", StringComparison.Ordinal));
+            }
+            if (fullAuthorityCount <= 1)
             {
                 throw new InvalidOperationException("Cannot demote the last workspace admin.");
             }

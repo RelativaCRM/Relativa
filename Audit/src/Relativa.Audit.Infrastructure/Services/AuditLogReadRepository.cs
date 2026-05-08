@@ -13,6 +13,9 @@ namespace Relativa.Audit.Infrastructure.Services;
 
 public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRepository
 {
+    private const string ViewAnalyticsPermission = "view_analytics";
+    private const string ManageOrgSettingsPermission = "manage_org_settings";
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -274,26 +277,28 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
     {
         var ok = await (
             from urw in db.Set<UserRoleWorkspace>().AsNoTracking()
-            join wr in db.Set<WorkspaceRole>().AsNoTracking() on urw.WsRoleId equals wr.Id
+            join wrp in db.Set<WorkspaceRolePermission>().AsNoTracking() on urw.WsRoleId equals wrp.WsRoleId
+            join p in db.Set<Permission>().AsNoTracking() on wrp.PermissionId equals p.Id
             where urw.UserId == userId && urw.WorkspaceId == workspaceId && !urw.IsArchived
-                  && (wr.Name == "ws_admin" || wr.Name == "ws_analyst")
+                  && p.Name == ViewAnalyticsPermission
             select urw.Id).AnyAsync(ct);
 
         if (!ok)
-            throw new ForbiddenAccessException("Audit log requires workspace role ws_admin or ws_analyst.");
+            throw new ForbiddenAccessException($"Audit log requires '{ViewAnalyticsPermission}' permission in workspace scope.");
     }
 
     private async Task RequireOrgOwnerOrAdminAsync(int userId, int organizationId, CancellationToken ct)
     {
         var ok = await (
             from uro in db.Set<UserRoleOrganization>().AsNoTracking()
-            join oro in db.Set<OrganizationRole>().AsNoTracking() on uro.OrgRoleId equals oro.Id
+            join orp in db.Set<OrganizationRolePermission>().AsNoTracking() on uro.OrgRoleId equals orp.OrgRoleId
+            join p in db.Set<Permission>().AsNoTracking() on orp.PermissionId equals p.Id
             where uro.UserId == userId && uro.OrganizationId == organizationId && !uro.IsArchived
-                  && (oro.Name == "org_owner" || oro.Name == "org_admin")
+                  && p.Name == ManageOrgSettingsPermission
             select uro.Id).AnyAsync(ct);
 
         if (!ok)
-            throw new ForbiddenAccessException("Audit log requires organization role org_owner or org_admin.");
+            throw new ForbiddenAccessException($"Audit log requires '{ManageOrgSettingsPermission}' permission in organization scope.");
     }
 
     private async Task<HashSet<int>> GetVisibleTargetUserIdsAsync(int callerUserId, CancellationToken ct)
@@ -302,20 +307,22 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
 
         var orgTargets = await (
             from cu in db.Set<UserRoleOrganization>().AsNoTracking()
-            join cr in db.Set<OrganizationRole>().AsNoTracking() on cu.OrgRoleId equals cr.Id
+            join crp in db.Set<OrganizationRolePermission>().AsNoTracking() on cu.OrgRoleId equals crp.OrgRoleId
+            join cp in db.Set<Permission>().AsNoTracking() on crp.PermissionId equals cp.Id
             join tu in db.Set<UserRoleOrganization>().AsNoTracking() on cu.OrganizationId equals tu.OrganizationId
             where cu.UserId == callerUserId && !cu.IsArchived && !tu.IsArchived
-                  && (cr.Name == "org_owner" || cr.Name == "org_admin")
+                  && cp.Name == ManageOrgSettingsPermission
             select tu.UserId).Distinct().ToListAsync(ct);
         foreach (var u in orgTargets)
             visible.Add(u);
 
         var wsTargets = await (
             from cw in db.Set<UserRoleWorkspace>().AsNoTracking()
-            join wr in db.Set<WorkspaceRole>().AsNoTracking() on cw.WsRoleId equals wr.Id
+            join wrp in db.Set<WorkspaceRolePermission>().AsNoTracking() on cw.WsRoleId equals wrp.WsRoleId
+            join wp in db.Set<Permission>().AsNoTracking() on wrp.PermissionId equals wp.Id
             join tw in db.Set<UserRoleWorkspace>().AsNoTracking() on cw.WorkspaceId equals tw.WorkspaceId
             where cw.UserId == callerUserId && !cw.IsArchived && !tw.IsArchived
-                  && (wr.Name == "ws_admin" || wr.Name == "ws_analyst")
+                  && wp.Name == ViewAnalyticsPermission
             select tw.UserId).Distinct().ToListAsync(ct);
         foreach (var u in wsTargets)
             visible.Add(u);
