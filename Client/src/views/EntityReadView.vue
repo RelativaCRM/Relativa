@@ -118,22 +118,11 @@ const outboundRelTabs = computed((): EdgeRelTab[] => {
 });
 
 /**
- * Hide an inbound relationship tab only when the current entity type already has an
- * outgoing relationship type covering the same pair (e.g. on a `deal`, hide the
- * `contract_deal` inbound because `deal_contract` already provides the deal-side
- * outbound view). Solo inbound tabs with no complementary outbound (e.g. `deal_client`
- * viewed from a client) stay visible — without them, "deals from this client" would
- * disappear entirely.
+ * Hide inbound tabs when the current entity type already has an outgoing relationship
+ * type to the same peer type. This removes duplicate pair tabs like `deal_contract`
+ * on a `contract` page where `contract_deal` is the canonical direction.
  */
-const outboundTargetTypeIds = computed<Set<number>>(() => {
-  const schemaOut = typeSchema.value?.outgoingRelationships;
-  if (schemaOut?.length) {
-    return new Set(schemaOut.map((r) => r.targetEntityTypeId));
-  }
-  return new Set();
-});
-
-const outboundTargetTypeNames = computed<Set<string>>(() => {
+const outboundCoveredTypeNames = computed<Set<string>>(() => {
   const schemaOut = typeSchema.value?.outgoingRelationships;
   if (schemaOut?.length) {
     return new Set(schemaOut.map((r) => r.targetEntityTypeName));
@@ -146,9 +135,9 @@ const outboundTargetTypeNames = computed<Set<string>>(() => {
 const inboundRelTabs = computed((): EdgeRelTab[] => {
   const schemaRels = typeSchema.value?.incomingRelationships;
   if (schemaRels?.length) {
-    const coveredTargets = outboundTargetTypeIds.value;
+    const coveredNames = outboundCoveredTypeNames.value;
     return [...schemaRels]
-      .filter((r) => !coveredTargets.has(r.sourceEntityTypeId))
+      .filter((r) => !coveredNames.has(r.sourceEntityTypeName))
       .map((r) => ({
         direction: 'in' as const,
         relationshipTypeId: r.relationshipTypeId,
@@ -161,7 +150,7 @@ const inboundRelTabs = computed((): EdgeRelTab[] => {
   const d = detail.value;
   if (!d?.inboundRelationships.length) return [];
 
-  const coveredNames = outboundTargetTypeNames.value;
+  const coveredNames = outboundCoveredTypeNames.value;
   const byId = new Map<number, EdgeRelTab>();
   for (const r of d.inboundRelationships) {
     if (byId.has(r.relationshipTypeId)) continue;
@@ -407,24 +396,24 @@ function fieldError(prop: EntityPropertyValueDto): string | null {
   );
 }
 
-function requestArchive() {
+function requestDeleteEntity() {
   confirm.require({
     message:
-      'Archive this entity? It will be hidden from lists but history remains.',
-    header: 'Archive entity',
+      'Delete this entity? It will be hidden from lists; linked records remain in the workspace.',
+    header: 'Delete entity',
     icon: 'pi pi-exclamation-triangle',
     rejectProps: { label: 'Cancel', severity: 'secondary', text: true },
-    acceptProps: { label: 'Archive', severity: 'danger' },
+    acceptProps: { label: 'Delete', severity: 'danger' },
     accept: async () => {
       try {
         await entityStore.archive(props.workspaceId, props.entityId);
-        toast.add({ severity: 'success', summary: 'Entity archived', life: 2500 });
+        toast.add({ severity: 'success', summary: 'Entity deleted', life: 2500 });
         exitDetail();
       } catch (err) {
         toast.add({
           severity: 'error',
-          summary: 'Archive failed',
-          detail: normalizeError(err, 'Could not archive.').message,
+          summary: 'Delete failed',
+          detail: normalizeError(err, 'Could not delete entity.').message,
           life: 5000,
         });
       }
@@ -490,11 +479,11 @@ watch(
         </template>
         <Button
           v-if="canDelete && !editMode"
-          label="Archive"
+          label="Delete"
           icon="pi pi-trash"
           severity="danger"
           outlined
-          @click="requestArchive"
+          @click="requestDeleteEntity"
         />
       </div>
     </div>
@@ -506,15 +495,6 @@ watch(
       class="!my-0 mb-4"
     >
       {{ errorMessage }}
-    </Message>
-
-    <Message
-      v-else-if="detail?.isArchived"
-      severity="warn"
-      :closable="false"
-      class="!my-0 mb-4"
-    >
-      This entity is archived (read-only in lists).
     </Message>
 
     <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
