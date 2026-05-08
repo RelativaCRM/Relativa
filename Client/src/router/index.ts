@@ -7,6 +7,8 @@ const MainLayout = () => import('@/layouts/MainLayout.vue');
 const WorkspaceLayout = () => import('@/layouts/WorkspaceLayout.vue');
 const LoginView = () => import('@/views/LoginView.vue');
 const RegisterView = () => import('@/views/RegisterView.vue');
+const ForgotPasswordView = () => import('@/views/ForgotPasswordView.vue');
+const ResetPasswordView = () => import('@/views/ResetPasswordView.vue');
 const HomeView = () => import('@/views/HomeView.vue');
 const GraphView = () => import('@/views/GraphView.vue');
 const OnboardingView = () => import('@/views/OnboardingView.vue');
@@ -41,6 +43,18 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: RegisterView,
+      meta: { public: true, guestOnly: true },
+    },
+    {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: ForgotPasswordView,
+      meta: { public: true, guestOnly: true },
+    },
+    {
+      path: '/reset-password',
+      name: 'reset-password',
+      component: ResetPasswordView,
       meta: { public: true, guestOnly: true },
     },
     {

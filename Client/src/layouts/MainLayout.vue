@@ -301,6 +301,15 @@ onMounted(async () => {
                 </button>
               </div>
 
+              <RouterLink
+                v-if="!wsStore.workspaces.length"
+                to="/workspaces"
+                class="flex items-center gap-2 px-3 py-1.5 text-xs text-ink-500 hover:text-brand-600 hover:bg-brand-50"
+              >
+                <i class="pi pi-plus text-[10px]" />
+                Add workspace
+              </RouterLink>
+
               <div
                 v-if="wsListExpanded && wsStore.workspaces.length"
                 class="nav-scroll ml-4 flex flex-col border-l border-slate-200 pl-2 max-h-48 overflow-y-auto mb-1"

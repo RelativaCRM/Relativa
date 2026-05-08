@@ -9,6 +9,8 @@ public class User
     public string Password { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
     public bool IsArchived { get; set; }
+    public string? PasswordResetToken { get; set; }
+    public DateTime? PasswordResetTokenExpiresAt { get; set; }
     public ICollection<Entity> CreatedEntities { get; set; } = new List<Entity>();
     public ICollection<UserRoleWorkspace> WorkspaceMemberships { get; set; } = new List<UserRoleWorkspace>();
     public ICollection<UserRoleOrganization> OrganizationMemberships { get; set; } = new List<UserRoleOrganization>();

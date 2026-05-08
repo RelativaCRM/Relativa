@@ -15,6 +15,7 @@ import {
   firstFieldError,
   type FieldErrors,
 } from '@/api/errors';
+import { authApi } from '@/api/auth';
 
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
@@ -81,7 +82,32 @@ async function handleSaveProfile() {
   }
 }
 
-/* ── Delete account ───────────────────────────────────── */
+const passwordResetSending = ref(false);
+
+async function handleSendPasswordReset() {
+  if (!auth.user) return;
+  passwordResetSending.value = true;
+  try {
+    await authApi.forgotPassword(auth.user.email);
+    toast.add({
+      severity: 'success',
+      summary: 'Email sent',
+      detail: `A password reset link has been sent to ${auth.user.email}.`,
+      life: 6000,
+    });
+  } catch (err) {
+    const n = normalizeError(err, 'Could not send reset email.');
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: n.message,
+      life: 6000,
+    });
+  } finally {
+    passwordResetSending.value = false;
+  }
+}
+
 const showDeleteDialog = ref(false);
 const deleteSubmitting = ref(false);
 
@@ -190,6 +216,21 @@ async function handleConfirmDelete() {
           />
         </div>
       </form>
+    </div>
+
+    <div class="mt-6 rounded-xl border border-line bg-white p-6">
+      <h2 class="text-sm font-semibold text-ink-900">Password</h2>
+      <p class="mt-2 text-sm text-ink-600">
+        A reset link will be sent to <span class="font-medium text-ink-900">{{ auth.user?.email }}</span>. Follow the link to set a new password.
+      </p>
+      <Button
+        class="mt-4"
+        label="Send password reset email"
+        severity="secondary"
+        outlined
+        :loading="passwordResetSending"
+        @click="handleSendPasswordReset"
+      />
     </div>
 
     <div class="mt-6 rounded-xl border border-danger/30 bg-white p-6">

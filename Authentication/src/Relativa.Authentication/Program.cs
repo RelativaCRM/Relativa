@@ -4,9 +4,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Relativa.Authentication.Application.Interfaces;
+using Relativa.Authentication.Application.Options;
 using Relativa.Authentication.Application.Services;
 using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Authentication.Endpoints;
+using Relativa.Authentication.Infrastructure.Services;
 using Relativa.Authentication.Infrastructure.Data;
 using Relativa.Authentication.Infrastructure.Repositories;
 using Relativa.Authentication.Infrastructure.Services.Audit;
@@ -70,6 +72,8 @@ try
     builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
     builder.Services.AddScoped<IUserProvisioningService, UserProvisioningService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
+    builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+    builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
     builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
     builder.Services.AddHostedService<AuditOutboxDispatcher>();
 

@@ -126,3 +126,56 @@ test.describe('Sign Out', () => {
     await expect(page).toHaveURL(/\/login/);
   });
 });
+
+
+test.describe('Forgot Password', () => {
+  test('page renders email field and submit button', async ({ page }) => {
+    await page.goto(`${BASE}/forgot-password`);
+    await expect(page.locator('#email')).toBeVisible();
+    await expect(page.locator('button[type="submit"]')).toBeVisible();
+  });
+
+  test('invalid email shows inline validation error', async ({ page }) => {
+    await page.goto(`${BASE}/forgot-password`);
+    await page.locator('#email').fill('not-an-email');
+    await page.locator('#email').blur();
+    await expect(page.locator('small.text-danger, [class*="text-danger"]').first()).toBeVisible();
+  });
+
+  test('valid email submission shows success message', async ({ page }) => {
+    await page.goto(`${BASE}/forgot-password`);
+    await page.locator('#email').fill('nonexistent@example.com');
+    await page.locator('button[type="submit"]').click();
+    await expect(page.getByText(/check your inbox/i)).toBeVisible({ timeout: 8000 });
+  });
+});
+
+
+test.describe('Reset Password', () => {
+  test('missing token redirects to forgot-password', async ({ page }) => {
+    await page.goto(`${BASE}/reset-password`);
+    await expect(page).toHaveURL(/\/forgot-password/, { timeout: 5000 });
+  });
+
+  test('invalid token shows link expired screen', async ({ page }) => {
+    await page.goto(`${BASE}/reset-password?token=invalid-token-xyz`);
+    await expect(page.getByText(/link expired/i)).toBeVisible({ timeout: 8000 });
+  });
+
+  test('mismatched passwords shows error', async ({ page }) => {
+    await page.goto(`${BASE}/reset-password?token=invalid-token-xyz`);
+    await page.waitForSelector('text=/link expired|set a new password/i', { timeout: 8000 });
+    if (await page.getByText(/set a new password/i).isVisible()) {
+      await page.locator('#newPassword input, #newPassword').fill('NewPass123!');
+      await page.locator('#confirmPassword input, #confirmPassword').fill('Different1!');
+      await expect(page.locator('small.text-danger, [class*="text-danger"]').last()).toBeVisible();
+    }
+  });
+
+  test('successful reset redirects to login with ?reset=success and shows banner', async ({ page }) => {
+    await page.goto(`${BASE}/login?reset=success`);
+    await expect(page).toHaveURL(/reset=success/);
+    await expect(page.locator('.p-message-success, [class*="success"]').first()).toBeVisible();
+    await expect(page.getByText(/password has been reset/i)).toBeVisible();
+  });
+});

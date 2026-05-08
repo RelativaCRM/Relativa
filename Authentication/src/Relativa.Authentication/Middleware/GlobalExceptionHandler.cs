@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Relativa.Authentication.Application.Exceptions;
 
 namespace Relativa.Authentication.Middleware;
 
@@ -27,6 +28,8 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
             KeyNotFoundException knf => (StatusCodes.Status404NotFound, "Not Found", knf.Message),
             InvalidOperationException ioe => (StatusCodes.Status409Conflict, "Conflict", ioe.Message),
             ArgumentException ae => (StatusCodes.Status400BadRequest, "Bad Request", ae.Message),
+            ConfigurationException => (StatusCodes.Status500InternalServerError, "Internal Server Error",
+                "An unexpected error occurred."),
             JsonException je => (StatusCodes.Status400BadRequest, "Bad Request",
                 $"Invalid JSON in request body: {je.Message}"),
             BadHttpRequestException bhr => (StatusCodes.Status400BadRequest, "Bad Request", bhr.Message),

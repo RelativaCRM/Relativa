@@ -33,11 +33,11 @@ export const useAuthStore = defineStore('auth', () => {
     return new Date(expiresAt.value).getTime() > Date.now();
   });
 
-  function setToken(token: string | null, expiry: string | null = null) {
+  function setToken(token: string | null, expiry: string | null = null, rememberMe = true) {
     accessToken.value = token;
     expiresAt.value = expiry;
-    saveString(STORAGE_KEY, token);
-    saveString(EXPIRY_KEY, token ? expiry : null);
+    saveString(STORAGE_KEY, token, !rememberMe);
+    saveString(EXPIRY_KEY, token ? expiry : null, !rememberMe);
   }
 
   function setWorkspace(id: string) {
@@ -63,7 +63,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(payload: LoginRequest, rememberMe = false) {
     const res = await authApi.login(payload);
-    setToken(res.accessToken, rememberMe ? null : res.expiresAt);
+    setToken(res.accessToken, rememberMe ? null : res.expiresAt, rememberMe);
     setWorkspace('');
     try {
       await fetchProfile();
