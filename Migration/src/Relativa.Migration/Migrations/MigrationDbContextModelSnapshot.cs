@@ -329,7 +329,7 @@ namespace Relativa.Migration.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int?>("CreatedByUserId")
+                    b.Property<int>("CreatedByUserId")
                         .HasColumnType("integer")
                         .HasColumnName("created_by_user_id");
 
@@ -344,6 +344,9 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("is_archived");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_entity_created_by_user");
 
                     b.HasIndex("EntityTypeId");
 
@@ -1156,6 +1159,13 @@ namespace Relativa.Migration.Migrations
 
             modelBuilder.Entity("Relativa.Persistence.Entities.Entity", b =>
                 {
+                    b.HasOne("Relativa.Persistence.Entities.User", "CreatedByUser")
+                        .WithMany("CreatedEntities")
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_entity_created_by_user");
+
                     b.HasOne("Relativa.Persistence.Entities.EntityType", "EntityType")
                         .WithMany("Entities")
                         .HasForeignKey("EntityTypeId")
@@ -1560,6 +1570,8 @@ namespace Relativa.Migration.Migrations
 
             modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>
                 {
+                    b.Navigation("CreatedEntities");
+
                     b.Navigation("OrganizationMemberships");
 
                     b.Navigation("WorkspaceMemberships");

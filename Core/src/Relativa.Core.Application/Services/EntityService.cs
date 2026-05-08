@@ -45,7 +45,7 @@ public sealed class EntityService(
 
         var entity = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct)
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
-        // await EnsureCanAccessEntityAsync(userId, workspaceId, entity, ct);
+        await EnsureCanAccessEntityAsync(userId, workspaceId, entity, ct);
 
         return MapToDetail(entity);
     }
@@ -102,7 +102,7 @@ public sealed class EntityService(
                 throw new ArgumentException($"Required relationship '{req.Name}' is missing.");
         }
 
-        var entity = new Entity { EntityTypeId = request.EntityTypeId, IsArchived = false };
+        var entity = new Entity { EntityTypeId = request.EntityTypeId, CreatedByUserId = userId, IsArchived = false };
         var propertyValues = BuildPropertyValues(request.Properties, typeProperties);
 
         var created = await entityRepository.CreateAsync(entity, propertyValues, workspaceId, relationshipRows, ct);
@@ -145,7 +145,7 @@ public sealed class EntityService(
 
         var entity = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct)
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
-        // await EnsureCanAccessEntityAsync(userId, workspaceId, entity, ct);
+        await EnsureCanAccessEntityAsync(userId, workspaceId, entity, ct);
 
         if (entity.IsArchived)
         {
@@ -198,7 +198,7 @@ public sealed class EntityService(
 
         var entity = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct)
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
-        // await EnsureCanAccessEntityAsync(userId, workspaceId, entity, ct);
+        await EnsureCanAccessEntityAsync(userId, workspaceId, entity, ct);
 
         await entityRepository.ArchiveAsync(entity.Id, ct);
 
@@ -248,22 +248,23 @@ public sealed class EntityService(
         return membership;
     }
 
-    // private async Task EnsureCanAccessEntityAsync(int userId, int workspaceId, Entity entity, CancellationToken ct)
-    // {
-    //     if (entity.CreatedByUserId == userId)
-    //         return;
-    //
-    //     var userIds = new[] { userId, entity.CreatedByUserId };
-    //     var priorities = await memberRepository.GetRolePrioritiesByUserIdsAsync(workspaceId, userIds, ct);
-    //     if (!priorities.TryGetValue(userId, out var callerPriority) ||
-    //         !priorities.TryGetValue(entity.CreatedByUserId, out var creatorPriority))
-    //     {
-    //         throw new UnauthorizedAccessException("Access denied");
-    //     }
-    //
-    //     if (callerPriority >= creatorPriority)
-    //         throw new UnauthorizedAccessException("Access denied");
-    // }
+    private async Task EnsureCanAccessEntityAsync(int userId, int workspaceId, Entity entity, CancellationToken ct)
+    {
+        if (entity.CreatedByUserId == userId)
+            return;
+
+        var userIds = new[] { userId, entity.CreatedByUserId };
+        var priorities = await memberRepository.GetRolePrioritiesByUserIdsAsync(workspaceId, userIds, ct);
+        if (!priorities.TryGetValue(userId, out var callerPriority) ||
+            !priorities.TryGetValue(entity.CreatedByUserId, out var creatorPriority))
+        {
+            throw new UnauthorizedAccessException("Access denied");
+        }
+
+        // Lower priority value means higher authority.
+        if (callerPriority >= creatorPriority)
+            throw new UnauthorizedAccessException("Access denied");
+    }
 
     /// <summary>
     /// Validates the raw request body: no duplicate property ids, every id belongs to the entity type.

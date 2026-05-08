@@ -99,7 +99,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
         var entity = new Entity
         {
             EntityTypeId    = _db.EntityTypes.Single(t => t.Name == "client").Id,
-            // CreatedByUserId = _seedUserId,
+            CreatedByUserId = _seedUserId,
             IsArchived      = false
         };
         var pvs = new List<EntityPropertyValue>
@@ -123,7 +123,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
         var dealTypeId  = _db.EntityTypes.Single(t => t.Name == "deal").Id;
         var typeProps   = await _repo.GetTypePropertiesAsync(dealTypeId);
 
-        var entity = new Entity { EntityTypeId = dealTypeId, /* CreatedByUserId = _seedUserId, */ IsArchived = false };
+        var entity = new Entity { EntityTypeId = dealTypeId, CreatedByUserId = _seedUserId, IsArchived = false };
         var pvs = new List<EntityPropertyValue>
         {
             new()
@@ -160,7 +160,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
         var entity = new Entity
         {
             EntityTypeId    = _db.EntityTypes.Single(t => t.Name == "client").Id,
-            // CreatedByUserId = _seedUserId,
+            CreatedByUserId = _seedUserId,
             IsArchived      = false
         };
         var pvs = new List<EntityPropertyValue>
@@ -189,7 +189,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
             new() { PropertyId = 999999, ValueString = "orphan" }
         };
 
-        var entity = new Entity { EntityTypeId = clientTypeId, /* CreatedByUserId = _seedUserId, */ IsArchived = false };
+        var entity = new Entity { EntityTypeId = clientTypeId, CreatedByUserId = _seedUserId, IsArchived = false };
 
         await _repo.Invoking(r => r.CreateAsync(entity, pvWithInvalidPropertyId, workspaceId, null))
             .Should().ThrowAsync<Exception>("FK violation on property_id=999999 must roll back the transaction");

@@ -227,7 +227,7 @@ function clearNestedPropertyFieldError(prop: EntityTypePropertyDto) {
 }
 
 function nestedFormValid(type: EntityTypeDto): boolean {
-  if (!type.properties.filter((p) => !p.isReadonly).every((p) => !isPropertyEmptyFor(p, nestedValues.value))) {
+  if (!type.properties.every((p) => !isPropertyEmptyFor(p, nestedValues.value))) {
     return false;
   }
   for (const ir of type.outgoingRelationships.filter((r) => r.isRequired)) {
@@ -260,7 +260,7 @@ async function submitNestedCreate() {
     const innerReq = target.outgoingRelationships.filter((r) => r.isRequired);
     const base = {
       entityTypeId: target.id,
-      properties: target.properties.filter((p) => !p.isReadonly).map((p) => ({
+      properties: target.properties.map((p) => ({
         propertyId: p.propertyId,
         value: serializeValue(p, nestedValues.value[p.propertyId] ?? null),
       })),
@@ -384,7 +384,7 @@ function isEmpty(v: FieldValue): boolean {
 
 const isFormValid = computed(() => {
   if (!selectedType.value) return false;
-  return properties.value.filter((p) => !p.isReadonly).every((p) => !isPropertyEmpty(p));
+  return properties.value.every((p) => !isPropertyEmpty(p));
 });
 
 function pad(n: number): string {
@@ -517,7 +517,7 @@ async function handleSubmit() {
   try {
     const base = {
       entityTypeId: selectedTypeId.value,
-      properties: properties.value.filter((p) => !p.isReadonly).map((p) => ({
+      properties: properties.value.map((p) => ({
         propertyId: p.propertyId,
         value: serializeValue(p, values.value[p.propertyId] ?? null),
       })),
@@ -705,7 +705,7 @@ watch(
         </div>
       </template>
 
-      <template v-for="prop in properties.filter(p => !p.isReadonly)" :key="prop.propertyId">
+      <template v-for="prop in properties" :key="prop.propertyId">
         <div class="flex flex-col gap-1.5">
           <label
             :for="`p-${prop.propertyId}`"
@@ -833,7 +833,7 @@ watch(
           </div>
         </template>
 
-        <template v-for="prop in nestedTargetProperties.filter(p => !p.isReadonly)" :key="prop.propertyId">
+        <template v-for="prop in nestedTargetProperties" :key="prop.propertyId">
           <div class="flex flex-col gap-1.5">
             <label
               :for="`np-${prop.propertyId}`"
