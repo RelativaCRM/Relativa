@@ -9,6 +9,7 @@ import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import { normalizeError } from '@/api/errors';
+import type { EntityListItemDto } from '@/api/entities';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
 import { hasWorkspacePermission } from '@/utils/workspacePermissions';
 import EntityReadView from '@/views/EntityReadView.vue';
@@ -79,6 +80,17 @@ function formatTypeName(name: string): string {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+/** List row subtitle: capitalize words from snake_case names. */
+function rowPreview(ent: EntityListItemDto): string {
+  const parts = ent.propertyValues.slice(0, 3).map((p) => {
+    const label = formatTypeName(p.propertyName);
+    const val =
+      p.value === null || p.value === undefined ? '—' : String(p.value);
+    return `${label}: ${val}`;
+  });
+  return parts.length ? parts.join(' · ') : '—';
 }
 
 const headingTitle = computed(() => {
@@ -226,13 +238,32 @@ onMounted(load);
       {{ errorMessage }}
     </Message>
 
-    <div class="mb-4 flex flex-col sm:flex-row sm:items-center gap-3">
-      <span class="text-xs font-medium text-ink-500 uppercase tracking-wide shrink-0">Search</span>
-      <InputText
-        v-model="searchInput"
-        placeholder="Filter by property text…"
-        class="w-full sm:max-w-md !h-10"
-      />
+    <div class="mb-6 rounded-xl border border-line bg-white p-4 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex items-center gap-2 shrink-0">
+          <span
+            class="flex h-9 w-9 items-center justify-center rounded-lg bg-surface text-ink-500"
+            aria-hidden="true"
+          >
+            <i class="pi pi-search text-sm" />
+          </span>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-ink-800">Search</p>
+            <p class="text-xs text-ink-500 hidden sm:block">
+              Text match across fields (server-side)
+            </p>
+          </div>
+        </div>
+        <InputText
+          v-model="searchInput"
+          :placeholder="
+            filterTypeSchema
+              ? `Search ${formatTypeName(filterType ?? '')}…`
+              : 'Search all listed records…'
+          "
+          class="w-full flex-1 !h-10"
+        />
+      </div>
     </div>
 
     <div v-if="loading && !entities.length" class="text-center py-12 text-ink-500">Loading...</div>
@@ -294,13 +325,8 @@ onMounted(load);
             <td class="px-5 py-3">
               <Tag :value="ent.entityTypeName" severity="secondary" />
             </td>
-            <td class="px-5 py-3 text-ink-600 text-xs">
-              {{
-                ent.propertyValues
-                  .slice(0, 3)
-                  .map((p) => `${p.propertyName}: ${p.value ?? '—'}`)
-                  .join(' · ') || '—'
-              }}
+            <td class="px-5 py-3 text-ink-600 text-xs leading-relaxed">
+              {{ rowPreview(ent) }}
             </td>
           </tr>
         </tbody>

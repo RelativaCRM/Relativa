@@ -27,6 +27,8 @@ public sealed class WorkspaceRoleRepository(RelativaDbContext db) : IWorkspaceRo
     public async Task<WorkspaceRole?> GetSystemRoleByNameAsync(string name, CancellationToken ct = default)
     {
         return await db.WorkspaceRoles
+            .Include(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
             .FirstOrDefaultAsync(r => r.Name == name && r.WorkspaceId == null && !r.IsArchived, ct);
     }
 

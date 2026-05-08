@@ -54,12 +54,27 @@ public sealed class PermissionGuardTests
     private static WorkspaceService BuildWorkspaceService(
         Mock<IUserRoleWorkspaceRepository> memberRepo,
         Mock<IWorkspaceRepository> workspaceRepo,
-        Mock<IValidator<UpdateWorkspaceRequest>> updateValidator) =>
-        new(workspaceRepo.Object, memberRepo.Object,
-            new Mock<IWorkspaceRoleRepository>().Object,
-            new Mock<IUserRoleOrganizationRepository>().Object,
+        Mock<IValidator<UpdateWorkspaceRequest>> updateValidator,
+        Mock<IUserRoleOrganizationRepository>? orgRepo = null,
+        Mock<IWorkspaceRoleRepository>? roleRepo = null)
+    {
+        var orgMemberRepo = orgRepo ?? new Mock<IUserRoleOrganizationRepository>();
+        var wsRoleRepo = roleRepo ?? new Mock<IWorkspaceRoleRepository>();
+        var access = new WorkspaceAccessEvaluator(
+            memberRepo.Object,
+            orgMemberRepo.Object,
+            workspaceRepo.Object,
+            wsRoleRepo.Object);
+
+        return new WorkspaceService(
+            workspaceRepo.Object,
+            memberRepo.Object,
+            wsRoleRepo.Object,
+            orgMemberRepo.Object,
+            access,
             new Mock<IValidator<CreateWorkspaceRequest>>().Object,
             updateValidator.Object);
+    }
 
     private static WorkspaceMemberService BuildMemberService(
         Mock<IUserRoleWorkspaceRepository> memberRepo,
@@ -84,18 +99,47 @@ public sealed class PermissionGuardTests
 
         var roleRepoImpl = roleRepo ?? new Mock<IWorkspaceRoleRepository>();
 
-        return new(memberRepo.Object,
+        var access = new WorkspaceAccessEvaluator(
+            memberRepo.Object,
+            orgMemRepo.Object,
+            wsRepo.Object,
+            roleRepoImpl.Object);
+
+        return new WorkspaceMemberService(
+            memberRepo.Object,
             roleRepoImpl.Object,
             orgMemRepo.Object,
-            wsRepo.Object);
+            wsRepo.Object,
+            access);
     }
 
     private static RoleService BuildRoleService(
         Mock<IUserRoleWorkspaceRepository> memberRepo,
         Mock<IPermissionRepository> permissionRepo,
         Mock<IWorkspaceRoleRepository> roleRepo,
-        Mock<IValidator<CreateRoleRequest>> createValidator) =>
-        new(roleRepo.Object, permissionRepo.Object, memberRepo.Object, createValidator.Object);
+        Mock<IValidator<CreateRoleRequest>> createValidator)
+    {
+        var orgMemRepo = new Mock<IUserRoleOrganizationRepository>();
+        orgMemRepo.Setup(r => r.GetAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleOrganization?)null);
+
+        var wsRepo = new Mock<IWorkspaceRepository>();
+        wsRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) =>
+                new Workspace { Id = id, OrganizationId = 10, Name = "Test WS", IsArchived = false });
+
+        var access = new WorkspaceAccessEvaluator(
+            memberRepo.Object,
+            orgMemRepo.Object,
+            wsRepo.Object,
+            roleRepo.Object);
+
+        return new RoleService(
+            roleRepo.Object,
+            permissionRepo.Object,
+            access,
+            createValidator.Object);
+    }
 
     [Fact]
     public async Task ManageWsSettings_WsAdmin_Allowed()

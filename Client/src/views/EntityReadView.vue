@@ -59,6 +59,110 @@ const writableProps = computed(() => {
   return d.propertyValues.filter((p) => !p.isReadonly);
 });
 
+/** `overview`, or `out-{relationshipTypeId}` / `in-{relationshipTypeId}` (direction distinguishes same id). */
+const activeTab = ref<string>('overview');
+
+const typeSchema = computed(() => {
+  const d = detail.value;
+  if (!d) return null;
+  return entityStore.types.find((t) => t.id === d.entityTypeId) ?? null;
+});
+
+type EdgeRelTab = {
+  direction: 'out' | 'in';
+  relationshipTypeId: number;
+  name: string;
+  /** Outbound: target type name. Inbound: source type name (records pointing at this entity). */
+  otherEntityTypeName: string;
+};
+
+function relTabKey(tab: Pick<EdgeRelTab, 'direction' | 'relationshipTypeId'>): string {
+  return tab.direction === 'out'
+    ? `out-${tab.relationshipTypeId}`
+    : `in-${tab.relationshipTypeId}`;
+}
+
+const outboundRelTabs = computed((): EdgeRelTab[] => {
+  const schemaRels = typeSchema.value?.outgoingRelationships;
+  if (schemaRels?.length) {
+    return [...schemaRels]
+      .map((r) => ({
+        direction: 'out' as const,
+        relationshipTypeId: r.relationshipTypeId,
+        name: r.name,
+        otherEntityTypeName: r.targetEntityTypeName,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  const d = detail.value;
+  if (!d?.outboundRelationships.length) return [];
+
+  const byId = new Map<number, EdgeRelTab>();
+  for (const r of d.outboundRelationships) {
+    if (byId.has(r.relationshipTypeId)) continue;
+    byId.set(r.relationshipTypeId, {
+      direction: 'out',
+      relationshipTypeId: r.relationshipTypeId,
+      name: r.relationshipName,
+      otherEntityTypeName: r.relatedEntityTypeName,
+    });
+  }
+
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+});
+
+const inboundRelTabs = computed((): EdgeRelTab[] => {
+  const schemaRels = typeSchema.value?.incomingRelationships;
+  if (schemaRels?.length) {
+    return [...schemaRels]
+      .map((r) => ({
+        direction: 'in' as const,
+        relationshipTypeId: r.relationshipTypeId,
+        name: r.name,
+        otherEntityTypeName: r.sourceEntityTypeName,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  const d = detail.value;
+  if (!d?.inboundRelationships.length) return [];
+
+  const byId = new Map<number, EdgeRelTab>();
+  for (const r of d.inboundRelationships) {
+    if (byId.has(r.relationshipTypeId)) continue;
+    byId.set(r.relationshipTypeId, {
+      direction: 'in',
+      relationshipTypeId: r.relationshipTypeId,
+      name: r.relationshipName,
+      otherEntityTypeName: r.relatedEntityTypeName,
+    });
+  }
+
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+});
+
+const hasRelationshipTabs = computed(
+  () =>
+    outboundRelTabs.value.length > 0 || inboundRelTabs.value.length > 0,
+);
+
+function outboundLinksFor(relationshipTypeId: number) {
+  return (
+    detail.value?.outboundRelationships.filter(
+      (r) => r.relationshipTypeId === relationshipTypeId,
+    ) ?? []
+  );
+}
+
+function inboundLinksFor(relationshipTypeId: number) {
+  return (
+    detail.value?.inboundRelationships.filter(
+      (r) => r.relationshipTypeId === relationshipTypeId,
+    ) ?? []
+  );
+}
+
 function humanize(name: string): string {
   return name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 }
@@ -160,7 +264,9 @@ function exitDetail() {
 async function loadDetail() {
   loading.value = true;
   errorMessage.value = null;
+  activeTab.value = 'overview';
   try {
+    await entityStore.fetchTypes();
     const d = await entityStore.fetchDetail(props.workspaceId, props.entityId);
     detail.value = d;
     parseDetailToEditValues(d);
@@ -330,7 +436,60 @@ watch(
     <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
 
     <template v-else-if="detail">
-      <div class="rounded-xl border border-line bg-white p-6 mb-6">
+      <nav
+        v-if="hasRelationshipTabs"
+        class="flex flex-wrap gap-2 mb-4"
+        aria-label="Record sections"
+      >
+        <button
+          type="button"
+          class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors border"
+          :class="
+            activeTab === 'overview'
+              ? 'border-brand-600 bg-brand-50 text-brand-800'
+              : 'border-line bg-white text-ink-600 hover:bg-surface/80'
+          "
+          @click="activeTab = 'overview'"
+        >
+          Overview
+        </button>
+        <button
+          v-for="tab in outboundRelTabs"
+          :key="relTabKey(tab)"
+          type="button"
+          class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors border"
+          :class="
+            activeTab === relTabKey(tab)
+              ? 'border-brand-600 bg-brand-50 text-brand-800'
+              : 'border-line bg-white text-ink-600 hover:bg-surface/80'
+          "
+          @click="activeTab = relTabKey(tab)"
+        >
+          {{ humanize(tab.name) }}
+          <span class="text-ink-400 font-normal">
+            → {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
+          </span>
+        </button>
+        <button
+          v-for="tab in inboundRelTabs"
+          :key="relTabKey(tab)"
+          type="button"
+          class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors border"
+          :class="
+            activeTab === relTabKey(tab)
+              ? 'border-brand-600 bg-brand-50 text-brand-800'
+              : 'border-line bg-white text-ink-600 hover:bg-surface/80'
+          "
+          @click="activeTab = relTabKey(tab)"
+        >
+          {{ humanize(tab.name) }}
+          <span class="text-ink-400 font-normal">
+            ← {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
+          </span>
+        </button>
+      </nav>
+
+      <div v-show="activeTab === 'overview'" class="rounded-xl border border-line bg-white p-6 mb-6">
         <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-4">
           Properties
         </h2>
@@ -393,63 +552,72 @@ watch(
         </dl>
       </div>
 
-      <div
-        v-if="detail.outboundRelationships.length"
-        class="rounded-xl border border-line bg-white p-6 mb-6"
-      >
-        <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-3">
-          Outbound links
-        </h2>
-        <ul class="space-y-2 text-sm">
-          <li
-            v-for="r in detail.outboundRelationships"
-            :key="`o-${r.relationshipTypeId}-${r.relatedEntityId}`"
-          >
-            <button
-              type="button"
-              class="text-left w-full rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
-              @click="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
+      <template v-for="tab in outboundRelTabs" :key="`panel-${relTabKey(tab)}`">
+        <div
+          v-show="activeTab === relTabKey(tab)"
+          class="rounded-xl border border-line bg-white p-6 mb-6"
+        >
+          <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-1">
+            {{ humanize(tab.name) }}
+          </h2>
+          <p class="text-xs text-ink-500 mb-4">
+            Linked {{ tab.otherEntityTypeName.replace(/_/g, ' ') }} records (outgoing).
+          </p>
+          <ul v-if="outboundLinksFor(tab.relationshipTypeId).length" class="space-y-2 text-sm">
+            <li
+              v-for="r in outboundLinksFor(tab.relationshipTypeId)"
+              :key="`o-${r.relationshipTypeId}-${r.relatedEntityId}`"
             >
-              <span class="font-medium text-ink-800">{{ r.relationshipName.replace(/_/g, ' ') }}</span>
-              <span class="text-ink-500"> → </span>
-              <span class="text-brand-700">{{ r.relatedEntityTypeName }}</span>
-              <span class="font-mono text-xs text-ink-600"> #{{ r.relatedEntityId }}</span>
-              <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-1">
-                {{ previewLabel(r.previewPropertyValues) }}
-              </span>
-            </button>
-          </li>
-        </ul>
-      </div>
+              <button
+                type="button"
+                class="text-left w-full rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
+                @click="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
+              >
+                <span class="text-brand-700">{{ r.relatedEntityTypeName.replace(/_/g, ' ') }}</span>
+                <span class="font-mono text-xs text-ink-600"> #{{ r.relatedEntityId }}</span>
+                <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-1">
+                  {{ previewLabel(r.previewPropertyValues) }}
+                </span>
+              </button>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-ink-500">No links of this type yet.</p>
+        </div>
+      </template>
 
-      <div
-        v-if="detail.inboundRelationships.length"
-        class="rounded-xl border border-line bg-white p-6"
-      >
-        <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-3">
-          Inbound links
-        </h2>
-        <ul class="space-y-2 text-sm">
-          <li
-            v-for="r in detail.inboundRelationships"
-            :key="`i-${r.relationshipTypeId}-${r.relatedEntityId}`"
-          >
-            <button
-              type="button"
-              class="text-left w-full rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
-              @click="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
+      <template v-for="tab in inboundRelTabs" :key="`panel-${relTabKey(tab)}`">
+        <div
+          v-show="activeTab === relTabKey(tab)"
+          class="rounded-xl border border-line bg-white p-6 mb-6"
+        >
+          <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-1">
+            {{ humanize(tab.name) }}
+          </h2>
+          <p class="text-xs text-ink-500 mb-4">
+            {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
+            records pointing here (incoming).
+          </p>
+          <ul v-if="inboundLinksFor(tab.relationshipTypeId).length" class="space-y-2 text-sm">
+            <li
+              v-for="r in inboundLinksFor(tab.relationshipTypeId)"
+              :key="`i-${r.relationshipTypeId}-${r.relatedEntityId}`"
             >
-              <span class="font-medium text-ink-800">{{ r.relationshipName.replace(/_/g, ' ') }}</span>
-              <span class="text-ink-500"> ← </span>
-              <span class="text-brand-700">{{ r.relatedEntityTypeName }}</span>
-              <span class="font-mono text-xs text-ink-600"> #{{ r.relatedEntityId }}</span>
-              <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-1">
-                {{ previewLabel(r.previewPropertyValues) }}
-              </span>
-            </button>
-          </li>
-        </ul>
-      </div>
+              <button
+                type="button"
+                class="text-left w-full rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
+                @click="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
+              >
+                <span class="text-brand-700">{{ r.relatedEntityTypeName.replace(/_/g, ' ') }}</span>
+                <span class="font-mono text-xs text-ink-600"> #{{ r.relatedEntityId }}</span>
+                <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-1">
+                  {{ previewLabel(r.previewPropertyValues) }}
+                </span>
+              </button>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-ink-500">No links of this type yet.</p>
+        </div>
+      </template>
     </template>
   </section>
 </template>

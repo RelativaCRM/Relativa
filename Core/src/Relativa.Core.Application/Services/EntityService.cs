@@ -11,7 +11,7 @@ namespace Relativa.Core.Application.Services;
 
 public sealed class EntityService(
     IEntityRepository entityRepository,
-    IUserRoleWorkspaceRepository memberRepository,
+    IWorkspaceAccessEvaluator workspaceAccess,
     IValidator<CreateEntityRequest> createValidator,
     IValidator<UpdateEntityRequest> updateValidator,
     IOutboxWriter? auditOutboxWriter = null) : IEntityService
@@ -220,18 +220,9 @@ public sealed class EntityService(
     // Helpers
     // ------------------------------------------------------------------
 
-    private async Task<UserRoleWorkspace> RequireMembership(int userId, int workspaceId, CancellationToken ct)
-    {
-        return await memberRepository.GetAsync(userId, workspaceId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this workspace.");
-    }
-
     private async Task RequirePermission(int userId, int workspaceId, string permission, CancellationToken ct)
     {
-        var membership = await RequireMembership(userId, workspaceId, ct);
-        var hasPermission = membership.Role?.RolePermissions
-            .Any(rp => rp.Permission?.Name == permission) ?? false;
-        if (!hasPermission)
+        if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, permission, ct))
             throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this workspace.");
     }
 

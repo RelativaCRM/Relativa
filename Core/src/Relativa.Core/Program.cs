@@ -69,6 +69,7 @@ try
     builder.Services.AddScoped<IEntityRepository, EntityRepository>();
 
     builder.Services.AddScoped<IEntityTypeService, EntityTypeService>();
+    builder.Services.AddScoped<IWorkspaceAccessEvaluator, WorkspaceAccessEvaluator>();
     builder.Services.AddScoped<IEntityService, EntityService>();
     builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
     builder.Services.AddHostedService<AuditOutboxDispatcher>();

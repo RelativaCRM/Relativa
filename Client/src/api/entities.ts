@@ -25,11 +25,21 @@ export interface OutgoingRelationshipDto {
   relationshipCardinality: string;
 }
 
+export interface IncomingRelationshipDto {
+  relationshipTypeId: number;
+  name: string;
+  sourceEntityTypeId: number;
+  sourceEntityTypeName: string;
+  isRequired: boolean;
+  relationshipCardinality: string;
+}
+
 export interface EntityTypeDto {
   id: number;
   name: string;
   isStandalone: boolean;
   outgoingRelationships: OutgoingRelationshipDto[];
+  incomingRelationships: IncomingRelationshipDto[];
   properties: EntityTypePropertyDto[];
 }
 

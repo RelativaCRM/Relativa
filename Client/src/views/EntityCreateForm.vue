@@ -103,7 +103,6 @@ const requiredOutgoing = computed(
 
 const linkPick = reactive<Record<number, number | null>>({});
 const candidatesByRel = ref<Record<number, EntityListItemDto[]>>({});
-const orchestrateViaGraph = ref(false);
 
 /** Required link: open dialog to create target row (e.g. Client) and select it. */
 const nestedDialogOpen = ref(false);
@@ -277,7 +276,7 @@ async function submitNestedCreate() {
           }
         : base;
 
-    const detail = await entityApi.create(wid, body);
+    const detail = await entityStore.createViaGraph(wid, body);
 
     const outerRelId = rel.relationshipTypeId;
     const asList: EntityListItemDto = {
@@ -535,9 +534,7 @@ async function handleSubmit() {
           }
         : base;
 
-    const detail = orchestrateViaGraph.value
-      ? await entityStore.createViaGraph(workspaceId.value, body)
-      : await entityStore.create(workspaceId.value, body);
+    const detail = await entityStore.createViaGraph(workspaceId.value, body);
     const typeLabel = selectedType.value?.name ?? 'Entity';
     toast.add({
       severity: 'success',
@@ -707,20 +704,6 @@ watch(
           </p>
         </div>
       </template>
-
-      <div
-        v-if="selectedTypeId"
-        class="flex items-start gap-3 rounded-lg border border-line bg-surface/40 px-3 py-2.5"
-      >
-        <ToggleSwitch
-          v-model="orchestrateViaGraph"
-          input-id="orch-graph"
-          class="mt-0.5"
-        />
-        <label for="orch-graph" class="text-xs text-ink-600 leading-snug cursor-pointer">
-          Submit through Graph orchestration (RabbitMQ → Core). Optional; use when your environment routes creates through the graph service.
-        </label>
-      </div>
 
       <template v-for="prop in properties" :key="prop.propertyId">
         <div class="flex flex-col gap-1.5">

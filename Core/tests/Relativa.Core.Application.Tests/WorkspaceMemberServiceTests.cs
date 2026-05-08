@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Moq;
 using Relativa.Core.Application.DTOs.Member;
-using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -16,6 +15,7 @@ public sealed class WorkspaceMemberServiceTests
     private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IWorkspaceRepository> _workspaceRepo = new();
+    private readonly WorkspaceAccessEvaluator _workspaceAccessEvaluator;
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly WorkspaceMemberService _sut;
 
@@ -29,11 +29,18 @@ public sealed class WorkspaceMemberServiceTests
             .Setup(r => r.GetAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserRoleOrganization?)null);
 
+        _workspaceAccessEvaluator = new WorkspaceAccessEvaluator(
+            _memberRepo.Object,
+            _orgMemberRepo.Object,
+            _workspaceRepo.Object,
+            _roleRepo.Object);
+
         _sut = new WorkspaceMemberService(
             _memberRepo.Object,
             _roleRepo.Object,
             _orgMemberRepo.Object,
             _workspaceRepo.Object,
+            _workspaceAccessEvaluator,
             _auditOutboxWriter.Object);
     }
 

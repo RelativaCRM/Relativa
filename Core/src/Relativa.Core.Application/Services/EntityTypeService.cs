@@ -25,6 +25,16 @@ public sealed class EntityTypeService(IEntityTypeRepository entityTypeRepository
                     rt.IsRequired,
                     rt.RelationshipCardinality.ToDatabaseValue()))
                 .ToList(),
+            et.TargetRelationshipTypes
+                .OrderBy(rt => rt.Id)
+                .Select(rt => new IncomingRelationshipDto(
+                    rt.Id,
+                    rt.Name,
+                    rt.SourceEntityTypeId,
+                    rt.SourceEntityType.Name,
+                    rt.IsRequired,
+                    rt.RelationshipCardinality.ToDatabaseValue()))
+                .ToList(),
             et.EntityTypeProperties
                 .OrderBy(etp => etp.PropertyId)
                 .Select(etp => new EntityTypePropertyDto(

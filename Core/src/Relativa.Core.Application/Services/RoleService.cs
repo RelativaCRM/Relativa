@@ -10,13 +10,13 @@ namespace Relativa.Core.Application.Services;
 public sealed class RoleService(
     IWorkspaceRoleRepository roleRepository,
     IPermissionRepository permissionRepository,
-    IUserRoleWorkspaceRepository memberRepository,
+    IWorkspaceAccessEvaluator workspaceAccess,
     IValidator<CreateRoleRequest> createValidator,
     IOutboxWriter? auditOutboxWriter = null) : IRoleService
 {
     public async Task<List<RoleDto>> GetByWorkspaceAsync(int workspaceId, int userId, CancellationToken ct = default)
     {
-        await RequireMembership(userId, workspaceId, ct);
+        await workspaceAccess.EnsureCanAccessWorkspaceAsync(userId, workspaceId, ct);
 
         var roles = await roleRepository.GetByWorkspaceIdAsync(workspaceId, ct);
         return roles
@@ -32,7 +32,8 @@ public sealed class RoleService(
     public async Task<RoleDto> CreateAsync(int workspaceId, int userId, CreateRoleRequest request, CancellationToken ct = default)
     {
         await createValidator.ValidateAndThrowAsync(request, ct);
-        await RequirePermission(userId, workspaceId, "manage_ws_roles", ct);
+        if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
+            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var permissions = await permissionRepository.GetByIdsAsync(request.PermissionIds, ct);
         if (permissions.Count != request.PermissionIds.Count)
@@ -85,7 +86,8 @@ public sealed class RoleService(
 
     public async Task UpdateAsync(int workspaceId, int roleId, int userId, UpdateRoleRequest request, CancellationToken ct = default)
     {
-        await RequirePermission(userId, workspaceId, "manage_ws_roles", ct);
+        if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
+            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var role = await roleRepository.GetByIdAsync(roleId, ct)
             ?? throw new KeyNotFoundException("Role not found.");
@@ -139,7 +141,8 @@ public sealed class RoleService(
 
     public async Task ArchiveAsync(int workspaceId, int roleId, int userId, CancellationToken ct = default)
     {
-        await RequirePermission(userId, workspaceId, "manage_ws_roles", ct);
+        if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
+            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var role = await roleRepository.GetByIdAsync(roleId, ct)
             ?? throw new KeyNotFoundException("Role not found.");
@@ -181,20 +184,4 @@ public sealed class RoleService(
             .ToList();
     }
 
-    private async Task RequireMembership(int userId, int workspaceId, CancellationToken ct)
-    {
-        _ = await memberRepository.GetAsync(userId, workspaceId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this workspace.");
-    }
-
-    private async Task RequirePermission(int userId, int workspaceId, string permission, CancellationToken ct)
-    {
-        var membership = await memberRepository.GetAsync(userId, workspaceId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this workspace.");
-
-        var hasPermission = membership.Role?.RolePermissions
-            .Any(rp => rp.Permission?.Name == permission) ?? false;
-        if (!hasPermission)
-            throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this workspace.");
-    }
 }

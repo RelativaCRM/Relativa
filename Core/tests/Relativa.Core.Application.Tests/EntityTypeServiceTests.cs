@@ -173,12 +173,14 @@ public sealed class EntityTypeServiceTests
             Id = 2,
             Name = "deal_client",
             SourceEntityTypeId = dealType.Id,
+            SourceEntityType = dealType,
             TargetEntityTypeId = clientType.Id,
             TargetEntityType = clientType,
             IsRequired = true
         };
         dealType.SourceRelationshipTypes.Add(relLater);
         dealType.SourceRelationshipTypes.Add(relEarlier);
+        clientType.TargetRelationshipTypes.Add(relEarlier);
 
         var entityTypes = new List<EntityType> { clientType, dealType };
         _repo.Setup(r => r.GetAllWithPropertiesAsync(It.IsAny<CancellationToken>()))
@@ -195,6 +197,14 @@ public sealed class EntityTypeServiceTests
         dealDto.OutgoingRelationships[0].IsRequired.Should().BeTrue();
         dealDto.OutgoingRelationships[1].RelationshipTypeId.Should().Be(5);
         dealDto.OutgoingRelationships[1].IsRequired.Should().BeFalse();
+
+        var clientDto = result.Single(t => t.Name == "client");
+        clientDto.IncomingRelationships.Should().HaveCount(1);
+        clientDto.IncomingRelationships[0].RelationshipTypeId.Should().Be(2);
+        clientDto.IncomingRelationships[0].Name.Should().Be("deal_client");
+        clientDto.IncomingRelationships[0].SourceEntityTypeId.Should().Be(2);
+        clientDto.IncomingRelationships[0].SourceEntityTypeName.Should().Be("deal");
+        clientDto.IncomingRelationships[0].IsRequired.Should().BeTrue();
     }
 
     [Fact]

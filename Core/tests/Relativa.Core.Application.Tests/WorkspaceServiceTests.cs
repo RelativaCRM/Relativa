@@ -4,7 +4,6 @@ using FluentValidation.Results;
 using Moq;
 using Relativa.Core.Application.DTOs.Workspace;
 using Relativa.Core.Application.Exceptions;
-using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -19,6 +18,7 @@ public sealed class WorkspaceServiceTests
     private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
     private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
+    private readonly WorkspaceAccessEvaluator _workspaceAccessEvaluator;
     private readonly Mock<IValidator<CreateWorkspaceRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateWorkspaceRequest>> _updateValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
@@ -26,11 +26,18 @@ public sealed class WorkspaceServiceTests
 
     public WorkspaceServiceTests()
     {
+        _workspaceAccessEvaluator = new WorkspaceAccessEvaluator(
+            _memberRepo.Object,
+            _orgMemberRepo.Object,
+            _workspaceRepo.Object,
+            _roleRepo.Object);
+
         _sut = new WorkspaceService(
             _workspaceRepo.Object,
             _memberRepo.Object,
             _roleRepo.Object,
             _orgMemberRepo.Object,
+            _workspaceAccessEvaluator,
             _createValidator.Object,
             _updateValidator.Object,
             _auditOutboxWriter.Object);
@@ -243,7 +250,8 @@ public sealed class WorkspaceServiceTests
     {
         var sut = new WorkspaceService(
             _workspaceRepo.Object, _memberRepo.Object, _roleRepo.Object,
-            _orgMemberRepo.Object, _createValidator.Object, _updateValidator.Object, null);
+            _orgMemberRepo.Object, _workspaceAccessEvaluator,
+            _createValidator.Object, _updateValidator.Object, null);
 
         SetupValidCreate();
         _orgMemberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberWithPermission(1, 1, "create_workspaces"));
@@ -388,8 +396,30 @@ public sealed class WorkspaceServiceTests
         var act = () => _sut.ArchiveAsync(3, 5);
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>()
-            .WithMessage("Only workspace admins can archive a workspace.");
+            .WithMessage("Only workspace admins or organization owners can archive a workspace.");
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ArchiveAsync_OrganizationOwner_NotWorkspaceMember_ArchivesWorkspace()
+    {
+        var workspace = new Workspace { Id = 81, OrganizationId = 501, Name = "Owner Bypass", IsArchived = false };
+
+        _memberRepo.Setup(r => r.GetAsync(600, 81, It.IsAny<CancellationToken>())).ReturnsAsync((UserRoleWorkspace?)null);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(81, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(600, 501, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleOrganization
+            {
+                UserId = 600,
+                OrganizationId = 501,
+                Role = new OrganizationRole { Name = WorkspaceAccessEvaluator.OrgOwnerRoleName }
+            });
+
+        await _sut.ArchiveAsync(81, 600);
+
+        workspace.IsArchived.Should().BeTrue();
+        _workspaceRepo.Verify(r => r.UpdateAsync(workspace, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
