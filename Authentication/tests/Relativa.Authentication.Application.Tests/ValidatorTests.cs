@@ -173,3 +173,66 @@ public sealed class UpdateMyProfileRequestValidatorTests
         result.ShouldHaveValidationErrorFor(x => x.LastName);
     }
 }
+
+public sealed class ForgotPasswordRequestValidatorTests
+{
+    private readonly ForgotPasswordRequestValidator _sut = new();
+
+    [Fact]
+    public void Valid_ReturnsNoErrors() =>
+        _sut.TestValidate(new ForgotPasswordRequest("user@example.com"))
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyOrWhitespaceEmail_FailsValidation(string email) =>
+        _sut.TestValidate(new ForgotPasswordRequest(email))
+            .ShouldHaveValidationErrorFor(x => x.Email);
+
+    [Theory]
+    [InlineData("not-an-email")]
+    [InlineData("missing@")]
+    [InlineData("@nodomain.com")]
+    [InlineData("plainstring")]
+    public void InvalidEmailFormat_FailsValidation(string email) =>
+        _sut.TestValidate(new ForgotPasswordRequest(email))
+            .ShouldHaveValidationErrorFor(x => x.Email);
+}
+
+public sealed class ResetPasswordRequestValidatorTests
+{
+    private readonly ResetPasswordRequestValidator _sut = new();
+
+    private static ResetPasswordRequest Valid() =>
+        new("valid-token", "Secure123");
+
+    [Fact]
+    public void Valid_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid())
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyOrWhitespaceToken_FailsValidation(string token) =>
+        _sut.TestValidate(Valid() with { Token = token })
+            .ShouldHaveValidationErrorFor(x => x.Token);
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyOrWhitespacePassword_FailsValidation(string password) =>
+        _sut.TestValidate(Valid() with { NewPassword = password })
+            .ShouldHaveValidationErrorFor(x => x.NewPassword);
+
+    [Fact]
+    public void PasswordTooShort_FailsValidation() =>
+        _sut.TestValidate(Valid() with { NewPassword = "short1" })
+            .ShouldHaveValidationErrorFor(x => x.NewPassword);
+
+    [Fact]
+    public void PasswordAtMinLength_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { NewPassword = "Exactly8" })
+            .ShouldNotHaveAnyValidationErrors();
+}

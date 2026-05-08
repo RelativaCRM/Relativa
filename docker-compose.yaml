@@ -51,6 +51,15 @@ services:
     networks:
       - relativa_net
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: relativa-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - relativa_net
+
   auth:
     build:
       context: .
@@ -69,6 +78,14 @@ services:
       RabbitMqAudit__Password: "${RABBITMQ_PASS:-relativa}"
       RabbitMqAudit__Exchange: audit.events
       RabbitMqAudit__DomainExchange: relativa.domain
+      Smtp__Host: "${SMTP_HOST:-mailhog}"
+      Smtp__Port: "${SMTP_PORT:-1025}"
+      Smtp__Username: "${SMTP_USERNAME:-}"
+      Smtp__Password: "${SMTP_PASSWORD:-}"
+      Smtp__FromAddress: "${SMTP_FROM_ADDRESS:-noreply@relativa.com}"
+      Smtp__FromName: "${SMTP_FROM_NAME:-Relativa}"
+      Smtp__UseSsl: "${SMTP_USE_SSL:-false}"
+      App__FrontendBaseUrl: "${APP_FRONTEND_BASE_URL:-http://localhost:3000}"
     ports:
       - "8081:8081"
     depends_on:

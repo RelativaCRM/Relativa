@@ -80,6 +80,40 @@ public static class AuthEndpoints
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapPost("/forgot-password", async (ForgotPasswordRequest request, IAuthService authService, CancellationToken ct) =>
+        {
+            await authService.ForgotPasswordAsync(request.Email, ct);
+            return Results.NoContent();
+        })
+        .WithName("ForgotPassword")
+        .WithSummary("Send a password reset email if the address is registered")
+        .AllowAnonymous()
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesValidationProblem();
+
+        group.MapGet("/reset-password/validate", async (string token, IAuthService authService, CancellationToken ct) =>
+        {
+            await authService.ValidateResetTokenAsync(token, ct);
+            return Results.NoContent();
+        })
+        .WithName("ValidateResetToken")
+        .WithSummary("Check whether a reset token is still valid without consuming it")
+        .AllowAnonymous()
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status400BadRequest);
+
+        group.MapPost("/reset-password", async (ResetPasswordRequest request, IAuthService authService, CancellationToken ct) =>
+        {
+            await authService.ResetPasswordAsync(request.Token, request.NewPassword, ct);
+            return Results.NoContent();
+        })
+        .WithName("ResetPassword")
+        .WithSummary("Reset a user's password using a valid reset token")
+        .AllowAnonymous()
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesValidationProblem()
+        .Produces(StatusCodes.Status400BadRequest);
+
         return group;
     }
 }

@@ -1,8 +1,10 @@
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Relativa.Authentication.Application.DTOs;
+using Relativa.Authentication.Application.Exceptions;
 using Relativa.Authentication.Application.Interfaces;
 using Relativa.Authentication.Application.Services;
 using Relativa.Authentication.Domain.Interfaces;
@@ -17,8 +19,12 @@ public sealed class AuthServiceTests
     private readonly Mock<IUserProvisioningService> _userProvisioning = new();
     private readonly Mock<ITokenService> _tokenService = new();
     private readonly Mock<IPasswordHasher> _passwordHasher = new();
+    private readonly Mock<IEmailSender> _emailSender = new();
+    private readonly Mock<IConfiguration> _configuration = new();
     private readonly Mock<IValidator<LoginRequestDto>> _loginValidator = new();
     private readonly Mock<IValidator<UpdateMyProfileRequest>> _updateProfileValidator = new();
+    private readonly Mock<IValidator<ForgotPasswordRequest>> _forgotPasswordValidator = new();
+    private readonly Mock<IValidator<ResetPasswordRequest>> _resetPasswordValidator = new();
     private readonly AuthService _sut;
 
     public AuthServiceTests()
@@ -28,14 +34,32 @@ public sealed class AuthServiceTests
             _userProvisioning.Object,
             _tokenService.Object,
             _passwordHasher.Object,
+            _emailSender.Object,
+            _configuration.Object,
             _loginValidator.Object,
-            _updateProfileValidator.Object);
+            _updateProfileValidator.Object,
+            _forgotPasswordValidator.Object,
+            _resetPasswordValidator.Object);
     }
 
     private void SetupValidLogin() =>
         _loginValidator
             .Setup(v => v.ValidateAsync(
                 It.IsAny<ValidationContext<LoginRequestDto>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+
+    private void SetupValidForgotPassword() =>
+        _forgotPasswordValidator
+            .Setup(v => v.ValidateAsync(
+                It.IsAny<ValidationContext<ForgotPasswordRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+
+    private void SetupValidResetPassword() =>
+        _resetPasswordValidator
+            .Setup(v => v.ValidateAsync(
+                It.IsAny<ValidationContext<ResetPasswordRequest>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
 
@@ -201,5 +225,170 @@ public sealed class AuthServiceTests
 
         await act.Should().ThrowAsync<KeyNotFoundException>()
             .WithMessage("User not found.");
+    }
+
+    [Fact]
+    public async Task ForgotPasswordAsync_UnknownEmail_SilentlyReturnsWithoutSendingEmail()
+    {
+        SetupValidForgotPassword();
+        _userRepo
+            .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        await _sut.ForgotPasswordAsync("unknown@example.com");
+
+        _emailSender.Verify(
+            e => e.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _userRepo.Verify(r => r.UpdateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ForgotPasswordAsync_KnownEmail_SetsResetTokenAndSendsEmail()
+    {
+        var user = new User { Id = 1, Email = "user@example.com", FirstName = "Taras", Password = "hash" };
+        SetupValidForgotPassword();
+        _userRepo
+            .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _userRepo
+            .Setup(r => r.UpdateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _configuration
+            .SetupGet(c => c["App:FrontendBaseUrl"])
+            .Returns("http://localhost:3000");
+        _emailSender
+            .Setup(e => e.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await _sut.ForgotPasswordAsync("user@example.com");
+
+        _userRepo.Verify(r => r.UpdateAsync(
+            It.Is<User>(u => u.PasswordResetToken != null && u.PasswordResetTokenExpiresAt != null),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _emailSender.Verify(e => e.SendAsync(
+            user.Email, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ForgotPasswordAsync_InvalidEmail_ThrowsValidationException()
+    {
+        _forgotPasswordValidator
+            .Setup(v => v.ValidateAsync(
+                It.IsAny<ValidationContext<ForgotPasswordRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ValidationException(new[]
+            {
+                new ValidationFailure("Email", "A valid email address is required.")
+            }));
+
+        var act = () => _sut.ForgotPasswordAsync("not-an-email");
+
+        await act.Should().ThrowAsync<ValidationException>();
+        _userRepo.Verify(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ForgotPasswordAsync_MissingFrontendBaseUrl_ThrowsConfigurationException()
+    {
+        var user = new User { Id = 1, Email = "user@example.com", FirstName = "Taras", Password = "hash" };
+        SetupValidForgotPassword();
+        _userRepo
+            .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _userRepo
+            .Setup(r => r.UpdateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _configuration
+            .SetupGet(c => c["App:FrontendBaseUrl"])
+            .Returns((string?)null);
+
+        var act = () => _sut.ForgotPasswordAsync("user@example.com");
+
+        await act.Should().ThrowAsync<ConfigurationException>();
+    }
+
+    [Fact]
+    public async Task ValidateResetTokenAsync_ValidToken_DoesNotThrow()
+    {
+        var user = new User { Id = 1, Email = "user@example.com", Password = "hash" };
+        _userRepo
+            .Setup(r => r.GetByResetTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var act = () => _sut.ValidateResetTokenAsync("valid-token");
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task ValidateResetTokenAsync_InvalidToken_ThrowsArgumentException()
+    {
+        _userRepo
+            .Setup(r => r.GetByResetTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        var act = () => _sut.ValidateResetTokenAsync("expired-or-invalid-token");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("Invalid or expired reset token.");
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ValidToken_UpdatesPasswordAndClearsToken()
+    {
+        var user = new User { Id = 1, Email = "user@example.com", Password = "old-hash", PasswordResetToken = "some-hash" };
+        SetupValidResetPassword();
+        _userRepo
+            .Setup(r => r.GetByResetTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _passwordHasher
+            .Setup(h => h.Hash(It.IsAny<string>()))
+            .Returns("new-hash");
+        _userRepo
+            .Setup(r => r.UpdateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await _sut.ResetPasswordAsync("valid-token", "NewPass123!");
+
+        _userRepo.Verify(r => r.UpdateAsync(
+            It.Is<User>(u =>
+                u.Password == "new-hash" &&
+                u.PasswordResetToken == null &&
+                u.PasswordResetTokenExpiresAt == null),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_InvalidToken_ThrowsArgumentException()
+    {
+        SetupValidResetPassword();
+        _userRepo
+            .Setup(r => r.GetByResetTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        var act = () => _sut.ResetPasswordAsync("bad-token", "NewPass123!");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("Invalid or expired reset token.");
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_InvalidRequest_ThrowsValidationException()
+    {
+        _resetPasswordValidator
+            .Setup(v => v.ValidateAsync(
+                It.IsAny<ValidationContext<ResetPasswordRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ValidationException(new[]
+            {
+                new ValidationFailure("NewPassword", "Password must be at least 8 characters.")
+            }));
+
+        var act = () => _sut.ResetPasswordAsync("token", "short");
+
+        await act.Should().ThrowAsync<ValidationException>();
+        _userRepo.Verify(r => r.GetByResetTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
