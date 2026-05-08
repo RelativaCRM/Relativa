@@ -273,6 +273,12 @@ services:
     container_name: relativa-migration
     environment:
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASS}"
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      MIGRATION_TRUNCATE_DB: "${MIGRATION_TRUNCATE_DB:-false}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -289,3 +295,6 @@ networks:
 
 volumes:
   postgres_data:
+
+
+#docker compose run --build --rm migration --truncate
