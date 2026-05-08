@@ -9,6 +9,7 @@ import Select from 'primevue/select';
 import DatePicker from 'primevue/datepicker';
 import ToggleSwitch from 'primevue/toggleswitch';
 import Message from 'primevue/message';
+import Dialog from 'primevue/dialog';
 import {
   normalizeError,
   firstFieldError,
@@ -21,6 +22,7 @@ import {
   type EntityTypeDto,
   type EntityTypePropertyDto,
   type EntityListItemDto,
+  type OutgoingRelationshipDto,
   entityApi,
 } from '@/api/entities';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
@@ -102,6 +104,224 @@ const requiredOutgoing = computed(
 const linkPick = reactive<Record<number, number | null>>({});
 const candidatesByRel = ref<Record<number, EntityListItemDto[]>>({});
 const orchestrateViaGraph = ref(false);
+
+/** Required link: open dialog to create target row (e.g. Client) and select it. */
+const nestedDialogOpen = ref(false);
+const nestedForRel = ref<OutgoingRelationshipDto | null>(null);
+const nestedValues = ref<Record<number, FieldValue>>({});
+const nestedLinkPick = reactive<Record<number, number | null>>({});
+const nestedCandidatesByRel = ref<Record<number, EntityListItemDto[]>>({});
+const nestedSubmitting = ref(false);
+const nestedError = ref<string | null>(null);
+const nestedFieldErrors = ref<FieldErrors>({});
+const nestedSubmitAttempted = ref(false);
+
+const nestedTargetType = computed(() => {
+  const rel = nestedForRel.value;
+  if (!rel) return null;
+  return types.value.find((t) => t.id === rel.targetEntityTypeId) ?? null;
+});
+
+const nestedTargetProperties = computed(
+  () => nestedTargetType.value?.properties ?? [],
+);
+
+const nestedRequiredOutgoing = computed(
+  () =>
+    nestedTargetType.value?.outgoingRelationships.filter((r) => r.isRequired) ??
+    [],
+);
+
+function targetTypeForRequiredLink(rel: OutgoingRelationshipDto): EntityTypeDto | null {
+  return types.value.find((t) => t.id === rel.targetEntityTypeId) ?? null;
+}
+
+function canCreateLinkedTarget(rel: OutgoingRelationshipDto): boolean {
+  const t = targetTypeForRequiredLink(rel);
+  return !!t && !isEntityTypeUiLocked(t);
+}
+
+function nestedLinkSelectOptions(relationshipTypeId: number) {
+  return (nestedCandidatesByRel.value[relationshipTypeId] ?? []).map((e) => ({
+    label: entityOptionLabel(e),
+    value: e.id,
+  }));
+}
+
+async function openNestedCreate(rel: OutgoingRelationshipDto) {
+  const target = targetTypeForRequiredLink(rel);
+  if (!target || isEntityTypeUiLocked(target)) return;
+
+  nestedForRel.value = rel;
+  nestedDialogOpen.value = true;
+  nestedError.value = null;
+  nestedFieldErrors.value = {};
+  nestedSubmitAttempted.value = false;
+
+  const nv: Record<number, FieldValue> = {};
+  for (const p of target.properties) {
+    nv[p.propertyId] = p.dataType === 'Bool' ? false : null;
+  }
+  nestedValues.value = nv;
+
+  for (const k of Object.keys(nestedLinkPick)) {
+    delete nestedLinkPick[Number(k)];
+  }
+  nestedCandidatesByRel.value = {};
+
+  const wid = workspaceId.value;
+  if (!wid) return;
+
+  const innerReq = target.outgoingRelationships.filter((r) => r.isRequired);
+  for (const ir of innerReq) {
+    nestedLinkPick[ir.relationshipTypeId] = null;
+    try {
+      const items = await entityApi.list(wid, {
+        entityTypeId: ir.targetEntityTypeId,
+        take: 400,
+      });
+      nestedCandidatesByRel.value = {
+        ...nestedCandidatesByRel.value,
+        [ir.relationshipTypeId]: items,
+      };
+    } catch {
+      nestedCandidatesByRel.value = {
+        ...nestedCandidatesByRel.value,
+        [ir.relationshipTypeId]: [],
+      };
+    }
+  }
+}
+
+function nestedPropertyFieldError(prop: EntityTypePropertyDto): string | null {
+  if (nestedSubmitAttempted.value && isPropertyEmptyFor(prop, nestedValues.value)) {
+    return 'This field is required.';
+  }
+  return (
+    firstFieldError(nestedFieldErrors.value, prop.name) ??
+    firstFieldError(nestedFieldErrors.value, `properties[${prop.propertyId}]`) ??
+    firstFieldError(nestedFieldErrors.value, `properties.${prop.propertyId}`)
+  );
+}
+
+function isPropertyEmptyFor(
+  prop: EntityTypePropertyDto,
+  vals: Record<number, FieldValue>,
+): boolean {
+  if (prop.dataType === 'Bool') return false;
+  return isEmpty(vals[prop.propertyId] ?? null);
+}
+
+function clearNestedPropertyFieldError(prop: EntityTypePropertyDto) {
+  if (
+    !nestedFieldErrors.value[prop.name] &&
+    !nestedFieldErrors.value[`properties[${prop.propertyId}]`] &&
+    !nestedFieldErrors.value[`properties.${prop.propertyId}`]
+  ) {
+    return;
+  }
+  const next = { ...nestedFieldErrors.value };
+  delete next[prop.name];
+  delete next[`properties[${prop.propertyId}]`];
+  delete next[`properties.${prop.propertyId}`];
+  nestedFieldErrors.value = next;
+}
+
+function nestedFormValid(type: EntityTypeDto): boolean {
+  if (!type.properties.every((p) => !isPropertyEmptyFor(p, nestedValues.value))) {
+    return false;
+  }
+  for (const ir of type.outgoingRelationships.filter((r) => r.isRequired)) {
+    if (nestedLinkPick[ir.relationshipTypeId] == null) return false;
+  }
+  return true;
+}
+
+async function submitNestedCreate() {
+  const rel = nestedForRel.value;
+  const target = nestedTargetType.value;
+  const wid = workspaceId.value;
+  nestedSubmitAttempted.value = true;
+  if (!rel || !target || !wid) return;
+
+  if (!nestedFormValid(target)) {
+    nestedError.value =
+      target.outgoingRelationships.some(
+        (r) => r.isRequired && nestedLinkPick[r.relationshipTypeId] == null,
+      )
+        ? 'Select all required links for this record.'
+        : 'Fill in all required fields.';
+    return;
+  }
+
+  nestedSubmitting.value = true;
+  nestedError.value = null;
+  nestedFieldErrors.value = {};
+  try {
+    const innerReq = target.outgoingRelationships.filter((r) => r.isRequired);
+    const base = {
+      entityTypeId: target.id,
+      properties: target.properties.map((p) => ({
+        propertyId: p.propertyId,
+        value: serializeValue(p, nestedValues.value[p.propertyId] ?? null),
+      })),
+    };
+    const body =
+      innerReq.length > 0
+        ? {
+            ...base,
+            links: innerReq.map((ir) => ({
+              relationshipTypeId: ir.relationshipTypeId,
+              targetEntityId: nestedLinkPick[ir.relationshipTypeId]!,
+            })),
+          }
+        : base;
+
+    const detail = await entityApi.create(wid, body);
+
+    const outerRelId = rel.relationshipTypeId;
+    const asList: EntityListItemDto = {
+      id: detail.id,
+      entityTypeId: detail.entityTypeId,
+      entityTypeName: detail.entityTypeName,
+      propertyValues: detail.propertyValues,
+    };
+    const existing = candidatesByRel.value[outerRelId] ?? [];
+    candidatesByRel.value = {
+      ...candidatesByRel.value,
+      [outerRelId]: [asList, ...existing],
+    };
+    linkPick[outerRelId] = detail.id;
+
+    toast.add({
+      severity: 'success',
+      summary: `${formatTypeName(target.name)} created`,
+      detail: `Linked to this ${selectedType.value ? formatTypeName(selectedType.value.name) : 'record'}.`,
+      life: 3500,
+    });
+    nestedDialogOpen.value = false;
+  } catch (err) {
+    const normalized = normalizeError(err, 'Failed to create linked record.');
+    nestedFieldErrors.value = normalized.fieldErrors;
+    nestedError.value = normalized.message;
+  } finally {
+    nestedSubmitting.value = false;
+  }
+}
+
+function cancelNestedCreate() {
+  nestedDialogOpen.value = false;
+}
+
+watch(nestedDialogOpen, (open) => {
+  if (!open) {
+    nestedForRel.value = null;
+    nestedError.value = null;
+    nestedFieldErrors.value = {};
+    nestedSubmitAttempted.value = false;
+    nestedSubmitting.value = false;
+  }
+});
 
 function entityOptionLabel(e: EntityListItemDto): string {
   const bits = e.propertyValues
@@ -456,11 +676,34 @@ watch(
             class="w-full"
             filter
           />
+          <Button
+            v-if="canCreateLinkedTarget(rel)"
+            type="button"
+            icon="pi pi-plus"
+            :label="`Create new ${formatTypeName(rel.targetEntityTypeName)}`"
+            severity="secondary"
+            outlined
+            size="small"
+            class="w-fit"
+            @click="openNestedCreate(rel)"
+          />
           <p
-            v-if="(candidatesByRel[rel.relationshipTypeId] ?? []).length === 0"
+            v-if="
+              !canCreateLinkedTarget(rel) &&
+              (candidatesByRel[rel.relationshipTypeId] ?? []).length === 0
+            "
             class="text-xs text-ink-500"
           >
-            No matching records in this workspace. Create the linked record first, or widen your filters from the list view.
+            No matching records in this workspace. This linked type cannot be created from this screen — contact an administrator.
+          </p>
+          <p
+            v-else-if="
+              canCreateLinkedTarget(rel) &&
+              (candidatesByRel[rel.relationshipTypeId] ?? []).length === 0
+            "
+            class="text-xs text-ink-500"
+          >
+            No records yet — use “Create new {{ formatTypeName(rel.targetEntityTypeName) }}” to add one; it will be selected for this deal automatically.
           </p>
         </div>
       </template>
@@ -569,5 +812,138 @@ watch(
         />
       </div>
     </form>
+
+    <Dialog
+      v-model:visible="nestedDialogOpen"
+      :header="
+        nestedTargetType
+          ? `New ${formatTypeName(nestedTargetType.name)}`
+          : 'New record'
+      "
+      modal
+      :draggable="false"
+      class="nested-create-dialog max-w-[min(32rem,calc(100vw-2rem))]"
+      @keydown.esc="cancelNestedCreate"
+    >
+      <div v-if="nestedTargetType" class="flex flex-col gap-4">
+        <p class="text-xs text-ink-500 leading-snug -mt-1">
+          This saves to your workspace and is linked when you finish the parent record below.
+        </p>
+
+        <template v-for="ir in nestedRequiredOutgoing" :key="ir.relationshipTypeId">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-ink-600">
+              {{ humanize(ir.name) }}
+              <span class="text-danger">*</span>
+              <span class="text-ink-400 font-normal normal-case">
+                → {{ formatTypeName(ir.targetEntityTypeName) }}</span>
+            </label>
+            <Select
+              v-model="nestedLinkPick[ir.relationshipTypeId]"
+              :options="nestedLinkSelectOptions(ir.relationshipTypeId)"
+              option-label="label"
+              option-value="value"
+              :placeholder="`Choose ${formatTypeName(ir.targetEntityTypeName)}`"
+              class="w-full"
+              filter
+            />
+          </div>
+        </template>
+
+        <template v-for="prop in nestedTargetProperties" :key="prop.propertyId">
+          <div class="flex flex-col gap-1.5">
+            <label
+              :for="`np-${prop.propertyId}`"
+              class="text-xs font-medium text-ink-600"
+            >
+              {{ humanize(prop.name) }}
+              <span v-if="isPropertyRequired(prop)" class="text-danger">*</span>
+            </label>
+
+            <InputText
+              v-if="prop.dataType === 'String'"
+              :id="`np-${prop.propertyId}`"
+              v-model="nestedValues[prop.propertyId] as string"
+              class="!h-10 w-full"
+              :invalid="!!nestedPropertyFieldError(prop)"
+              @update:model-value="clearNestedPropertyFieldError(prop)"
+            />
+
+            <InputNumber
+              v-else-if="prop.dataType === 'Int'"
+              :input-id="`np-${prop.propertyId}`"
+              v-model="nestedValues[prop.propertyId] as number"
+              class="w-full"
+              :min="0"
+              :max-fraction-digits="0"
+              :invalid="!!nestedPropertyFieldError(prop)"
+              @update:model-value="clearNestedPropertyFieldError(prop)"
+            />
+
+            <InputNumber
+              v-else-if="prop.dataType === 'Decimal'"
+              :input-id="`np-${prop.propertyId}`"
+              v-model="nestedValues[prop.propertyId] as number"
+              class="w-full"
+              :min="0"
+              :min-fraction-digits="0"
+              :max-fraction-digits="2"
+              :invalid="!!nestedPropertyFieldError(prop)"
+              @update:model-value="clearNestedPropertyFieldError(prop)"
+            />
+
+            <DatePicker
+              v-else-if="prop.dataType === 'Date'"
+              :input-id="`np-${prop.propertyId}`"
+              v-model="nestedValues[prop.propertyId] as Date | null"
+              date-format="yy-mm-dd"
+              show-icon
+              class="w-full"
+              :invalid="!!nestedPropertyFieldError(prop)"
+              @update:model-value="clearNestedPropertyFieldError(prop)"
+            />
+
+            <ToggleSwitch
+              v-else-if="prop.dataType === 'Bool'"
+              :input-id="`np-${prop.propertyId}`"
+              v-model="nestedValues[prop.propertyId] as boolean"
+            />
+
+            <small v-if="nestedPropertyFieldError(prop)" class="text-xs text-danger">
+              <i class="pi pi-exclamation-circle mr-1" />{{
+                nestedPropertyFieldError(prop)
+              }}
+            </small>
+          </div>
+        </template>
+
+        <Message
+          v-if="nestedError"
+          severity="error"
+          :closable="false"
+          class="!my-0"
+        >
+          {{ nestedError }}
+        </Message>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <Button
+            label="Cancel"
+            severity="secondary"
+            text
+            type="button"
+            @click="cancelNestedCreate"
+          />
+          <Button
+            label="Create & link"
+            type="button"
+            icon="pi pi-check"
+            :loading="nestedSubmitting"
+            :disabled="nestedSubmitting"
+            @click="submitNestedCreate"
+          />
+        </div>
+      </div>
+    </Dialog>
   </section>
 </template>
