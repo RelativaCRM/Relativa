@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from 'vue';
-import { useRouter, RouterLink } from 'vue-router';
+import { useRouter, useRoute, RouterLink } from 'vue-router';
 import InputText from 'primevue/inputtext';
 import Password from 'primevue/password';
 import Button from 'primevue/button';
-import Checkbox from 'primevue/checkbox';
 import Message from 'primevue/message';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import { useAuthStore } from '@/stores/auth';
 import { normalizeError } from '@/api/errors';
 
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
+
+const resetSuccess = computed(() => route.query.reset === 'success');
 
 const form = reactive({
   email: '',
@@ -65,6 +67,10 @@ async function handleSubmit() {
       Welcome back
     </h1>
 
+    <Message v-if="resetSuccess" severity="success" :closable="false" class="mt-4 !mb-0">
+      Your password has been reset. You can now sign in.
+    </Message>
+
     <form class="mt-6 flex flex-col gap-5" novalidate @submit.prevent="handleSubmit">
       <div class="flex flex-col gap-1.5">
         <label for="email" class="text-xs font-medium text-ink-600">
@@ -101,14 +107,18 @@ async function handleSubmit() {
 
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <Checkbox v-model="form.rememberMe" input-id="remember" binary />
-          <label for="remember" class="text-[13px] font-medium text-ink-600">
+          <input
+            id="remember"
+            v-model="form.rememberMe"
+            type="checkbox"
+          />
+          <label for="remember" class="text-[13px] font-medium text-ink-600 cursor-pointer">
             Remember me
           </label>
         </div>
-        <a href="#" class="text-[13px] font-medium text-brand-600 hover:underline">
+        <RouterLink :to="{ name: 'forgot-password' }" class="text-[13px] font-medium text-brand-600 hover:underline">
           Forgot password?
-        </a>
+        </RouterLink>
       </div>
 
       <Message
@@ -124,6 +134,7 @@ async function handleSubmit() {
         type="submit"
         label="Sign in"
         :loading="submitting"
+        :disabled="!isFormValid"
         :class="[
           '!h-11 !rounded-none !font-semibold w-full transition-colors',
           isFormValid
@@ -144,3 +155,41 @@ async function handleSubmit() {
     </form>
   </AuthLayout>
 </template>
+
+<style scoped>
+input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1.5px solid #64748b;
+  background: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+input[type='checkbox']:checked {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: translate(-50%, -60%) rotate(45deg);
+}
+
+input[type='checkbox']:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+</style>
