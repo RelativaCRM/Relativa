@@ -16,6 +16,8 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
             ValidationException ve        => (StatusCodes.Status400BadRequest,  "Validation Failed",    BuildValidationDetail(ve)),
             ArgumentException ae          => (StatusCodes.Status400BadRequest,  "Bad Request",          ae.Message),
             KeyNotFoundException ke       => (StatusCodes.Status404NotFound,    "Not Found",            ke.Message),
+            UnauthorizedAccessException ue when string.Equals(ue.Message, "Access denied", StringComparison.Ordinal)
+                                         => (StatusCodes.Status403Forbidden,   "Forbidden",            ue.Message),
             UnauthorizedAccessException ue => (StatusCodes.Status401Unauthorized, "Unauthorized",       ue.Message),
             ForbiddenAccessException fe   => (StatusCodes.Status403Forbidden,     "Forbidden",          fe.Message),
             InvalidOperationException ioe => (StatusCodes.Status409Conflict,    "Conflict",             ioe.Message),

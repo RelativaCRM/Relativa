@@ -29,6 +29,8 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
 
     public async Task<List<Entity>> GetByWorkspaceAsync(
         int workspaceId,
+        int requesterUserId,
+        int requesterRolePriority,
         int? entityTypeId,
         string? searchQuery,
         int take,
@@ -37,7 +39,14 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
         take = Math.Clamp(take, 1, 500);
         var query = db.Entities
             .AsNoTracking()
-            .Where(e => !e.IsArchived && e.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId));
+            .Where(e => !e.IsArchived && e.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId))
+            .Where(e =>
+                e.CreatedByUserId == requesterUserId
+                || db.UserRoleWorkspaces.Any(urw =>
+                    urw.WorkspaceId == workspaceId
+                    && !urw.IsArchived
+                    && urw.UserId == e.CreatedByUserId
+                    && urw.Role.Priority > requesterRolePriority));
 
         if (entityTypeId is > 0)
             query = query.Where(e => e.EntityTypeId == entityTypeId.Value);
