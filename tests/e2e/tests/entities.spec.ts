@@ -78,7 +78,7 @@ test.describe('Entities Page', () => {
 
   test('New entity button navigates to create form', async ({ page }) => {
     await page.getByRole('button', { name: /new entity/i }).click();
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/entities/new`), { timeout: 10000 });
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/entities\\?action=create`), { timeout: 10000 });
   });
 });
 
