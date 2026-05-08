@@ -27,7 +27,35 @@ public sealed class WorkspaceRoleRepository(RelativaDbContext db) : IWorkspaceRo
     public async Task<WorkspaceRole?> GetSystemRoleByNameAsync(string name, CancellationToken ct = default)
     {
         return await db.WorkspaceRoles
+            .Include(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
             .FirstOrDefaultAsync(r => r.Name == name && r.WorkspaceId == null && !r.IsArchived, ct);
+    }
+
+    public async Task<WorkspaceRole?> GetSystemRoleWithPermissionsSupersetAsync(
+        IReadOnlyCollection<string> requiredPermissionNames,
+        CancellationToken ct = default)
+    {
+        if (requiredPermissionNames.Count == 0)
+            return null;
+
+        var required = requiredPermissionNames.ToHashSet(StringComparer.Ordinal);
+        var systemRoles = await db.WorkspaceRoles
+            .Include(r => r.RolePermissions)
+                .ThenInclude(rp => rp.Permission)
+            .Where(r => r.WorkspaceId == null && !r.IsArchived)
+            .OrderBy(r => r.Id)
+            .ToListAsync(ct);
+
+        return systemRoles.FirstOrDefault(role =>
+        {
+            var granted = role.RolePermissions
+                .Select(rp => rp.Permission?.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Cast<string>()
+                .ToHashSet(StringComparer.Ordinal);
+            return required.All(granted.Contains);
+        });
     }
 
     public async Task AddAsync(WorkspaceRole role, CancellationToken ct = default)

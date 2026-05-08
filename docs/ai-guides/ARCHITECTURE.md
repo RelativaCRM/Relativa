@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-08 (`organization_roles.priority`; org member removal / org user archive require strictly stronger role by priority; client org role selects sorted by `priority`.)
+> **Last verified:** 2026-05-08 (Graph→Core Rabbit RPC for entity create; `relationship_cardinality` on relationship types; split entity workspace permissions.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -59,7 +59,7 @@ The project uses a **ports-and-adapters (Clean Architecture)** pattern. Each ser
 | **Authentication** | Implemented | Implemented (AuthService, UserProvisioningService, DTOs, validators) | Implemented (interfaces only) | Implemented (AuthDbContext, repos, JWT, bcrypt) |
 | **Core** | Implemented (org, workspace, member, invitation, role, join-request, permission, org-user-admin endpoints) | Implemented (+ `OrganizationUserAdminService`; references Authentication.Application for shared user writes) | Implemented (repository interfaces, IWorkspaceContext) | Implemented (RelativaDbContext, repos, WorkspaceContext, AuthDbContext + Auth repos for provisioning) |
 | **Gateway** | Implemented | N/A (single project) | N/A | N/A |
-| **Graph** | Implemented (stub hub + RabbitMQ choreography consumer) | N/A (single project) | N/A | Uses Postgres + Persistence contracts for idempotent inbox |
+| **Graph** | Implemented (SignalR hub + workspace choreography consumer + **HTTP entity-graph create** RPC client) | N/A (single project) | N/A | Postgres idempotency inbox + Rabbit publish/reply for graph commands |
 | **Audit** | Implemented (stub) | N/A (single project) | N/A | N/A |
 
 Gateway, Graph, and Audit are single-project services with no layered split. When they grow, they should follow the same four-layer convention as Authentication.
@@ -137,7 +137,7 @@ Several tables use `is_archived` instead of hard deletes for domain records. For
 | `Property` | `property` | **EAV.** Named attribute definition with data type (`String/Int/Decimal/Bool/Date`). `organization_id` nullable: `null` = global, set = org-specific custom property. |
 | `EntityTypeProperty` | `entity_type_property` | **EAV schema layer.** Maps which properties belong to which entity type, with `is_required` flag. Composite PK `(entity_type_id, property_id)`. |
 | `EntityPropertyValue` | `entity_property_value` | **EAV data layer.** Stores a concrete attribute value for an entity. Composite PK `(entity_id, property_id)`. Five typed value columns: `value_string`, `value_int`, `value_decimal`, `value_bool`, `value_date`. Only one is populated per row. |
-| `EntityRelationshipType` | `entity_relationship_type` | **EAV schema layer.** Defines valid entity-type-to-entity-type link schemas (e.g. `deal_client`: deal → client, `deal_analysis`: deal → deal_analysis, `deal_contract`: deal → contract). |
+| `EntityRelationshipType` | `entity_relationship_type` | **EAV schema layer.** Directed link schema (source type → target type). Columns include `is_required` (outgoing obligation on **creates of the source type**) and `relationship_cardinality` (`one_to_one`, `one_to_many`, …) with optional partial unique indexes for one-to-one enforcement. |
 | `EntityRelationship` | `entity_relationship` | **EAV data layer.** A concrete directed link between two entity instances, typed by `EntityRelationshipType`. |
 | `EntityAuditLog` | `entity_audit_log` | Polymorphic audit log base class specialized for entities. Has `entity_id` and `changed_by` JSONB properties. |
 | `WorkspaceAuditLog` | `workspace_audit_log` | Polymorphic audit log base class specialized for workspaces. |

@@ -79,7 +79,8 @@ public sealed class OrgInvitationServiceTests
         var caller = OrgMemberWithPermission(1, 5, "invite_to_org");
         var memberRole = new OrganizationRole { Id = 2, Name = "org_member" };
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(caller);
-        _orgRoleRepo.Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>())).ReturnsAsync(memberRole);
+        _orgRoleRepo.Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OrganizationRole { Id = 1, Name = "org_owner", Priority = 0 }, memberRole]);
 
         OrganizationInvitation? captured = null;
         _invitationRepo
@@ -261,7 +262,8 @@ public sealed class OrgInvitationServiceTests
 
         _invitationRepo.Setup(r => r.GetByTokenAsync("tok", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
         _orgMemberRepo.Setup(r => r.GetAsync(5, 3, It.IsAny<CancellationToken>())).ReturnsAsync((UserRoleOrganization?)null);
-        _orgRoleRepo.Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>())).ReturnsAsync(memberRole);
+        _orgRoleRepo.Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OrganizationRole { Id = 1, Name = "org_owner", Priority = 0 }, memberRole]);
 
         await _sut.AcceptAsync(5, "u@r.io", "tok");
 
@@ -465,7 +467,8 @@ public sealed class OrgInvitationServiceTests
         };
 
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberWithPermission(1, 5, "invite_to_org"));
-        _orgRoleRepo.Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>())).ReturnsAsync(memberRole);
+        _orgRoleRepo.Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OrganizationRole { Id = 1, Name = "org_owner", Priority = 0 }, memberRole]);
         _invitationRepo
             .Setup(r => r.GetPendingByOrgAndEmailAsync(5, "new@relativa.io", It.IsAny<CancellationToken>()))
             .ReturnsAsync(expiredExisting);
@@ -484,7 +487,8 @@ public sealed class OrgInvitationServiceTests
         var existingUser = new User { Id = 20, Email = "member@relativa.io" };
 
         _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberWithPermission(1, 5, "invite_to_org"));
-        _orgRoleRepo.Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>())).ReturnsAsync(memberRole);
+        _orgRoleRepo.Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OrganizationRole { Id = 1, Name = "org_owner", Priority = 0 }, memberRole]);
         _userRepo.Setup(r => r.GetByEmailAsync("member@relativa.io", It.IsAny<CancellationToken>())).ReturnsAsync(existingUser);
         _orgMemberRepo.Setup(r => r.GetAsync(20, 5, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserRoleOrganization { UserId = 20, OrganizationId = 5 });

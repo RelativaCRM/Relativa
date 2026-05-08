@@ -75,8 +75,11 @@ public sealed class OrganizationUserAdminServiceTests
 
     private void SetupDefaultRole() =>
         _orgRoleRepository
-            .Setup(r => r.GetSystemRoleByNameAsync("org_member", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(DefaultMemberRole());
+            .Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new OrganizationRole { Id = 1, Name = "org_owner", Priority = 0, IsArchived = false },
+                new OrganizationRole { Id = 2, Name = "org_member", Priority = 6, IsArchived = false }
+            ]);
 
     private void SetupProvisioning(int newUserId = 100) =>
         _userProvisioning

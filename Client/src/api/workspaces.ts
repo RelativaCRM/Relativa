@@ -6,6 +6,8 @@ export interface WorkspaceDto {
   name: string;
   memberCount: number;
   userRole: string | null;
+  /** Effective permission names for the current user in this workspace (e.g. `create_entities`). */
+  myPermissions?: string[];
 }
 
 export interface WorkspaceMemberDto {

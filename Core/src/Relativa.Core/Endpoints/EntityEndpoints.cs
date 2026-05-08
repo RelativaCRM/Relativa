@@ -10,14 +10,21 @@ public static class EntityEndpoints
         var group = routes.MapGroup("/api/v1/workspaces/{workspaceId:int}/entities")
             .WithTags("Entities");
 
-        group.MapGet("/", async (int workspaceId, IEntityService service, HttpContext httpContext, CancellationToken ct) =>
+        group.MapGet("/", async (
+            int workspaceId,
+            int? entityTypeId,
+            string? q,
+            int? take,
+            IEntityService service,
+            HttpContext httpContext,
+            CancellationToken ct) =>
         {
             var userId = WorkspaceEndpoints.GetUserId(httpContext);
-            var result = await service.GetByWorkspaceAsync(workspaceId, userId, ct);
+            var result = await service.GetByWorkspaceAsync(workspaceId, userId, entityTypeId, q, take ?? 500, ct);
             return Results.Ok(result);
         })
         .WithName("ListEntities")
-        .WithSummary("List all non-archived entities in a workspace")
+        .WithSummary("List non-archived entities; optional entityTypeId filter, q search on string values, take (default 500, max 500).")
         .Produces<List<EntityListItemDto>>();
 
         group.MapGet("/{entityId:int}", async (int workspaceId, int entityId, IEntityService service, HttpContext httpContext, CancellationToken ct) =>

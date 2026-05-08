@@ -17,16 +17,33 @@ public sealed class RoleServiceTests
     private readonly Mock<IWorkspaceRoleRepository> _roleRepo = new();
     private readonly Mock<IPermissionRepository> _permissionRepo = new();
     private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
+    private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
+    private readonly Mock<IWorkspaceRepository> _workspaceRepo = new();
+    private readonly WorkspaceAccessEvaluator _workspaceAccessEvaluator;
     private readonly Mock<IValidator<CreateRoleRequest>> _createValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly RoleService _sut;
 
     public RoleServiceTests()
     {
+        _orgMemberRepo
+            .Setup(r => r.GetAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleOrganization?)null);
+        _workspaceRepo
+            .Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) =>
+                new Workspace { Id = id, OrganizationId = 1, Name = "Test WS", IsArchived = false });
+
+        _workspaceAccessEvaluator = new WorkspaceAccessEvaluator(
+            _memberRepo.Object,
+            _orgMemberRepo.Object,
+            _workspaceRepo.Object,
+            _roleRepo.Object);
+
         _sut = new RoleService(
             _roleRepo.Object,
             _permissionRepo.Object,
-            _memberRepo.Object,
+            _workspaceAccessEvaluator,
             _createValidator.Object,
             _auditOutboxWriter.Object);
     }

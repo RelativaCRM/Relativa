@@ -11,16 +11,22 @@ namespace Relativa.Core.Application.Services;
 
 public sealed class EntityService(
     IEntityRepository entityRepository,
-    IUserRoleWorkspaceRepository memberRepository,
+    IWorkspaceAccessEvaluator workspaceAccess,
     IValidator<CreateEntityRequest> createValidator,
     IValidator<UpdateEntityRequest> updateValidator,
     IOutboxWriter? auditOutboxWriter = null) : IEntityService
 {
-    public async Task<List<EntityListItemDto>> GetByWorkspaceAsync(int workspaceId, int userId, CancellationToken ct = default)
+    public async Task<List<EntityListItemDto>> GetByWorkspaceAsync(
+        int workspaceId,
+        int userId,
+        int? entityTypeId,
+        string? searchQuery,
+        int take,
+        CancellationToken ct = default)
     {
         await RequirePermission(userId, workspaceId, "view_entities", ct);
 
-        var entities = await entityRepository.GetByWorkspaceAsync(workspaceId, ct);
+        var entities = await entityRepository.GetByWorkspaceAsync(workspaceId, entityTypeId, searchQuery, take, ct);
         return entities.Select(MapToListItem).ToList();
     }
 
@@ -36,19 +42,60 @@ public sealed class EntityService(
 
     public async Task<EntityDetailDto> CreateAsync(int workspaceId, int userId, CreateEntityRequest request, CancellationToken ct = default)
     {
-        await RequirePermission(userId, workspaceId, "manage_entities", ct);
+        await RequirePermission(userId, workspaceId, "create_entities", ct);
         await createValidator.ValidateAndThrowAsync(request, ct);
 
         var typeProperties = await entityRepository.GetTypePropertiesAsync(request.EntityTypeId, ct);
         if (typeProperties.Count == 0)
             throw new KeyNotFoundException($"Entity type {request.EntityTypeId} does not exist or has no properties defined.");
 
+        if (typeProperties.All(tp => tp.Property.IsReadonly))
+            throw new ArgumentException($"Entity type {request.EntityTypeId} cannot be created: all properties are read-only.");
+
+        var entityTypeInfo = await entityRepository.GetEntityTypeByIdAsync(request.EntityTypeId, ct)
+            ?? throw new KeyNotFoundException($"Entity type {request.EntityTypeId} was not found.");
+
+        if (!entityTypeInfo.IsStandalone)
+            throw new ArgumentException("This entity type cannot be created directly. Use the entity graph endpoint.");
+
         ValidatePropertyPayload(request.Properties, typeProperties);
+
+        var outgoingTypes = await entityRepository.GetOutgoingRelationshipTypesAsync(request.EntityTypeId, ct);
+        List<EntityRelationship>? relationshipRows = null;
+        if (request.Links is { Count: > 0 })
+        {
+            relationshipRows = [];
+            foreach (var link in request.Links)
+            {
+                var rt = outgoingTypes.FirstOrDefault(o => o.Id == link.RelationshipTypeId)
+                    ?? throw new ArgumentException($"Relationship type {link.RelationshipTypeId} is not valid for this entity type.");
+
+                var target = await entityRepository.GetByIdInWorkspaceAsync(link.TargetEntityId, workspaceId, ct)
+                    ?? throw new ArgumentException($"Target entity {link.TargetEntityId} was not found in this workspace.");
+
+                if (target.EntityTypeId != rt.TargetEntityTypeId)
+                    throw new ArgumentException($"Target entity {link.TargetEntityId} has the wrong entity type for relationship '{rt.Name}'.");
+
+                relationshipRows.Add(new EntityRelationship
+                {
+                    RelationshipTypeId = rt.Id,
+                    SourceEntityId = 0,
+                    TargetEntityId = target.Id,
+                });
+            }
+        }
+
+        var linkTypeIds = new HashSet<int>(relationshipRows?.Select(r => r.RelationshipTypeId) ?? []);
+        foreach (var req in outgoingTypes.Where(t => t.IsRequired))
+        {
+            if (!linkTypeIds.Contains(req.Id))
+                throw new ArgumentException($"Required relationship '{req.Name}' is missing.");
+        }
 
         var entity = new Entity { EntityTypeId = request.EntityTypeId, IsArchived = false };
         var propertyValues = BuildPropertyValues(request.Properties, typeProperties);
 
-        var created = await entityRepository.CreateAsync(entity, propertyValues, workspaceId, ct);
+        var created = await entityRepository.CreateAsync(entity, propertyValues, workspaceId, relationshipRows, ct);
 
         if (auditOutboxWriter is not null)
         {
@@ -83,18 +130,21 @@ public sealed class EntityService(
 
     public async Task<EntityDetailDto> UpdateAsync(int entityId, int workspaceId, int userId, UpdateEntityRequest request, CancellationToken ct = default)
     {
-        await RequirePermission(userId, workspaceId, "manage_entities", ct);
+        await RequirePermission(userId, workspaceId, "edit_entities", ct);
         await updateValidator.ValidateAndThrowAsync(request, ct);
 
         var entity = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct)
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
 
         if (entity.IsArchived)
-            throw new ArgumentException("Cannot update an archived entity.");
+        {
+            await RequirePermission(userId, workspaceId, "edit_archived_entities", ct);
+        }
 
         var typeProperties = await entityRepository.GetTypePropertiesAsync(entity.EntityTypeId, ct);
         ValidateRequestPropertyIds(request.Properties, typeProperties);
         var merged = MergePropertyPayload(entity, request.Properties);
+        ValidateReadonlyPreserved(entity, merged, typeProperties);
         ValidatePropertyPayload(merged, typeProperties);
 
         var propertyValues = BuildPropertyValues(merged, typeProperties);
@@ -133,12 +183,12 @@ public sealed class EntityService(
 
     public async Task ArchiveAsync(int entityId, int workspaceId, int userId, CancellationToken ct = default)
     {
-        await RequirePermission(userId, workspaceId, "manage_entities", ct);
+        await RequirePermission(userId, workspaceId, "delete_entities", ct);
 
         var entity = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct)
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
 
-        await entityRepository.ArchiveAsync(entity, ct);
+        await entityRepository.ArchiveAsync(entity.Id, ct);
 
         if (auditOutboxWriter is not null)
         {
@@ -172,18 +222,9 @@ public sealed class EntityService(
     // Helpers
     // ------------------------------------------------------------------
 
-    private async Task<UserRoleWorkspace> RequireMembership(int userId, int workspaceId, CancellationToken ct)
-    {
-        return await memberRepository.GetAsync(userId, workspaceId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this workspace.");
-    }
-
     private async Task RequirePermission(int userId, int workspaceId, string permission, CancellationToken ct)
     {
-        var membership = await RequireMembership(userId, workspaceId, ct);
-        var hasPermission = membership.Role?.RolePermissions
-            .Any(rp => rp.Permission?.Name == permission) ?? false;
-        if (!hasPermission)
+        if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, permission, ct))
             throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this workspace.");
     }
 
@@ -239,6 +280,25 @@ public sealed class EntityService(
         _                        => null
     };
 
+    private static void ValidateReadonlyPreserved(
+        Entity entity,
+        List<PropertyValueInput> merged,
+        List<EntityTypeProperty> typeProperties)
+    {
+        foreach (var tp in typeProperties.Where(tp => tp.Property.IsReadonly))
+        {
+            var mergedEntry = merged.FirstOrDefault(m => m.PropertyId == tp.PropertyId);
+            if (mergedEntry is null)
+                continue;
+
+            var mergedVal = mergedEntry.Value;
+            var existing = entity.EntityPropertyValues.FirstOrDefault(e => e.PropertyId == tp.PropertyId);
+            var existingStr = existing is null ? null : ValueToInputString(existing);
+            if (!string.Equals(mergedVal, existingStr, StringComparison.Ordinal))
+                throw new ArgumentException($"Property '{tp.Property.Name}' is read-only.");
+        }
+    }
+
     /// <summary>
     /// Validates that:
     /// - All submitted property ids belong to the entity type.
@@ -268,6 +328,13 @@ public sealed class EntityService(
                 .Where(tp => missingRequired.Contains(tp.PropertyId))
                 .Select(tp => $"{tp.Property.Name} (propertyId {tp.PropertyId})");
             throw new ArgumentException($"Required properties are missing: {string.Join(", ", details)}.");
+        }
+
+        foreach (var tp in typeProperties.Where(tp => tp.Property.IsReadonly))
+        {
+            var s = submitted.FirstOrDefault(x => x.PropertyId == tp.PropertyId);
+            if (s?.Value is not null)
+                throw new ArgumentException($"Property '{tp.Property.Name}' is read-only.");
         }
     }
 
@@ -338,11 +405,52 @@ public sealed class EntityService(
         e.EntityType.Name,
         MapPropertyValues(e));
 
-    private static EntityDetailDto MapToDetail(Entity e) => new(
-        e.Id,
-        e.EntityTypeId,
-        e.EntityType.Name,
-        MapPropertyValues(e));
+    private static EntityDetailDto MapToDetail(Entity e)
+    {
+        const int previewCap = 12;
+        return new EntityDetailDto(
+            e.Id,
+            e.EntityTypeId,
+            e.EntityType.Name,
+            e.IsArchived,
+            MapPropertyValues(e),
+            MapOutbound(e, previewCap),
+            MapInbound(e, previewCap));
+    }
+
+    private static List<EntityRelationshipRefDto> MapOutbound(Entity e, int previewCap) =>
+        e.SourceRelationships
+            .OrderBy(r => r.Id)
+            .Select(r => new EntityRelationshipRefDto(
+                r.RelationshipTypeId,
+                r.RelationshipType.Name,
+                r.TargetEntityId,
+                r.TargetEntity.EntityType.Name,
+                MapPreview(r.TargetEntity, previewCap)))
+            .ToList();
+
+    private static List<EntityRelationshipRefDto> MapInbound(Entity e, int previewCap) =>
+        e.TargetRelationships
+            .OrderBy(r => r.Id)
+            .Select(r => new EntityRelationshipRefDto(
+                r.RelationshipTypeId,
+                r.RelationshipType.Name,
+                r.SourceEntityId,
+                r.SourceEntity.EntityType.Name,
+                MapPreview(r.SourceEntity, previewCap)))
+            .ToList();
+
+    private static List<EntityPropertyValueDto> MapPreview(Entity related, int cap) =>
+        related.EntityPropertyValues
+            .OrderBy(pv => pv.PropertyId)
+            .Take(cap)
+            .Select(pv => new EntityPropertyValueDto(
+                pv.PropertyId,
+                pv.Property.Name,
+                pv.Property.DataType.ToString(),
+                ResolveValue(pv),
+                pv.Property.IsReadonly))
+            .ToList();
 
     private static List<EntityPropertyValueDto> MapPropertyValues(Entity e) =>
         e.EntityPropertyValues
@@ -351,7 +459,8 @@ public sealed class EntityService(
                 pv.PropertyId,
                 pv.Property.Name,
                 pv.Property.DataType.ToString(),
-                ResolveValue(pv)))
+                ResolveValue(pv),
+                pv.Property.IsReadonly))
             .ToList();
 
     private static object? ResolveValue(EntityPropertyValue pv) => pv.Property.DataType switch

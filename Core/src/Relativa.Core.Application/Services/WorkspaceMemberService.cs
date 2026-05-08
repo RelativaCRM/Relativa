@@ -1,4 +1,5 @@
 using Relativa.Core.Application.DTOs.Member;
+using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -11,12 +12,13 @@ public sealed class WorkspaceMemberService(
     IWorkspaceRoleRepository roleRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IWorkspaceRepository workspaceRepository,
+    IWorkspaceAccessEvaluator workspaceAccess,
     IOutboxWriter? auditOutboxWriter = null) : IWorkspaceMemberService
 {
     private const string ManageOrgWorkspaceMembers = "manage_org_workspace_members";
     public async Task<List<WorkspaceMemberDto>> GetMembersAsync(int workspaceId, int userId, CancellationToken ct = default)
     {
-        await RequireMembership(userId, workspaceId, ct);
+        await workspaceAccess.EnsureCanAccessWorkspaceAsync(userId, workspaceId, ct);
 
         var members = await memberRepository.GetByWorkspaceIdAsync(workspaceId, ct);
         return members
@@ -44,11 +46,28 @@ public sealed class WorkspaceMemberService(
         if (role.WorkspaceId.HasValue && role.WorkspaceId.Value != workspaceId)
             throw new ArgumentException("The specified role does not belong to this workspace.");
 
-        if (targetMember.Role?.Name == "ws_admin" && role.Name != "ws_admin")
+        var targetHasFullAuthority = RolePermissionEvaluator.HasAllPermissions(
+            targetMember.Role,
+            WorkspacePermissions.FullWorkspaceAuthority);
+        var targetIsWsAdminFallback = string.Equals(targetMember.Role?.Name, "ws_admin", StringComparison.Ordinal);
+        var newRoleHasFullAuthority = RolePermissionEvaluator.HasAllPermissions(
+            role,
+            WorkspacePermissions.FullWorkspaceAuthority);
+        var newRoleIsWsAdminFallback = string.Equals(role.Name, "ws_admin", StringComparison.Ordinal);
+        if ((targetHasFullAuthority || targetIsWsAdminFallback) &&
+            !(newRoleHasFullAuthority || newRoleIsWsAdminFallback))
         {
             var allMembers = await memberRepository.GetByWorkspaceIdAsync(workspaceId, ct);
-            var wsAdminCount = allMembers.Count(m => !m.IsArchived && m.Role?.Name == "ws_admin");
-            if (wsAdminCount <= 1)
+            var fullAuthorityCount = allMembers.Count(m =>
+                !m.IsArchived &&
+                RolePermissionEvaluator.HasAllPermissions(m.Role, WorkspacePermissions.FullWorkspaceAuthority));
+            if (fullAuthorityCount == 0)
+            {
+                fullAuthorityCount = allMembers.Count(m =>
+                    !m.IsArchived &&
+                    string.Equals(m.Role?.Name, "ws_admin", StringComparison.Ordinal));
+            }
+            if (fullAuthorityCount <= 1)
             {
                 throw new InvalidOperationException("Cannot demote the last workspace admin.");
             }
@@ -164,54 +183,65 @@ public sealed class WorkspaceMemberService(
             member.JoinedAt);
     }
 
-    private async Task<UserRoleWorkspace> RequireMembership(int userId, int workspaceId, CancellationToken ct)
-    {
-        return await memberRepository.GetAsync(userId, workspaceId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this workspace.");
-    }
-
     private async Task RequirePermission(int userId, int workspaceId, string permission, CancellationToken ct)
     {
-        var membership = await RequireMembership(userId, workspaceId, ct);
-        var hasPermission = membership.Role?.RolePermissions
-            .Any(rp => rp.Permission?.Name == permission) ?? false;
-        if (!hasPermission)
+        if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, permission, ct))
             throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this workspace.");
+    }
+
+    private async Task<bool> WorkspaceMemberHasOrOrgOwnerPermissionAsync(int userId, int workspaceId, string permission,
+        CancellationToken ct)
+    {
+        if (await workspaceAccess.IsOrgOwnerOfWorkspaceAsync(userId, workspaceId, ct))
+            return true;
+
+        var m = await memberRepository.GetAsync(userId, workspaceId, ct);
+        return m?.Role?.RolePermissions
+            .Any(rp => string.Equals(rp.Permission?.Name, permission, StringComparison.Ordinal)) == true;
+    }
+
+    private async Task<bool> IsOrgWorkspaceMembersManagerAsync(int userId, int workspaceId, CancellationToken ct)
+    {
+        var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct);
+        if (workspace is null)
+            return false;
+
+        var orgMembership = await orgMemberRepository.GetAsync(userId, workspace.OrganizationId, ct);
+        return orgMembership?.Role?.RolePermissions
+            .Any(rp => string.Equals(rp.Permission?.Name, ManageOrgWorkspaceMembers, StringComparison.Ordinal)) == true;
     }
 
     private async Task RequireAddMemberPermissionAsync(int callerUserId, int workspaceId, CancellationToken ct)
     {
-        var wsMembership = await memberRepository.GetAsync(callerUserId, workspaceId, ct);
-        if (wsMembership?.Role?.RolePermissions.Any(rp => rp.Permission?.Name == "add_ws_members") == true)
+        if (await WorkspaceMemberHasOrOrgOwnerPermissionAsync(callerUserId, workspaceId, "add_ws_members", ct))
+            return;
+
+        if (await IsOrgWorkspaceMembersManagerAsync(callerUserId, workspaceId, ct))
             return;
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
             ?? throw new KeyNotFoundException("Workspace not found.");
 
-        var orgMembership = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
+        _ = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
             ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
 
-        var hasOrg = orgMembership.Role?.RolePermissions
-            .Any(rp => rp.Permission?.Name == ManageOrgWorkspaceMembers) ?? false;
-        if (!hasOrg)
-            throw new UnauthorizedAccessException("You do not have the 'add_ws_members' permission in this workspace.");
+        throw new UnauthorizedAccessException("You do not have the 'add_ws_members' permission in this workspace.");
     }
 
     private async Task RequireRemoveMemberPermissionAsync(int callerUserId, int workspaceId, CancellationToken ct)
     {
-        var wsMembership = await memberRepository.GetAsync(callerUserId, workspaceId, ct);
-        if (wsMembership?.Role?.RolePermissions.Any(rp => rp.Permission?.Name == "remove_ws_members") == true)
+        if (await WorkspaceMemberHasOrOrgOwnerPermissionAsync(callerUserId, workspaceId, "remove_ws_members", ct))
+            return;
+
+        if (await IsOrgWorkspaceMembersManagerAsync(callerUserId, workspaceId, ct))
             return;
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
             ?? throw new KeyNotFoundException("Workspace not found.");
 
-        var orgMembership = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
+        _ = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
             ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
 
-        var hasOrg = orgMembership.Role?.RolePermissions
-            .Any(rp => rp.Permission?.Name == ManageOrgWorkspaceMembers) ?? false;
-        if (!hasOrg)
-            throw new UnauthorizedAccessException("You do not have the 'remove_ws_members' permission in this workspace.");
+        throw new UnauthorizedAccessException("You do not have the 'remove_ws_members' permission in this workspace.");
     }
 }

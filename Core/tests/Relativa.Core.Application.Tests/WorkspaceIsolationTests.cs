@@ -15,6 +15,10 @@ namespace Relativa.Core.Application.Tests;
 public sealed class WorkspaceIsolationTests
 {
     private readonly Mock<IUserRoleWorkspaceRepository> _memberRepo = new();
+    private readonly Mock<IUserRoleOrganizationRepository> _orgRepo = new();
+    private readonly Mock<IWorkspaceRepository> _workspaceRepo = new();
+    private readonly Mock<IWorkspaceRoleRepository> _workspaceRoleRepo = new();
+    private readonly WorkspaceAccessEvaluator _workspaceAccessEvaluator;
 
     private readonly WorkspaceService _workspaceSvc;
     private readonly WorkspaceMemberService _memberSvc;
@@ -32,34 +36,40 @@ public sealed class WorkspaceIsolationTests
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<CreateRoleRequest>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
 
-        _workspaceSvc = new WorkspaceService(
-            new Mock<IWorkspaceRepository>().Object,
-            _memberRepo.Object,
-            new Mock<IWorkspaceRoleRepository>().Object,
-            new Mock<IUserRoleOrganizationRepository>().Object,
-            new Mock<IValidator<CreateWorkspaceRequest>>().Object,
-            updateValidator.Object);
-
-        var workspaceRepo = new Mock<IWorkspaceRepository>();
-        workspaceRepo
+        _orgRepo
+            .Setup(r => r.GetAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserRoleOrganization?)null);
+        _workspaceRepo
             .Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) =>
                 new Workspace { Id = id, OrganizationId = id + 1000, Name = "Test WS", IsArchived = false });
-        var orgRepo = new Mock<IUserRoleOrganizationRepository>();
-        orgRepo
-            .Setup(r => r.GetAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((UserRoleOrganization?)null);
+
+        _workspaceAccessEvaluator = new WorkspaceAccessEvaluator(
+            _memberRepo.Object,
+            _orgRepo.Object,
+            _workspaceRepo.Object,
+            _workspaceRoleRepo.Object);
+
+        _workspaceSvc = new WorkspaceService(
+            _workspaceRepo.Object,
+            _memberRepo.Object,
+            _workspaceRoleRepo.Object,
+            _orgRepo.Object,
+            _workspaceAccessEvaluator,
+            new Mock<IValidator<CreateWorkspaceRequest>>().Object,
+            updateValidator.Object);
 
         _memberSvc = new WorkspaceMemberService(
             _memberRepo.Object,
-            new Mock<IWorkspaceRoleRepository>().Object,
-            orgRepo.Object,
-            workspaceRepo.Object);
+            _workspaceRoleRepo.Object,
+            _orgRepo.Object,
+            _workspaceRepo.Object,
+            _workspaceAccessEvaluator);
 
         _roleSvc = new RoleService(
-            new Mock<IWorkspaceRoleRepository>().Object,
+            _workspaceRoleRepo.Object,
             new Mock<IPermissionRepository>().Object,
-            _memberRepo.Object,
+            _workspaceAccessEvaluator,
             createRoleValidator.Object);
     }
 

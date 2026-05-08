@@ -16,6 +16,13 @@ public class EntityRelationshipTypeConfiguration : IEntityTypeConfiguration<Enti
         builder.Property(e => e.SourceEntityTypeId).HasColumnName("source_entity_type_id").IsRequired();
         builder.Property(e => e.TargetEntityTypeId).HasColumnName("target_entity_type_id").IsRequired();
         builder.Property(e => e.IsRequired).HasColumnName("is_required").IsRequired();
+        builder.Property(e => e.RelationshipCardinality)
+            .HasColumnName("relationship_cardinality")
+            .HasMaxLength(32)
+            .IsRequired()
+            .HasConversion(
+                v => v.ToDatabaseValue(),
+                v => RelationshipCardinalityExtensions.ParseDatabaseValue(v));
         builder.HasOne(e => e.SourceEntityType)
             .WithMany(t => t.SourceRelationshipTypes)
             .HasForeignKey(e => e.SourceEntityTypeId)

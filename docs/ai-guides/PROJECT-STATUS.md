@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-08 (org role `priority`; member removal / org user archive hierarchy; Scalar/org role examples.)
+> **Last verified:** 2026-05-08 (deduped inbound entity tabs; `closure_score` + new `churn_score` flagged readonly on `deal`; ML score endpoint returns `unavailable_reason`; deal-side relationship cardinalities corrected; SPA renders live deal scores via gateway.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -13,11 +13,11 @@
 | Gateway | **Functional** | YARP routing, JWT validation, split anonymous/auth routes, health, Scalar -- all working |
 | Authentication | **Functional** | Login, register, `/me` read + PATCH + DELETE, email normalization, JWT (sub + email only), FluentValidation -- all working |
 | Core | **Functional** (org + ws RBAC + entity CRUD) | Organization management, workspace management, split RBAC, members, org-scoped user provisioning, **organization** invitations and join requests, permissions, entity-type listing (public), and workspace-scoped entity CRUD all implemented |
-| Graph | **Stub** | SignalR hub + RabbitMQ choreography consumer broadcasts workspace lifecycle payloads; choreography idempotency via EF `GraphDbContext` on `rabbitmq_processed_delivery`; graph projection logic still absent |
+| Graph | **Partial** | SignalR hub + workspace choreography consumer + **HTTP** `POST .../entity-graph/create` (Rabbit RPC → Core `EntityService.CreateAsync`); vis-network graph data projection still absent |
 | Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
 | ML | **Functional (batch scoring)** | `POST /api/ml/score/batch` scores deals from EAV + sklearn models; consumer ingests workspace/entity choreography with idempotency |
-| Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + account/profile + org members (clickable list -> `MemberView`, create org user with role, archive/remove paths, join-request review) + invitations inbox (org only) + workspace members (**add** existing org user with `add_ws_members` or org `manage_org_workspace_members`) + entity CRUD UI + graph placeholder, typed API clients. Persisted state via `localStorage` |
+| Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + account/profile + org members + invitations + workspace members + **query-driven entities** (list search, `EntityReadView` detail with relationship navigation, `EntityCreateForm` embedded via `?action=create`, optional Graph-orchestrated create) + graph placeholder, typed API clients. Persisted state via `localStorage` |
 | Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions; performance indexes on membership/org invitations/audit logs/outbox + unique `entity_workspace (entity_id, workspace_id)` + partial unique `users.email` where not archived |
 
 ---
@@ -52,21 +52,23 @@
 - **Member management:** `GET .../members`, `POST .../members` (add org member; requires workspace `add_ws_members` **or** org `manage_org_workspace_members` on the parent organization), `PUT .../members/{userId}/role` (requires `assign_ws_roles`), `DELETE .../members/{userId}` (requires `remove_ws_members` or org `manage_org_workspace_members`, or self-remove).
 - **Role management:** `GET .../roles` (list system + custom), `POST .../roles` (create custom, requires `manage_ws_roles`), `PUT .../roles/{id}` (update), `DELETE .../roles/{id}` (archive). System roles cannot be modified.
 - **Combined invitations inbox:** `GET /api/v1/invitations/mine` — pending **organization** invitations for the caller's email (`{ organizationInvitations }`); `GET /api/v1/invitations/mine/organization` — same as flat list. `POST /api/v1/invitations/accept-org` — accept org invite (documented under organization invitations).
-- **Permission listing:** `GET /api/v1/permissions` — lists rows in `permissions` (migration `RemoveWorkspaceInvitationFlows` removes `invite_to_workspace` and `manage_ws_join_requests`, adds org `manage_org_workspace_members`). Workspace permissions **14 / 15** remain `manage_entities` / `view_entities` from `ReseedPermissions`.
+- **Permission listing:** `GET /api/v1/permissions` — lists rows in `permissions`. Workspace entity permissions are split into **`create_entities`**, **`edit_entities`**, and **`delete_entities`** (replaces legacy `manage_entities`); see migrations reseeding `workspace_role_permissions`.
 - Full clean-architecture layers: Domain (repository interfaces), Application (10 services, DTOs, validators), Infrastructure (repositories, WorkspaceContext).
 - Authorization checked per-request via `UserRoleOrganization` or `UserRoleWorkspace` DB lookup. **Core does not parse JWTs**; it reads the caller identity from the `X-User-Id` header that the Gateway injects after JWT validation (see Gateway entry below). `X-User-Email` is read on invitation-accept flows. Missing headers are treated as a 401.
 
 ### Core service -- Entity CRUD
 
-- **Entity types (public):** `GET /api/v1/entity-types` — anonymous (no JWT required via Gateway); returns all entity types with their EAV property definitions (`id`, `name`, `properties: [{ propertyId, name, dataType, isRequired }]`).
+- **Entity types (public):** `GET /api/v1/entity-types` — anonymous (no JWT required via Gateway); returns entity types with EAV properties (`isReadonly`), `isStandalone`, `outgoingRelationships` (incl. `isRequired`, `relationshipCardinality`).
 - **Entity CRUD (workspace-scoped):** all endpoints under `/api/v1/workspaces/{workspaceId}/entities`:
-  - `GET /` — list non-archived entities with full property values; requires `view_entities`.
-  - `GET /{entityId}` — entity detail; **404** if entity not linked to this workspace; requires `view_entities`.
-  - `POST /` — atomic transaction: insert `entity` row, insert `entity_property_value` rows, insert `entity_workspace` link; requires `manage_entities`. FluentValidation (structural) + service-level EAV validation (required properties, allowed property ids, typed value parsing).
-  - `PUT /{entityId}` — replace all property values; requires `manage_entities`.
-  - `DELETE /{entityId}` — soft-delete (`is_archived = true`); requires `manage_entities`.
+  - `GET /` — list non-archived entities; optional `entityTypeId`, `q`, `take`; requires `view_entities`.
+  - `GET /{entityId}` — detail including archived rows, `isReadonly` per value, inbound/outbound relationship previews; requires `view_entities`.
+  - `POST /` — create with optional **links** (`relationshipTypeId`, `targetEntityId`); enforces standalone, readonly, and required-outgoing rules; requires **`create_entities`**.
+  - `PATCH /{entityId}` — partial property update; readonly columns rejected on change; requires **`edit_entities`**.
+  - `DELETE /{entityId}` — soft-delete (`is_archived = true`); requires **`delete_entities`**.
+- **Workspace DTO:** list/detail responses include **`myPermissions`** for the caller's effective workspace permission names (drives SPA gates).
 - **GlobalExceptionHandler extended:** `KeyNotFoundException` → 404, `ValidationException` → 400 with error detail.
 - Fire-and-forget audit publishing for core write flows via `audit_outbox` + RabbitMQ dispatcher, including organizations/workspaces/entities, join requests, invitations, membership updates, and role lifecycle changes.
+- **Graph command path:** Core hosts **`EntityGraphCommandConsumerHostedService`** — consumes Rabbit graph-create RPC and calls the same **`EntityService.CreateAsync`** as HTTP (shared validation + per-entity audit).
 
 ### Gateway
 
@@ -122,15 +124,15 @@
 - **Centralized error handling** (CR-127, `src/api/errors.ts` + `src/api/errorToast.ts`): `normalizeError(err, fallback)` consumes any `ApiError` / `Error` / network failure and returns a `NormalizedError` with friendly `message`, status flags (`isValidation`, `isUnauthorized`, `isForbidden`, `isNotFound`, `isConflict`, `isServer`, `isNetwork`), and a `fieldErrors` map parsed from the backend `{ status, title, detail }` shape (FluentValidation `detail` of the form `"Field: msg; Field2: msg"` is split into per-field arrays; field names are lower-cased to match camelCase form bindings). `useApiErrorHandler()` is a thin composable over PrimeVue's `useToast()` — `notify(err, { fallback, summary, silent })` shows a categorized red error toast and returns the same `NormalizedError` so callers can also react to specific statuses. Forms render server `fieldErrors` inline under the corresponding inputs (red text + `pi pi-exclamation-circle`); each input clears its own server error on `update:model-value`. List/dialog views display non-form errors via toasts (replaces previous silent `catch {}` blocks).
 - **Auth service** (`src/api/auth.ts`): `authApi.register`, `authApi.login`, `authApi.me`, `authApi.updateMe` (PATCH `/me`), `authApi.deleteMe` (DELETE `/me`).
 - **Organization service** (`src/api/organizations.ts`): org CRUD, members, invitations, join requests, roles, combined invitations (`/invitations/mine`), admin user CRUD (`orgApi.createOrgUser`, `orgApi.updateOrgUserProfile`, `orgApi.deleteOrgUser`).
-- **Workspace service** (`src/api/workspaces.ts`): workspace CRUD, members, roles, invitations.
-- **Entity service** (`src/api/entities.ts`): typed DTOs for `EntityTypeDto` / `EntityTypePropertyDto` / `EntityDetailDto`; `entityApi.listTypes()` (`GET /entity-types`), `entityApi.list/get/create/update/archive` (workspace-scoped under `/workspaces/{id}/entities`). `update` uses the shared `api.patch` helper.
+- **Workspace service** (`src/api/workspaces.ts`): workspace CRUD, members, roles; `WorkspaceDto` includes optional **`myPermissions`**.
+- **Entity service** (`src/api/entities.ts`): typed DTOs including relationship refs and `isReadonly` on values; `entityApi.list` supports list filters; `entityApi` CRUD under `/core/.../workspaces/{id}/entities`. **`entityGraph.ts`**: optional `POST /graph/.../entity-graph/create`.
 - **Audit service** (`src/api/audit.ts`): typed DTOs mirroring the BE `AuditLogListResponse` (data + total + page + perPage + filterContext) and `AuditLogEntryDto` (actor, contextual entity/workspace/organization/targetUser, propertyChanges); `auditApi.list(query)` builds a query string for `GET /audit/audit-log` with `entity_type` (scope), `workspace_id`/`organization_id`, `date_from/date_to`, `action`, 1-based `index`, `page_size`, etc. Audit Pinia store (`src/stores/audit.ts`) caches `rows`, `total`, `page`, `perPage` and exposes `fetchRows(query)`.
 - **Auth store** (Pinia) persists `accessToken` + `expiresAt` in `localStorage`; stores `user` profile from `/me`; exposes `login`, `register`, `logout`, `fetchProfile`, `updateProfile`, `deleteAccount`; `isAuthenticated` respects token expiry.
 - **Organization store** (Pinia) manages current org selection (persisted in `localStorage`), members, roles, invitations; exposes `createOrganization`, `inviteMember`, `createOrgUser`, `deleteOrgUser`, `changeMemberRole`, `removeMember`, `fetchOrganizations`, `hasOrganization`.
 - **Workspace store** (Pinia) manages current workspace selection (persisted in `localStorage` under `relativa_ws_id`), workspaces list, members, roles, invitations; exposes `setCurrentWorkspace`, `fetchWorkspaces`, `createWorkspace`, `updateWorkspace`, `archiveWorkspace`, member/role/invitation actions, `clear`.
-- **Layouts:** `AuthLayout.vue` (centered card, brand mark) and `MainLayout.vue` (top bar: org name, user name as link to `/account`, sign out; sidebar: Home, Account, Workspaces, Invitations, Graph, role-gated *Audit log* for `ws_admin`/`ws_analyst` or `org_owner`/`org_admin`). The workspace section of the sidebar (visible only when `route.path` matches `/w/{id}`) renders **Entities** as a parent link (no filter) with **dynamic per-type sub-items** (one `RouterLink` per `EntityTypeDto` returned by `GET /entity-types`, e.g. *Client*, *Deal*, *Deal analysis*, *Contract*); each sub-item navigates to `workspace-entities` with `?type=<entityTypeName>` and uses `exact-active-class` so highlight respects the query. Types are fetched lazily via `entityStore.fetchTypes()` the first time the user enters a workspace shell. Home uses `exact-active-class` so it does not stay highlighted when navigating to nested routes. The standalone top-level *Members* link was removed — workspace member management is under *Workspaces → Manage members*; org-level `MembersView` remains on route `/members` without a sidebar entry.
-- **Views:** `LoginView.vue`, `RegisterView.vue` (matched to Figma login prototype), `OnboardingView.vue` (create org, search & join, pending org invitations), `WorkspaceSelectorView.vue` (post-login workspace gate: lists workspaces as cards, auto-selects when exactly one exists, offers inline workspace creation when the user has none), `AccountSettingsView.vue` (`/account`: read-only email, edit first/last name via `PATCH /me` with inline validation errors, danger-zone delete account via `DELETE /me` then clear stores + redirect to login), `MembersView.vue` (org members clickable rows, create user, invitations, join-request review), `MemberView.vue` (edit member profile, org role change, remove from org, archive account with same-domain guard, workspace access assignment/removal per workspace), `WorkspacesView.vue` (cards: *Manage members* and *Entities*), `WorkspaceMembersView.vue` (header *Entities* + *Invite member*; ws roles `ws_admin` / `ws_manager` / `ws_analyst` / `ws_member`), `InvitationsView.vue`, `EntitiesView.vue` (reads optional `?type=<entityTypeName>` query and filters `entityStore.entitiesFor(workspaceId)` client-side by `entityTypeName` matching that value; heading and empty-state copy reflect the active type filter), `EntityCreateForm.vue`, `HomeView.vue`, `GraphView.vue` (vis-network placeholder).
-- **Routes:** `/account` → `AccountSettingsView.vue` (`account`); `/members/:memberUserId` → `MemberView.vue` (`member`); `/workspaces/:id/entities` → `EntitiesView.vue` (`workspace-entities`); `/workspaces/:id/entities/new` → `EntityCreateForm.vue` (`workspace-entity-create`); `/audit-log` → `AuditLogView.vue` (`audit-log`).
+- **Layouts:** `AuthLayout.vue` (centered card, brand mark) and `MainLayout.vue` (top bar: org name, user name as link to `/account`, sign out; sidebar: Home, Account, Workspaces, Invitations, Graph, role-gated *Audit log* for `ws_admin`/`ws_analyst` or `org_owner`/`org_admin`). The workspace section of the sidebar (visible only when `route.path` matches `/w/{id}`) renders **Entities** as a parent link (no filter) with **dynamic per-type sub-items** (one `RouterLink` per standalone `EntityTypeDto`, e.g. *Client*, *Deal*, *Contract*); each sub-item navigates to `workspace-entities` with `?entityType=<name>`. Types are fetched lazily via `entityStore.fetchTypes()` the first time the user enters a workspace shell. Home uses `exact-active-class` so it does not stay highlighted when navigating to nested routes. The standalone top-level *Members* link was removed — workspace member management is under *Workspaces → Manage members*; org-level `MembersView` remains on route `/members` without a sidebar entry.
+- **Views:** `LoginView.vue`, `RegisterView.vue`, `OnboardingView.vue`, `WorkspaceSelectorView.vue`, `AccountSettingsView.vue`, `MembersView.vue`, `MemberView.vue`, `WorkspacesView.vue`, `WorkspaceMembersView.vue`, `InvitationsView.vue`, `EntitiesView.vue` (query-driven: `entityType`, `id` → `EntityReadView`, `action=create` → embedded `EntityCreateForm`; server list filters via `q` / `entityTypeId`; row click opens detail), `EntityCreateForm.vue` (required outgoing link pickers + optional Graph orchestration), `EntityReadView.vue`, `HomeView.vue`, `GraphView.vue` (vis-network placeholder).
+- **Routes:** `/account` → `AccountSettingsView.vue` (`account`); `/members/:memberUserId` → `MemberView.vue` (`member`); `/w/:workspaceId/entities` → `EntitiesView.vue` (`workspace-entities`); `/w/:workspaceId/entities/new` **redirects** to `workspace-entities?action=create`; `/audit-log` → `AuditLogView.vue` (`audit-log`).
 - **AuditLogView** (`src/views/AuditLogView.vue`, CR-186): PrimeVue `DataTable` in `lazy` mode driven by the audit store; columns Date / Type / Action / Author (email) / Target (clickable entity link) / Old/New value (per-cell collapsible JSON `<pre>` blocks). Filters bar with scope `Select` (entity / workspace / organization / users — options pruned by caller's role), `DatePicker` range (serialized to ISO via `toISOString()`), action `InputText`, *Apply* / *Reset*. Server-side pagination via the DataTable `@page` event (PrimeVue zero-based → BE one-based `index`). Page itself is gated with `v-if` on the same role check used by the sidebar; unauthorized callers see a locked placeholder instead of the table.
 - **Router guards:** `meta.public`, `meta.guestOnly`, `meta.skipOrgCheck`, and `meta.skipWorkspaceCheck` flags. Unauthenticated users are redirected to `/login` with `?redirect=<original>` query; authenticated users cannot visit `/login` or `/register`; authenticated users without an organization are sent to `/onboarding`; authenticated users with an organization but no current workspace are sent to `/workspace-select` (which auto-selects when only one workspace is available, preventing a needless extra screen). On a hard refresh, when `auth.isAuthenticated` is true but `auth.user` is null, the guard now eagerly calls `auth.fetchProfile()` so views like `HomeView.vue` always have an email/name to render.
 - `GraphView.vue` with vis-network placeholder (unchanged).
@@ -147,12 +149,12 @@
 - No generalized domain-event catalog beyond workspace choreography pilot + audit payloads.
 - **No email notifications for invitations or join request outcomes (intentional).** Invitation tokens are returned in the POST response and surfaced as a copy-link in the UI. The token-in-response / copy-link UX is intentional for this iteration — integrating a real SMTP/transactional-email provider is out of scope. Resend rotates the token and bumps `ExpiresAt` but still returns the new token inline.
 - No property management endpoints (list/create/update org-scoped custom properties).
-- Relationship management endpoints (`entity_relationship`) deferred — the table and seed data exist but no API surface yet.
+- Relationship **admin** REST for arbitrary `entity_relationship` rows deferred — creates/updates still persist links via **entity create** and graph/Core transactions.
 
 ### Graph service
 
-**What exists:** SignalR hub mapped at `/hubs/graph`, identity endpoint, `DomainEventConsumerHostedService` (workspace choreography), DLQ wiring, Postgres idempotency receipts via EF `GraphDbContext` (`rabbitmq_processed_delivery`), broadcast event `domain.workspace.lifecycle.v1`.
-**What is missing:** `OnConnectedAsync` only calls `base`. No graph-domain queries, recursive CTE traversal, RBAC-scoped hub groups, or ML score integration.
+**What exists:** SignalR hub at `/hubs/graph`, `GET /`, workspace **`DomainEventConsumerHostedService`** (choreography + idempotency), and **HTTP** `POST /api/v1/workspaces/{workspaceId}/entity-graph/create` which RPCs to Core via Rabbit (`EntityGraphCreateRpcV1` / reply). `GraphGlobalExceptionHandler` for API errors.
+**What is missing:** `OnConnectedAsync` only calls `base`. No graph-domain queries, recursive CTE traversal, RBAC-scoped hub groups, or ML score integration on the canvas.
 
 ### Audit service
 
@@ -161,13 +163,13 @@
 
 ### ML service
 
-**What exists:** `POST /api/ml/score/batch` endpoint (request: `{"entity_ids":[int,...]}`) with 5-second timeout budget, null-safe per-entity scoring, and stale-data fallback recomputation. `POST /api/ml/recalculate/` now supports async enqueue (`202 + job_id`) for both explicit `entity_ids` and workspace mode. `run_domain_consumer` subscribes to `core.workspace.*` and `core.entity.*` (freshness updates), while `run_recalculate_consumer` handles queued recomputation jobs (`ml.recalculate.enqueued`). Both use `rabbitmq_processed_delivery` idempotency receipts.
-**What is missing:** Celery tasks are still not implemented. Redis broker is not in Docker Compose. Beat schedule remains commented out in `settings.py`.
+**What exists:** `POST /api/ml/score/batch` endpoint (request: `{"entity_ids":[int,...]}`) with 5-second timeout budget, null-safe per-entity scoring, and stale-data fallback recomputation. The response is `[{ entity_id, closure_score, churn_score, unavailable_reason }]`; when scoring is impossible, `closure_score` / `churn_score` are `null` and `unavailable_reason` carries a user-facing explanation (no analysis row, missing `created_at`, unrecognised `status`, no linked contract + no `deal_value`, contract amount missing, etc — see `_diagnose_missing_inputs` in `ML/ml_api/views.py`). `POST /api/ml/recalculate/` now supports async enqueue (`202 + job_id`) for both explicit `entity_ids` and workspace mode. `run_domain_consumer` subscribes to `core.workspace.*` and `core.entity.*` (freshness updates), while `run_recalculate_consumer` handles queued recomputation jobs (`ml.recalculate.enqueued`). Both use `rabbitmq_processed_delivery` idempotency receipts. `closure_score` and `churn_score` exist as system-readonly `deal` properties (joining the eight `deal_analysis` features already flagged in `AddPropertyIsReadonly`); actual write-back of the live model output into `entity_property_value` is still pending — the SPA reads scores on demand via the gateway.
+**What is missing:** Celery tasks are still not implemented. Redis broker is not in Docker Compose. Beat schedule remains commented out in `settings.py`. Score persistence into `entity_property_value` rows on a recalculation cycle is not wired up.
 
 ### Client
 
 **What exists:** Vue 3 + PrimeVue + Tailwind scaffold. Auth (login/register) + org onboarding + workspace selection + `/account` profile + member management (invite, role change, remove, join-request review for org admins, org-permission-based edit of another member’s profile) + workspace CRUD via Gateway. Typed API clients. Router guards with org and workspace checks.
-**What is missing:** No custom role creation UI. Entity list is minimal — entity detail / edit / archive UIs still pending. No dashboard. "Forgot password?" is a placeholder (no backend). D3 integration noted for later.
+**What is missing:** No custom role creation UI. No dashboard. "Forgot password?" is a placeholder (no backend). D3 integration noted for later.
 
 ---
 
@@ -214,7 +216,7 @@
 - Recursive CTE queries for entity-relationship traversal using `entity_relationship` and `entity_relationship_type`.
 - Dynamic RBAC-based filtering of graph data (workspace-scoped via `entity_workspace`).
 - ~~Live SignalR push updates when workspaces change via choreography envelope.~~ *(partial — choreography consumer broadcasts workspace lifecycle but no entity-graph projection yet)*.
-- ML score integration (display `closure_score` property values on graph nodes — stored as `entity_property_value` rows).
+- ML score integration on graph nodes. `closure_score` / `churn_score` exist as readonly deal properties; the SPA already calls `POST /ml/api/ml/score/batch` (via the gateway) on Deal info-view open and renders the result, including the `unavailable_reason` explanation when scoring is blocked. Persisting scores into `entity_property_value` on a recalculation cycle is still pending.
 
 ### Audit service
 
@@ -241,7 +243,7 @@
 - Workspace management UI (rename, archive from list).
 - ~~Join request review UI (approve/reject pending requests).~~ *(done — org-scoped in `MembersView.vue` with `manage_join_requests` gating; workspace join requests removed.)*
 - Role and permission management UI.
-- Entity detail / edit / archive pages (Sprint 2).
+- ~~Entity detail / edit / archive pages (Sprint 2).~~ *(done — `EntityReadView` + permission-gated PATCH/DELETE + relationship navigation.)*
 - Dashboard with analytics.
 - D3-based graph visualization (replacing vis-network placeholder).
 - Password reset flow (requires new backend endpoint).

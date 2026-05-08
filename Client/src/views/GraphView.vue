@@ -198,8 +198,9 @@ onUnmounted(() => {
         icon="pi pi-plus"
         @click="
           router.push({
-            name: 'workspace-entity-create',
+            name: 'workspace-entities',
             params: { workspaceId: String(workspaceId) },
+            query: { action: 'create' },
           })
         "
       />

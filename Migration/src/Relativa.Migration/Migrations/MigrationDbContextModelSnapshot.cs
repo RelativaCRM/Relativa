@@ -435,6 +435,12 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<string>("RelationshipCardinality")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("relationship_cardinality");
+
                     b.Property<int>("SourceEntityTypeId")
                         .HasColumnType("integer")
                         .HasColumnName("source_entity_type_id");

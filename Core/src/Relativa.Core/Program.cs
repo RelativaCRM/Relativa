@@ -13,6 +13,7 @@ using Relativa.Core.Domain.Interfaces;
 using Relativa.Core.Endpoints;
 using Relativa.Core.Infrastructure.Data;
 using Relativa.Core.Infrastructure.Repositories;
+using Relativa.Core.Infrastructure.Messaging;
 using Relativa.Core.Infrastructure.Services.Audit;
 using Relativa.Core.Middleware;
 using Relativa.Messaging;
@@ -39,6 +40,8 @@ try
         options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
     builder.Services.Configure<RabbitMqPublishingOptions>(
         builder.Configuration.GetSection(RabbitMqPublishingOptions.ConfigurationSectionKey));
+    builder.Services.Configure<EntityGraphRabbitOptions>(
+        builder.Configuration.GetSection(EntityGraphRabbitOptions.SectionKey));
 
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<RelativaDbContext>();
@@ -66,9 +69,11 @@ try
     builder.Services.AddScoped<IEntityRepository, EntityRepository>();
 
     builder.Services.AddScoped<IEntityTypeService, EntityTypeService>();
+    builder.Services.AddScoped<IWorkspaceAccessEvaluator, WorkspaceAccessEvaluator>();
     builder.Services.AddScoped<IEntityService, EntityService>();
     builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
     builder.Services.AddHostedService<AuditOutboxDispatcher>();
+    builder.Services.AddHostedService<EntityGraphCommandConsumerHostedService>();
 
     builder.Services.AddScoped<IWorkspaceService, WorkspaceService>();
     builder.Services.AddScoped<IWorkspaceMemberService, WorkspaceMemberService>();

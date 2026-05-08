@@ -13,6 +13,10 @@ from .recalculate_service import (
     ANALYSIS_PROP_SOURCE_UPDATED_AT,
     ANALYSIS_PROP_STAGE_ENCODED,
     BATCH_TIMEOUT_SECONDS,
+    CONTRACT_PROP_AMOUNT,
+    DEAL_PROP_CREATED_AT,
+    DEAL_PROP_STATUS,
+    DEAL_STATUS_TO_STAGE,
     FEATURE_KEYS,
     enqueue_recalculation_job,
     normalize_entity_ids,
@@ -99,6 +103,9 @@ def score_batch(request):
         analysis_rows = _load_analysis_state(normalized, config)
         deal_rows = _load_deal_inputs(normalized, config)
         contract_rows = _load_contract_inputs(normalized, config)
+        contracts_by_deal = {}
+        for row in contract_rows:
+            contracts_by_deal.setdefault(row["deal_id"], []).append(row)
         _check_deadline(deadline)
 
         results_by_id = {}
@@ -106,7 +113,11 @@ def score_batch(request):
         for deal_id in normalized:
             analysis = analysis_rows.get(deal_id)
             if analysis is None:
-                results_by_id[deal_id] = {"closure_score": None, "churn_score": None}
+                results_by_id[deal_id] = _score_or_diagnose(
+                    None,
+                    deal_rows.get(deal_id, {}),
+                    contracts_by_deal.get(deal_id, []),
+                )
                 continue
 
             source_updated_at = analysis.get(ANALYSIS_PROP_SOURCE_UPDATED_AT)
@@ -115,15 +126,21 @@ def score_batch(request):
                 stale_analysis_ids.append(deal_id)
                 continue
 
-            scores = _score_from_analysis(analysis)
-            results_by_id[deal_id] = scores
+            results_by_id[deal_id] = _score_or_diagnose(
+                analysis,
+                deal_rows.get(deal_id, {}),
+                contracts_by_deal.get(deal_id, []),
+            )
 
         if stale_analysis_ids:
             recompute_deal_analysis(stale_analysis_ids, deadline=deadline)
             refreshed = _load_analysis_state(stale_analysis_ids, config)
             for deal_id in stale_analysis_ids:
-                scores = _score_from_analysis(refreshed.get(deal_id, {}))
-                results_by_id[deal_id] = scores
+                results_by_id[deal_id] = _score_or_diagnose(
+                    refreshed.get(deal_id),
+                    deal_rows.get(deal_id, {}),
+                    contracts_by_deal.get(deal_id, []),
+                )
 
         _check_deadline(deadline)
         response_payload = [
@@ -131,6 +148,7 @@ def score_batch(request):
                 "entity_id": entity_id,
                 "closure_score": results_by_id.get(entity_id, {}).get("closure_score"),
                 "churn_score": results_by_id.get(entity_id, {}).get("churn_score"),
+                "unavailable_reason": results_by_id.get(entity_id, {}).get("unavailable_reason"),
             }
             for entity_id in entity_ids
         ]
@@ -143,10 +161,19 @@ def score_batch(request):
     except Exception as exc:
         return Response({"detail": f"Failed to score batch: {exc}"}, status=500)
 
-def _score_from_analysis(analysis):
-    feature_values = [analysis.get(k) for k in FEATURE_KEYS]
-    if any(v is None for v in feature_values):
-        return {"closure_score": None, "churn_score": None}
+
+# ---------------------------------------------------------------------------
+# Score / diagnose helpers
+# ---------------------------------------------------------------------------
+
+_ALLOWED_STATUSES_HUMAN = "opened, pending, closed, or revoked"
+
+
+def _score_or_diagnose(analysis, deal_row, contracts):
+    """Return the score dict for a single deal, or a structured 'why missing' reason."""
+    reason = _diagnose_missing_inputs(analysis, deal_row, contracts)
+    if reason is not None:
+        return {"closure_score": None, "churn_score": None, "unavailable_reason": reason}
 
     closure_input = [[
         float(analysis[ANALYSIS_PROP_AVG_DEAL_VALUE]),
@@ -164,7 +191,47 @@ def _score_from_analysis(analysis):
     return {
         "closure_score": round(closure_score, 4),
         "churn_score": round(churn_score, 4),
+        "unavailable_reason": None,
     }
+
+
+def _diagnose_missing_inputs(analysis, deal_row, contracts):
+    """Inspect the deal/contracts/analysis inputs and return a user-facing reason
+    when scoring is impossible. Returns None when every model input is present.
+    Order matters — we report the first blocker encountered, walking from the
+    deal upward toward the model features so the user sees the most actionable
+    fix first."""
+    if analysis is None:
+        return "Scores are not available yet — analysis has not been computed for this deal."
+
+    created_at = deal_row.get(DEAL_PROP_CREATED_AT)
+    if created_at is None:
+        return "Deal is missing a created date, which is required for scoring."
+
+    raw_status = deal_row.get(DEAL_PROP_STATUS)
+    status = (raw_status or "").lower()
+    if not status:
+        return f"Deal is missing a status — set it to {_ALLOWED_STATUSES_HUMAN} to enable scoring."
+    if status not in DEAL_STATUS_TO_STAGE:
+        return (
+            f"Deal status '{raw_status}' is not recognised — "
+            f"set it to {_ALLOWED_STATUSES_HUMAN} to enable scoring."
+        )
+
+    missing_features = [k for k in FEATURE_KEYS if analysis.get(k) is None]
+    if not missing_features:
+        return None
+
+    if ANALYSIS_PROP_AVG_DEAL_VALUE in missing_features:
+        if not contracts and (deal_row.get("deal_value") in (None, 0)):
+            return (
+                "Cannot score: deal has no linked contract and no deal value "
+                "to fall back on."
+            )
+        if contracts and all(c.get(CONTRACT_PROP_AMOUNT) in (None, 0) for c in contracts):
+            return "Linked contract is missing an amount."
+
+    return "One or more model inputs are missing; try refreshing the analysis."
 
 
 def _extract_user_id(request):

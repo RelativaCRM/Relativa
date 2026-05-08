@@ -126,6 +126,12 @@ public partial class BackfillDealAnalysisSeedData : EfMigration
                         VALUES (v_deal_id, v_analysis_entity_id, v_rel_deal_analysis_id);
                     END IF;
 
+                    INSERT INTO entity_workspace (entity_id, workspace_id)
+                    SELECT v_analysis_entity_id, ew.workspace_id
+                    FROM entity_workspace ew
+                    WHERE ew.entity_id = v_deal_id
+                    ON CONFLICT (entity_id, workspace_id) DO NOTHING;
+
                     INSERT INTO entity_property_value (entity_id, property_id, value_int, value_decimal, value_date)
                     VALUES
                         (v_analysis_entity_id, v_prop_analysis_days_since_created, 45, NULL, NULL),
@@ -156,6 +162,12 @@ public partial class BackfillDealAnalysisSeedData : EfMigration
                         INSERT INTO entity_relationship (source_entity_id, target_entity_id, relationship_type_id)
                         VALUES (v_deal_id, v_contract_entity_id, v_rel_deal_contract_id);
                     END IF;
+
+                    INSERT INTO entity_workspace (entity_id, workspace_id)
+                    SELECT v_contract_entity_id, ew.workspace_id
+                    FROM entity_workspace ew
+                    WHERE ew.entity_id = v_deal_id
+                    ON CONFLICT (entity_id, workspace_id) DO NOTHING;
 
                     INSERT INTO entity_property_value (entity_id, property_id, value_string, value_decimal, value_date)
                     VALUES

@@ -339,6 +339,16 @@ def _ensure_deal_analysis_entities(deal_ids, config, deadline):
                     """,
                     [deal_id, analysis_id, rel_type_id],
                 )
+                cursor.execute(
+                    """
+                    INSERT INTO entity_workspace (entity_id, workspace_id)
+                    SELECT %s, ew.workspace_id
+                    FROM entity_workspace ew
+                    WHERE ew.entity_id = %s
+                    ON CONFLICT (entity_id, workspace_id) DO NOTHING
+                    """,
+                    [analysis_id, deal_id],
+                )
 
 
 def _load_analysis_state(deal_ids, config):
@@ -412,6 +422,7 @@ def _load_contract_inputs(deal_ids, config):
             """
             SELECT er.source_entity_id, er.target_entity_id, epv.property_id, epv.value_string, epv.value_decimal, epv.value_date
             FROM entity_relationship er
+            INNER JOIN entity contract ON contract.id = er.target_entity_id AND contract.is_archived = FALSE
             LEFT JOIN entity_property_value epv ON epv.entity_id = er.target_entity_id
             WHERE er.relationship_type_id = %s
               AND er.source_entity_id = ANY(%s)

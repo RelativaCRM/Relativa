@@ -22,6 +22,19 @@ const wsStore = useWorkspaceStore();
 const { notify } = useApiErrorHandler();
 
 const ROLE_ORDER = ['ws_admin', 'ws_manager', 'ws_analyst', 'ws_member'];
+const FULL_WS_AUTHORITY = [
+  'manage_ws_settings',
+  'add_ws_members',
+  'remove_ws_members',
+  'assign_ws_roles',
+  'manage_ws_roles',
+  'create_entities',
+  'edit_entities',
+  'delete_entities',
+  'view_entities',
+  'view_analytics',
+  'delete_workspace',
+];
 
 const workspaceId = computed(() => Number(route.params.workspaceId));
 const loading = ref(true);
@@ -32,18 +45,11 @@ const ASSIGN_WS_ROLES = 'assign_ws_roles';
 const MANAGE_ORG_WS_MEMBERS = 'manage_org_workspace_members';
 
 const hasWsPermission = (perm: string) => {
-  const roleName = wsStore.members.find((m) => m.userId === auth.user?.id)
-    ?.roleName;
-  if (!roleName) return false;
-  const role = wsStore.roles.find((r) => r.name === roleName);
-  return role?.permissions.some((p) => p.name === perm) ?? false;
+  return (wsStore.currentWorkspace?.myPermissions ?? []).includes(perm);
 };
 
 const hasOrgPermission = (perm: string) => {
-  const roleName = orgStore.currentOrg?.userRole;
-  if (!roleName) return false;
-  const role = orgStore.roles.find((r) => r.name === roleName);
-  return role?.permissions.some((p) => p.name === perm) ?? false;
+  return (orgStore.currentOrg?.myPermissions ?? []).includes(perm);
 };
 
 const canAddMember = computed(
@@ -149,16 +155,25 @@ const roleSelectVersion = ref(0);
 
 async function handleRoleChange(userId: number, newRoleId: number) {
   const target = wsStore.members.find((m) => m.userId === userId);
+  const roleHasFullAuthority = (roleName?: string) => {
+    if (!roleName) return false;
+    const role = wsStore.roles.find((r) => r.name === roleName);
+    if (!role) return false;
+    const granted = new Set(role.permissions.map((p) => p.name));
+    return FULL_WS_AUTHORITY.every((p) => granted.has(p));
+  };
+  const targetHasFullAuthority = roleHasFullAuthority(target?.roleName);
   const newRoleName = wsStore.roles.find((r) => r.id === newRoleId)?.name;
-  if (target && target.roleName === 'ws_admin' && newRoleName !== 'ws_admin') {
+  const newRoleHasFullAuthority = roleHasFullAuthority(newRoleName);
+  if (targetHasFullAuthority && !newRoleHasFullAuthority) {
     const adminCount = wsStore.members.filter(
-      (m) => m.roleName === 'ws_admin',
+      (m) => roleHasFullAuthority(m.roleName),
     ).length;
     if (adminCount <= 1) {
       toast.add({
         severity: 'error',
         summary: 'Conflict',
-        detail: 'Cannot remove the last workspace administrator.',
+        detail: 'Cannot remove the last full-authority workspace member.',
         life: 5000,
       });
       await wsStore.fetchMembers(workspaceId.value);

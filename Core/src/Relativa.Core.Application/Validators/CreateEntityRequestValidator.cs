@@ -19,5 +19,17 @@ public sealed class CreateEntityRequestValidator : AbstractValidator<CreateEntit
                 pv.RuleFor(p => p.PropertyId)
                     .GreaterThan(0).WithMessage("Each PropertyId must be a positive integer.");
             });
+
+        When(x => x.Links is not null && x.Links.Count > 0, () =>
+        {
+            RuleForEach(x => x.Links!)
+                .ChildRules(link =>
+                {
+                    link.RuleFor(l => l.RelationshipTypeId)
+                        .GreaterThan(0).WithMessage("Each RelationshipTypeId must be a positive integer.");
+                    link.RuleFor(l => l.TargetEntityId)
+                        .GreaterThan(0).WithMessage("Each TargetEntityId must be a positive integer.");
+                });
+        });
     }
 }

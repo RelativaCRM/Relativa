@@ -13,7 +13,13 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS runtime
 WORKDIR /app
 
 COPY --from=build /app/publish .
+COPY Migration/entrypoint.sh /app/entrypoint.sh
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod +x /app/entrypoint.sh
 
 ENV DOTNET_NOLOGO=1
 
-ENTRYPOINT ["dotnet", "Relativa.Migration.dll"]
+ENTRYPOINT ["/app/entrypoint.sh"]

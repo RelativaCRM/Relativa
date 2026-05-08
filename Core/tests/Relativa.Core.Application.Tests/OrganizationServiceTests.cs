@@ -18,6 +18,7 @@ public sealed class OrganizationServiceTests
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IOrganizationRoleRepository> _orgRoleRepo = new();
+    private readonly Mock<IPermissionRepository> _permissionRepo = new();
     private readonly Mock<IValidator<CreateOrganizationRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateOrganizationRequest>> _updateValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
@@ -29,6 +30,7 @@ public sealed class OrganizationServiceTests
             _orgRepo.Object,
             _orgMemberRepo.Object,
             _orgRoleRepo.Object,
+            _permissionRepo.Object,
             _createValidator.Object,
             _updateValidator.Object,
             _auditOutboxWriter.Object);
@@ -39,6 +41,17 @@ public sealed class OrganizationServiceTests
         _updateValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateOrganizationRequest>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
+        _permissionRepo
+            .Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new Permission { Id = 1, Name = "manage_org_settings" },
+                new Permission { Id = 2, Name = "invite_to_org" },
+                new Permission { Id = 3, Name = "manage_join_requests" },
+                new Permission { Id = 4, Name = "remove_org_members" },
+                new Permission { Id = 5, Name = "assign_org_roles" },
+                new Permission { Id = 6, Name = "manage_org_roles" },
+                new Permission { Id = 7, Name = "create_workspaces" }
+            ]);
     }
 
     private UserRoleOrganization OrgMemberWithPermission(int userId, int orgId, string permission) =>
@@ -72,9 +85,19 @@ public sealed class OrganizationServiceTests
     {
         var ownerRole = new OrganizationRole { Id = 1, Name = "org_owner", Priority = 0 };
 
+        ownerRole.RolePermissions =
+        [
+            new() { Permission = new Permission { Name = "manage_org_settings" } },
+            new() { Permission = new Permission { Name = "invite_to_org" } },
+            new() { Permission = new Permission { Name = "manage_join_requests" } },
+            new() { Permission = new Permission { Name = "remove_org_members" } },
+            new() { Permission = new Permission { Name = "assign_org_roles" } },
+            new() { Permission = new Permission { Name = "manage_org_roles" } },
+            new() { Permission = new Permission { Name = "create_workspaces" } }
+        ];
         _orgRoleRepo
-            .Setup(r => r.GetSystemRoleByNameAsync("org_owner", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ownerRole);
+            .Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ownerRole]);
 
         Organization? capturedOrg = null;
         _orgRepo
@@ -100,13 +123,13 @@ public sealed class OrganizationServiceTests
     public async Task CreateAsync_OrgOwnerRoleNotFound_ThrowsInvalidOperationException()
     {
         _orgRoleRepo
-            .Setup(r => r.GetSystemRoleByNameAsync("org_owner", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((OrganizationRole?)null);
+            .Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         var act = () => _sut.CreateAsync(1, new CreateOrganizationRequest("Orphan Org"));
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("System org_owner role not found.");
+            .WithMessage("System org owner-equivalent role not found.");
         _orgRepo.Verify(r => r.AddAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -120,16 +143,26 @@ public sealed class OrganizationServiceTests
         var act = () => _sut.CreateAsync(1, new CreateOrganizationRequest(""));
 
         await act.Should().ThrowAsync<ValidationException>();
-        _orgRoleRepo.Verify(r => r.GetSystemRoleByNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _orgRoleRepo.Verify(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task CreateAsync_ValidRequest_EnqueuesOrganizationCreatedAuditEvent()
     {
         var ownerRole = new OrganizationRole { Id = 1, Name = "org_owner", Priority = 0 };
+        ownerRole.RolePermissions =
+        [
+            new() { Permission = new Permission { Name = "manage_org_settings" } },
+            new() { Permission = new Permission { Name = "invite_to_org" } },
+            new() { Permission = new Permission { Name = "manage_join_requests" } },
+            new() { Permission = new Permission { Name = "remove_org_members" } },
+            new() { Permission = new Permission { Name = "assign_org_roles" } },
+            new() { Permission = new Permission { Name = "manage_org_roles" } },
+            new() { Permission = new Permission { Name = "create_workspaces" } }
+        ];
         _orgRoleRepo
-            .Setup(r => r.GetSystemRoleByNameAsync("org_owner", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ownerRole);
+            .Setup(r => r.GetSystemRolesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([ownerRole]);
 
         await _sut.CreateAsync(7, new CreateOrganizationRequest("Audit Corp"));
 

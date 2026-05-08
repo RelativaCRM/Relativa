@@ -16,7 +16,6 @@ public sealed class OrgInvitationService(
     IValidator<InviteToOrgRequest> inviteValidator,
     IOutboxWriter? auditOutboxWriter = null) : IOrgInvitationService
 {
-    private const string DefaultOrgRoleName = "org_member";
     private static readonly TimeSpan InvitationLifetime = TimeSpan.FromDays(7);
 
     public async Task<OrgInvitationDto> InviteAsync(int organizationId, int callerUserId, InviteToOrgRequest request, CancellationToken ct = default)
@@ -224,10 +223,15 @@ public sealed class OrgInvitationService(
 
     private async Task<OrganizationRole> ResolveInviteRoleAsync(int organizationId, int callerUserId, int? requestedRoleId, CancellationToken ct)
     {
+        var systemRoles = (await orgRoleRepository.GetSystemRolesAsync(ct)) ?? [];
+        var defaultRole = systemRoles
+            .OrderByDescending(r => r.Priority)
+            .ThenBy(r => r.Id)
+            .FirstOrDefault();
+
         if (!requestedRoleId.HasValue)
         {
-            return await orgRoleRepository.GetSystemRoleByNameAsync(DefaultOrgRoleName, ct)
-                ?? throw new InvalidOperationException("System org_member role not found.");
+            return defaultRole ?? throw new InvalidOperationException("Default system organization role not found.");
         }
 
         var role = await orgRoleRepository.GetByIdAsync(requestedRoleId.Value, ct)
@@ -236,7 +240,7 @@ public sealed class OrgInvitationService(
         if (role.OrganizationId.HasValue && role.OrganizationId.Value != organizationId)
             throw new ArgumentException("The specified role does not belong to this organization.");
 
-        if (!string.Equals(role.Name, DefaultOrgRoleName, StringComparison.Ordinal))
+        if (defaultRole is null || role.Id != defaultRole.Id)
         {
             await RequireOrgPermission(callerUserId, organizationId, "assign_org_roles", ct);
         }

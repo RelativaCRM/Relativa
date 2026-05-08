@@ -15,6 +15,8 @@ public sealed class EntityTypeRepository(RelativaDbContext db) : IEntityTypeRepo
                 .ThenInclude(etp => etp.Property)
             .Include(et => et.SourceRelationshipTypes)
                 .ThenInclude(rt => rt.TargetEntityType)
+            .Include(et => et.TargetRelationshipTypes)
+                .ThenInclude(rt => rt.SourceEntityType)
             .OrderBy(et => et.Id)
             .ToListAsync(ct);
     }

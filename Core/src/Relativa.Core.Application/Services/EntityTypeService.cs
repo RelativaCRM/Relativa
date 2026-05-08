@@ -1,6 +1,7 @@
 using Relativa.Core.Application.DTOs.EntityType;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
+using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
 
@@ -21,7 +22,18 @@ public sealed class EntityTypeService(IEntityTypeRepository entityTypeRepository
                     rt.Name,
                     rt.TargetEntityTypeId,
                     rt.TargetEntityType.Name,
-                    rt.IsRequired))
+                    rt.IsRequired,
+                    rt.RelationshipCardinality.ToDatabaseValue()))
+                .ToList(),
+            et.TargetRelationshipTypes
+                .OrderBy(rt => rt.Id)
+                .Select(rt => new IncomingRelationshipDto(
+                    rt.Id,
+                    rt.Name,
+                    rt.SourceEntityTypeId,
+                    rt.SourceEntityType.Name,
+                    rt.IsRequired,
+                    rt.RelationshipCardinality.ToDatabaseValue()))
                 .ToList(),
             et.EntityTypeProperties
                 .OrderBy(etp => etp.PropertyId)

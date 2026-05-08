@@ -113,8 +113,11 @@ public sealed class JoinRequestService(
             if (existingMembership is not null)
                 throw new InvalidOperationException("The requester is already a member of this organization.");
 
-            var memberRole = await orgRoleRepository.GetSystemRoleByNameAsync("org_member", ct)
-                ?? throw new InvalidOperationException("System org_member role not found.");
+            var memberRole = ((await orgRoleRepository.GetSystemRolesAsync(ct)) ?? [])
+                .OrderByDescending(r => r.Priority)
+                .ThenBy(r => r.Id)
+                .FirstOrDefault()
+                ?? throw new InvalidOperationException("Default system organization role not found.");
 
             var membership = new UserRoleOrganization
             {

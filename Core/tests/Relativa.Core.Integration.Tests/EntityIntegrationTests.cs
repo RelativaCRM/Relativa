@@ -105,7 +105,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
             new() { PropertyId = typeProps.Single(p => p.Property.Name == "last_name").PropertyId,  ValueString = "Franko" }
         };
 
-        var created = await _repo.CreateAsync(entity, pvs, workspaceId);
+        var created = await _repo.CreateAsync(entity, pvs, workspaceId, null);
 
         var link = await _db.EntityWorkspaces
             .FirstOrDefaultAsync(ew => ew.EntityId == created.Id && ew.WorkspaceId == workspaceId);
@@ -135,7 +135,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
             }
         };
 
-        var created = await _repo.CreateAsync(entity, pvs, workspaceId);
+        var created = await _repo.CreateAsync(entity, pvs, workspaceId, null);
 
         var stored = await _db.EntityPropertyValues
             .Where(epv => epv.EntityId == created.Id)
@@ -164,7 +164,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
             new() { PropertyId = typeProps.Single(p => p.Property.Name == "first_name").PropertyId, ValueString = "Test" },
             new() { PropertyId = typeProps.Single(p => p.Property.Name == "last_name").PropertyId,  ValueString = "User" }
         };
-        var created = await _repo.CreateAsync(entity, pvs, workspaceId);
+        var created = await _repo.CreateAsync(entity, pvs, workspaceId, null);
 
         var result = await _repo.GetByIdInWorkspaceAsync(created.Id, otherWsId);
 
@@ -187,7 +187,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
 
         var entity = new Entity { EntityTypeId = clientTypeId, IsArchived = false };
 
-        await _repo.Invoking(r => r.CreateAsync(entity, pvWithInvalidPropertyId, workspaceId))
+        await _repo.Invoking(r => r.CreateAsync(entity, pvWithInvalidPropertyId, workspaceId, null))
             .Should().ThrowAsync<Exception>("FK violation on property_id=999999 must roll back the transaction");
 
         var entityCountAfter = await _db.Entities.CountAsync(e => e.EntityTypeId == clientTypeId);

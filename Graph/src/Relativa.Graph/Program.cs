@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Relativa.Graph;
 using Relativa.Graph.Data;
 using Relativa.Graph.Hubs;
 using Relativa.Graph.Messaging;
@@ -19,7 +20,12 @@ builder.Services.Configure<RabbitMqGraphConsumerOptions>(
     builder.Configuration.GetSection(RabbitMqGraphConsumerOptions.SectionKey));
 builder.Services.AddHostedService<DomainEventConsumerHostedService>();
 
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GraphGlobalExceptionHandler>();
+
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {
@@ -27,6 +33,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapGet("/", () => Results.Ok(new { service = "relativa-graph" }));
+
+EntityGraphEndpoints.MapEntityGraphEndpoints(app);
 
 app.MapHub<GraphHub>("/hubs/graph");
 

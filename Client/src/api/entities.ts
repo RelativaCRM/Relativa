@@ -22,6 +22,16 @@ export interface OutgoingRelationshipDto {
   targetEntityTypeId: number;
   targetEntityTypeName: string;
   isRequired: boolean;
+  relationshipCardinality: string;
+}
+
+export interface IncomingRelationshipDto {
+  relationshipTypeId: number;
+  name: string;
+  sourceEntityTypeId: number;
+  sourceEntityTypeName: string;
+  isRequired: boolean;
+  relationshipCardinality: string;
 }
 
 export interface EntityTypeDto {
@@ -29,6 +39,7 @@ export interface EntityTypeDto {
   name: string;
   isStandalone: boolean;
   outgoingRelationships: OutgoingRelationshipDto[];
+  incomingRelationships: IncomingRelationshipDto[];
   properties: EntityTypePropertyDto[];
 }
 
@@ -37,6 +48,15 @@ export interface EntityPropertyValueDto {
   propertyName: string;
   dataType: EntityPropertyDataType;
   value: string | number | boolean | null;
+  isReadonly: boolean;
+}
+
+export interface EntityRelationshipRefDto {
+  relationshipTypeId: number;
+  relationshipName: string;
+  relatedEntityId: number;
+  relatedEntityTypeName: string;
+  previewPropertyValues: EntityPropertyValueDto[];
 }
 
 export interface EntityListItemDto {
@@ -46,31 +66,58 @@ export interface EntityListItemDto {
   propertyValues: EntityPropertyValueDto[];
 }
 
-export type EntityDetailDto = EntityListItemDto;
+export interface EntityDetailDto extends EntityListItemDto {
+  isArchived: boolean;
+  outboundRelationships: EntityRelationshipRefDto[];
+  inboundRelationships: EntityRelationshipRefDto[];
+}
 
 export interface EntityPropertyInput {
   propertyId: number;
   value: string | null;
 }
 
+export interface EntityRelationshipLinkInput {
+  relationshipTypeId: number;
+  targetEntityId: number;
+}
+
 export interface CreateEntityRequest {
   entityTypeId: number;
   properties: EntityPropertyInput[];
+  links?: EntityRelationshipLinkInput[];
 }
 
 export interface UpdateEntityRequest {
   properties: EntityPropertyInput[];
 }
 
+export interface ListEntitiesQuery {
+  entityTypeId?: number;
+  q?: string;
+  take?: number;
+}
+
 const CORE = '/core/api/v1';
+
+function buildEntityListQuery(q?: ListEntitiesQuery): string {
+  if (!q) return '';
+  const params = new URLSearchParams();
+  if (q.entityTypeId != null) params.set('entityTypeId', String(q.entityTypeId));
+  if (q.q != null && q.q.trim()) params.set('q', q.q.trim());
+  if (q.take != null) params.set('take', String(q.take));
+  const s = params.toString();
+  return s ? `?${s}` : '';
+}
 
 export const entityApi = {
   listTypes(): Promise<EntityTypeDto[]> {
     return api.get<EntityTypeDto[]>(`${CORE}/entity-types`);
   },
-  list(workspaceId: number): Promise<EntityListItemDto[]> {
+  list(workspaceId: number, query?: ListEntitiesQuery): Promise<EntityListItemDto[]> {
+    const qs = buildEntityListQuery(query);
     return api.get<EntityListItemDto[]>(
-      `${CORE}/workspaces/${workspaceId}/entities`,
+      `${CORE}/workspaces/${workspaceId}/entities${qs}`,
     );
   },
   get(workspaceId: number, entityId: number): Promise<EntityDetailDto> {
