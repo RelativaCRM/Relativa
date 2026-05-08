@@ -43,7 +43,7 @@ public static class EntityGraphEndpoints
                 {
                     var reply = await RpcCreateAsync(mq.Value, cmd, ct);
                     if (!reply.Success || string.IsNullOrEmpty(reply.EntityDetailJson))
-                        return Results.BadRequest(reply.ErrorMessage ?? "Graph create failed.");
+                        return Results.Problem(reply.ErrorMessage ?? "Graph create failed.", statusCode: 400);
 
                     return Results.Content(reply.EntityDetailJson, "application/json", statusCode: StatusCodes.Status200OK);
                 }
