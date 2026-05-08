@@ -9,6 +9,7 @@ public static class WorkspacePermissions
     public const string ManageWsRoles = "manage_ws_roles";
     public const string CreateEntities = "create_entities";
     public const string EditEntities = "edit_entities";
+    public const string EditArchivedEntities = "edit_archived_entities";
     public const string DeleteEntities = "delete_entities";
     public const string ViewEntities = "view_entities";
     public const string ViewAnalytics = "view_analytics";
@@ -23,6 +24,7 @@ public static class WorkspacePermissions
         ManageWsRoles,
         CreateEntities,
         EditEntities,
+        EditArchivedEntities,
         DeleteEntities,
         ViewEntities,
         ViewAnalytics,

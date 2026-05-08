@@ -154,10 +154,13 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
         await tx.CommitAsync(ct);
     }
 
-    public async Task ArchiveAsync(Entity entity, CancellationToken ct = default)
+    public async Task SetArchivedStateAsync(int entityId, bool isArchived, CancellationToken ct = default)
     {
-        entity.IsArchived = true;
-        db.Entities.Update(entity);
-        await db.SaveChangesAsync(ct);
+        await db.Entities
+            .Where(e => e.Id == entityId)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.IsArchived, isArchived), ct);
     }
+
+    public Task ArchiveAsync(int entityId, CancellationToken ct = default) =>
+        SetArchivedStateAsync(entityId, true, ct);
 }

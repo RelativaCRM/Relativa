@@ -21,5 +21,6 @@ public interface IEntityRepository
         IReadOnlyList<EntityRelationship>? relationships,
         CancellationToken ct = default);
     Task UpdateAsync(Entity entity, List<EntityPropertyValue> newPropertyValues, CancellationToken ct = default);
-    Task ArchiveAsync(Entity entity, CancellationToken ct = default);
+    Task SetArchivedStateAsync(int entityId, bool isArchived, CancellationToken ct = default);
+    Task ArchiveAsync(int entityId, CancellationToken ct = default);
 }

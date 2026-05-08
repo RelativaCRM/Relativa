@@ -54,6 +54,13 @@ const editValues = ref<Record<number, FieldValue>>({});
 const canEdit = computed(() =>
   hasWorkspacePermission(wsStore.currentWorkspace, 'edit_entities'),
 );
+const canEditArchived = computed(() =>
+  hasWorkspacePermission(wsStore.currentWorkspace, 'edit_archived_entities'),
+);
+const canEditCurrentEntity = computed(() => {
+  if (!detail.value) return false;
+  return detail.value.isArchived ? canEditArchived.value : canEdit.value;
+});
 const canDelete = computed(() =>
   hasWorkspacePermission(wsStore.currentWorkspace, 'delete_entities'),
 );
@@ -90,7 +97,9 @@ function relTabKey(tab: Pick<EdgeRelTab, 'direction' | 'relationshipTypeId'>): s
 const outboundRelTabs = computed((): EdgeRelTab[] => {
   const schemaRels = typeSchema.value?.outgoingRelationships;
   if (schemaRels?.length) {
+    const currentType = detail.value?.entityTypeName ?? null;
     return [...schemaRels]
+      .filter((r) => !currentType || r.targetEntityTypeName !== currentType)
       .map((r) => ({
         direction: 'out' as const,
         relationshipTypeId: r.relationshipTypeId,
@@ -106,6 +115,7 @@ const outboundRelTabs = computed((): EdgeRelTab[] => {
   const byId = new Map<number, EdgeRelTab>();
   for (const r of d.outboundRelationships) {
     if (byId.has(r.relationshipTypeId)) continue;
+    if (r.relatedEntityTypeName === d.entityTypeName) continue;
     byId.set(r.relationshipTypeId, {
       direction: 'out',
       relationshipTypeId: r.relationshipTypeId,
@@ -135,8 +145,12 @@ const outboundCoveredTypeNames = computed<Set<string>>(() => {
 const inboundRelTabs = computed((): EdgeRelTab[] => {
   const schemaRels = typeSchema.value?.incomingRelationships;
   if (schemaRels?.length) {
+    const currentType = detail.value?.entityTypeName ?? null;
     const coveredNames = outboundCoveredTypeNames.value;
     return [...schemaRels]
+      .filter((r) => !currentType || r.sourceEntityTypeName !== currentType)
+      // Hide inbound duplicates when there's an outbound relationship to the same peer type.
+      // Example: on `contract`, hide `deal_contract` if `contract_deal` exists (outbound tab will mirror links).
       .filter((r) => !coveredNames.has(r.sourceEntityTypeName))
       .map((r) => ({
         direction: 'in' as const,
@@ -155,6 +169,7 @@ const inboundRelTabs = computed((): EdgeRelTab[] => {
   for (const r of d.inboundRelationships) {
     if (byId.has(r.relationshipTypeId)) continue;
     if (coveredNames.has(r.relatedEntityTypeName)) continue;
+    if (r.relatedEntityTypeName === d.entityTypeName) continue;
     byId.set(r.relationshipTypeId, {
       direction: 'in',
       relationshipTypeId: r.relationshipTypeId,
@@ -185,6 +200,47 @@ function inboundLinksFor(relationshipTypeId: number) {
       (r) => r.relationshipTypeId === relationshipTypeId,
     ) ?? []
   );
+}
+
+function inverseRelationshipName(name: string): string | null {
+  const parts = name.split('_');
+  if (parts.length !== 2) return null;
+  const [a, b] = parts;
+  if (!a || !b) return null;
+  return `${b}_${a}`;
+}
+
+function outboundLinksForTab(tab: EdgeRelTab) {
+  const d = detail.value;
+  if (!d) return [];
+
+  const direct =
+    d.outboundRelationships.filter((r) => r.relationshipTypeId === tab.relationshipTypeId) ??
+    [];
+
+  // If the DB stores the inverse direction (e.g. `deal_contract`) but the schema exposes
+  // the canonical outgoing tab (e.g. `contract_deal`), mirror those inbound links here.
+  const inverseName = inverseRelationshipName(tab.name);
+  const mirrored =
+    inverseName
+      ? d.inboundRelationships.filter(
+          (r) =>
+            r.relationshipName === inverseName &&
+            r.relatedEntityTypeName === tab.otherEntityTypeName,
+        )
+      : [];
+
+  if (mirrored.length === 0) return direct;
+
+  const seen = new Set(direct.map((r) => `${r.relationshipTypeId}:${r.relatedEntityId}`));
+  const merged = [...direct];
+  for (const r of mirrored) {
+    const k = `${r.relationshipTypeId}:${r.relatedEntityId}`;
+    if (seen.has(k)) continue;
+    merged.push(r);
+    seen.add(k);
+  }
+  return merged;
 }
 
 function humanize(name: string): string {
@@ -452,16 +508,16 @@ watch(
           Workspace record details and relationships.
         </p>
       </div>
-      <div v-if="detail && !detail.isArchived" class="flex flex-wrap gap-2 shrink-0">
+      <div v-if="detail && (!detail.isArchived || canEditArchived)" class="flex flex-wrap gap-2 shrink-0">
         <Button
-          v-if="canEdit && !editMode"
+          v-if="canEditCurrentEntity && !editMode"
           label="Edit"
           icon="pi pi-pencil"
           severity="secondary"
           outlined
           @click="editMode = true"
         />
-        <template v-if="canEdit && editMode">
+        <template v-if="canEditCurrentEntity && editMode">
           <Button
             label="Cancel"
             severity="secondary"
@@ -478,7 +534,7 @@ watch(
           />
         </template>
         <Button
-          v-if="canDelete && !editMode"
+          v-if="canDelete && !editMode && !detail?.isArchived"
           label="Delete"
           icon="pi pi-trash"
           severity="danger"
@@ -700,9 +756,9 @@ watch(
           <p class="text-xs text-ink-500 mb-4">
             Linked {{ tab.otherEntityTypeName.replace(/_/g, ' ') }} records (outgoing).
           </p>
-          <ul v-if="outboundLinksFor(tab.relationshipTypeId).length" class="space-y-2 text-sm">
+          <ul v-if="outboundLinksForTab(tab).length" class="space-y-2 text-sm">
             <li
-              v-for="r in outboundLinksFor(tab.relationshipTypeId)"
+              v-for="r in outboundLinksForTab(tab)"
               :key="`o-${r.relationshipTypeId}-${r.relatedEntityId}`"
             >
               <button

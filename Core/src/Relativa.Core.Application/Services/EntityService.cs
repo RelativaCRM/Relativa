@@ -137,7 +137,9 @@ public sealed class EntityService(
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
 
         if (entity.IsArchived)
-            throw new ArgumentException("Cannot update an archived entity.");
+        {
+            await RequirePermission(userId, workspaceId, "edit_archived_entities", ct);
+        }
 
         var typeProperties = await entityRepository.GetTypePropertiesAsync(entity.EntityTypeId, ct);
         ValidateRequestPropertyIds(request.Properties, typeProperties);
@@ -186,7 +188,7 @@ public sealed class EntityService(
         var entity = await entityRepository.GetByIdInWorkspaceAsync(entityId, workspaceId, ct)
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
 
-        await entityRepository.ArchiveAsync(entity, ct);
+        await entityRepository.ArchiveAsync(entity.Id, ct);
 
         if (auditOutboxWriter is not null)
         {

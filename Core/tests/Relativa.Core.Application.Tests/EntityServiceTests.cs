@@ -38,6 +38,9 @@ public sealed class EntityServiceTests
         _entityRepo
             .Setup(r => r.GetOutgoingRelationshipTypesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
+        _entityRepo
+            .Setup(r => r.ArchiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         _createValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<CreateEntityRequest>>(), It.IsAny<CancellationToken>()))
@@ -406,15 +409,37 @@ public sealed class EntityServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_ArchivedEntity_ThrowsArgumentException()
+    public async Task UpdateAsync_ArchivedEntityWithoutSpecialPermission_ThrowsUnauthorized()
     {
         var archived = BuildEntity(1, 1, "client", [(1, "first_name", "Old")], archived: true);
         _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(archived);
+        _workspaceAccess
+            .Setup(x => x.HasWorkspacePermissionAsync(1, 1, "edit_archived_entities", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "New")])))
-            .Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*archived*");
+            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*edit_archived_entities*");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ArchivedEntityWithSpecialPermission_UpdatesWithoutUnarchiving()
+    {
+        var archived = BuildEntity(1, 1, "client", [(1, "first_name", "Old")], archived: true);
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+        var reloaded = BuildEntity(1, 1, "client", [(1, "first_name", "New")], archived: true);
+
+        _entityRepo.SetupSequence(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(archived)
+            .ReturnsAsync(reloaded);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "New")]));
+
+        _entityRepo.Verify(r => r.SetArchivedStateAsync(It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _entityRepo.Verify(r => r.UpdateAsync(archived, It.IsAny<List<EntityPropertyValue>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -466,7 +491,7 @@ public sealed class EntityServiceTests
 
         await _sut.ArchiveAsync(1, 1, 1);
 
-        _entityRepo.Verify(r => r.ArchiveAsync(entity, It.IsAny<CancellationToken>()), Times.Once);
+        _entityRepo.Verify(r => r.ArchiveAsync(1, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
