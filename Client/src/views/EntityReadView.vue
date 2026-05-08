@@ -18,6 +18,7 @@ import type {
   EntityDetailDto,
   EntityPropertyValueDto,
 } from '@/api/entities';
+import { mlApi, type DealScoreDto } from '@/api/ml';
 
 const props = defineProps<{
   workspaceId: number;
@@ -42,6 +43,10 @@ const errorMessage = ref<string | null>(null);
 const detail = ref<EntityDetailDto | null>(null);
 const editMode = ref(false);
 const fieldErrors = ref<FieldErrors>({});
+
+const score = ref<DealScoreDto | null>(null);
+const scoreLoading = ref(false);
+const scoreError = ref<string | null>(null);
 
 type FieldValue = string | number | boolean | Date | null;
 const editValues = ref<Record<number, FieldValue>>({});
@@ -112,10 +117,38 @@ const outboundRelTabs = computed((): EdgeRelTab[] => {
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 });
 
+/**
+ * Hide an inbound relationship tab only when the current entity type already has an
+ * outgoing relationship type covering the same pair (e.g. on a `deal`, hide the
+ * `contract_deal` inbound because `deal_contract` already provides the deal-side
+ * outbound view). Solo inbound tabs with no complementary outbound (e.g. `deal_client`
+ * viewed from a client) stay visible — without them, "deals from this client" would
+ * disappear entirely.
+ */
+const outboundTargetTypeIds = computed<Set<number>>(() => {
+  const schemaOut = typeSchema.value?.outgoingRelationships;
+  if (schemaOut?.length) {
+    return new Set(schemaOut.map((r) => r.targetEntityTypeId));
+  }
+  return new Set();
+});
+
+const outboundTargetTypeNames = computed<Set<string>>(() => {
+  const schemaOut = typeSchema.value?.outgoingRelationships;
+  if (schemaOut?.length) {
+    return new Set(schemaOut.map((r) => r.targetEntityTypeName));
+  }
+  const d = detail.value;
+  if (!d?.outboundRelationships.length) return new Set();
+  return new Set(d.outboundRelationships.map((r) => r.relatedEntityTypeName));
+});
+
 const inboundRelTabs = computed((): EdgeRelTab[] => {
   const schemaRels = typeSchema.value?.incomingRelationships;
   if (schemaRels?.length) {
+    const coveredTargets = outboundTargetTypeIds.value;
     return [...schemaRels]
+      .filter((r) => !coveredTargets.has(r.sourceEntityTypeId))
       .map((r) => ({
         direction: 'in' as const,
         relationshipTypeId: r.relationshipTypeId,
@@ -128,9 +161,11 @@ const inboundRelTabs = computed((): EdgeRelTab[] => {
   const d = detail.value;
   if (!d?.inboundRelationships.length) return [];
 
+  const coveredNames = outboundTargetTypeNames.value;
   const byId = new Map<number, EdgeRelTab>();
   for (const r of d.inboundRelationships) {
     if (byId.has(r.relationshipTypeId)) continue;
+    if (coveredNames.has(r.relatedEntityTypeName)) continue;
     byId.set(r.relationshipTypeId, {
       direction: 'in',
       relationshipTypeId: r.relationshipTypeId,
@@ -261,10 +296,15 @@ function exitDetail() {
   emit('close');
 }
 
+const isDeal = computed(() => detail.value?.entityTypeName === 'deal');
+
 async function loadDetail() {
   loading.value = true;
   errorMessage.value = null;
   activeTab.value = 'overview';
+  score.value = null;
+  scoreError.value = null;
+  scoreLoading.value = false;
   try {
     await entityStore.fetchTypes();
     const d = await entityStore.fetchDetail(props.workspaceId, props.entityId);
@@ -277,6 +317,50 @@ async function loadDetail() {
   } finally {
     loading.value = false;
   }
+
+  // Fire-and-forget score fetch for deals so the page paints first.
+  if (detail.value && isDeal.value) {
+    void loadScore();
+  }
+}
+
+async function loadScore() {
+  const targetEntityId = props.entityId;
+  scoreLoading.value = true;
+  scoreError.value = null;
+  try {
+    const results = await mlApi.scoreBatch([targetEntityId]);
+    if (props.entityId !== targetEntityId) return;
+    score.value = results[0] ?? null;
+  } catch (err) {
+    if (props.entityId !== targetEntityId) return;
+    score.value = null;
+    scoreError.value = normalizeError(err, 'Could not load scores.').message;
+  } finally {
+    if (props.entityId === targetEntityId) {
+      scoreLoading.value = false;
+    }
+  }
+}
+
+async function refreshScore() {
+  if (!isDeal.value) return;
+  await loadScore();
+  if (scoreError.value) {
+    toast.add({
+      severity: 'error',
+      summary: 'Score refresh failed',
+      detail: scoreError.value,
+      life: 4000,
+    });
+  } else if (score.value && score.value.unavailable_reason === null) {
+    toast.add({ severity: 'success', summary: 'Scores refreshed', life: 2000 });
+  }
+}
+
+function formatScore(value: number | null): string {
+  if (value === null || value === undefined) return '—';
+  return `${value.toFixed(1)}%`;
 }
 
 function cancelEdit() {
@@ -488,6 +572,79 @@ watch(
           </span>
         </button>
       </nav>
+
+      <div
+        v-if="isDeal"
+        v-show="activeTab === 'overview'"
+        class="rounded-xl border border-line bg-white p-6 mb-6"
+      >
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide">
+              Scores
+            </h2>
+            <p class="mt-1 text-xs text-ink-500">
+              Closure and churn likelihood, computed by the ML service from this deal's analysis.
+            </p>
+          </div>
+          <Button
+            icon="pi pi-refresh"
+            label="Refresh data"
+            severity="secondary"
+            outlined
+            size="small"
+            :loading="scoreLoading"
+            :disabled="scoreLoading"
+            @click="refreshScore"
+          />
+        </div>
+
+        <div v-if="scoreLoading && !score" class="flex items-center gap-2 text-sm text-ink-500">
+          <i class="pi pi-spin pi-spinner" />
+          <span>Loading scores…</span>
+        </div>
+
+        <Message
+          v-else-if="scoreError"
+          severity="warn"
+          :closable="false"
+          class="!my-0"
+        >
+          {{ scoreError }}
+        </Message>
+
+        <Message
+          v-else-if="score && score.unavailable_reason"
+          severity="info"
+          :closable="false"
+          class="!my-0"
+        >
+          {{ score.unavailable_reason }}
+        </Message>
+
+        <div v-else-if="score" class="grid gap-4 sm:grid-cols-2">
+          <div class="rounded-lg border border-line bg-surface/40 p-4">
+            <div class="text-xs font-medium text-ink-500 uppercase tracking-wide">
+              Closure score
+            </div>
+            <div class="mt-1 text-2xl font-bold text-brand-700">
+              {{ formatScore(score.closure_score) }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-line bg-surface/40 p-4">
+            <div class="text-xs font-medium text-ink-500 uppercase tracking-wide">
+              Churn score
+            </div>
+            <div class="mt-1 text-2xl font-bold text-brand-700">
+              {{ formatScore(score.churn_score) }}
+            </div>
+          </div>
+        </div>
+
+        <p v-else class="text-sm text-ink-500">
+          Scores have not been requested yet.
+        </p>
+      </div>
 
       <div v-show="activeTab === 'overview'" class="rounded-xl border border-line bg-white p-6 mb-6">
         <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-4">

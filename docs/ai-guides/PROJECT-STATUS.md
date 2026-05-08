@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-08 (split entity workspace permissions; Graph entity-graph HTTP + Core consumer; Vue query-driven entities + read view + optional graph create.)
+> **Last verified:** 2026-05-08 (deduped inbound entity tabs; `closure_score` + new `churn_score` flagged readonly on `deal`; ML score endpoint returns `unavailable_reason`; deal-side relationship cardinalities corrected; SPA renders live deal scores via gateway.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -163,8 +163,8 @@
 
 ### ML service
 
-**What exists:** `POST /api/ml/score/batch` endpoint (request: `{"entity_ids":[int,...]}`) with 5-second timeout budget, null-safe per-entity scoring, and stale-data fallback recomputation. `POST /api/ml/recalculate/` now supports async enqueue (`202 + job_id`) for both explicit `entity_ids` and workspace mode. `run_domain_consumer` subscribes to `core.workspace.*` and `core.entity.*` (freshness updates), while `run_recalculate_consumer` handles queued recomputation jobs (`ml.recalculate.enqueued`). Both use `rabbitmq_processed_delivery` idempotency receipts.
-**What is missing:** Celery tasks are still not implemented. Redis broker is not in Docker Compose. Beat schedule remains commented out in `settings.py`.
+**What exists:** `POST /api/ml/score/batch` endpoint (request: `{"entity_ids":[int,...]}`) with 5-second timeout budget, null-safe per-entity scoring, and stale-data fallback recomputation. The response is `[{ entity_id, closure_score, churn_score, unavailable_reason }]`; when scoring is impossible, `closure_score` / `churn_score` are `null` and `unavailable_reason` carries a user-facing explanation (no analysis row, missing `created_at`, unrecognised `status`, no linked contract + no `deal_value`, contract amount missing, etc — see `_diagnose_missing_inputs` in `ML/ml_api/views.py`). `POST /api/ml/recalculate/` now supports async enqueue (`202 + job_id`) for both explicit `entity_ids` and workspace mode. `run_domain_consumer` subscribes to `core.workspace.*` and `core.entity.*` (freshness updates), while `run_recalculate_consumer` handles queued recomputation jobs (`ml.recalculate.enqueued`). Both use `rabbitmq_processed_delivery` idempotency receipts. `closure_score` and `churn_score` exist as system-readonly `deal` properties (joining the eight `deal_analysis` features already flagged in `AddPropertyIsReadonly`); actual write-back of the live model output into `entity_property_value` is still pending — the SPA reads scores on demand via the gateway.
+**What is missing:** Celery tasks are still not implemented. Redis broker is not in Docker Compose. Beat schedule remains commented out in `settings.py`. Score persistence into `entity_property_value` rows on a recalculation cycle is not wired up.
 
 ### Client
 
@@ -216,7 +216,7 @@
 - Recursive CTE queries for entity-relationship traversal using `entity_relationship` and `entity_relationship_type`.
 - Dynamic RBAC-based filtering of graph data (workspace-scoped via `entity_workspace`).
 - ~~Live SignalR push updates when workspaces change via choreography envelope.~~ *(partial — choreography consumer broadcasts workspace lifecycle but no entity-graph projection yet)*.
-- ML score integration (display `closure_score` property values on graph nodes — stored as `entity_property_value` rows).
+- ML score integration on graph nodes. `closure_score` / `churn_score` exist as readonly deal properties; the SPA already calls `POST /ml/api/ml/score/batch` (via the gateway) on Deal info-view open and renders the result, including the `unavailable_reason` explanation when scoring is blocked. Persisting scores into `entity_property_value` on a recalculation cycle is still pending.
 
 ### Audit service
 

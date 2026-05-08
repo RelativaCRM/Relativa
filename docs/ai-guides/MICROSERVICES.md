@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-08 (entity permissions split; Graph entity-graph HTTP + Core Rabbit consumer; SPA query-driven entities.)
+> **Last verified:** 2026-05-08 (ML `score/batch` returns `unavailable_reason`; deal `closure_score` + new `churn_score` flagged readonly; deal-side relationship cardinalities corrected; SPA renders deal scores via gateway.)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -369,7 +369,7 @@ None -- this is a console application, not a web service.
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | POST | `/api/ml/recalculate/` | None | Async enqueue endpoint; accepts explicit `entity_ids` or workspace mode and returns `202` with `job_id` |
-| POST | `/api/ml/score/batch` | None | Accepts `{"entity_ids":[int,...]}`; returns `[{"entity_id", "closure_score", "churn_score"}]` with null-safe per-entity scoring and 5s timeout |
+| POST | `/api/ml/score/batch` | None | Accepts `{"entity_ids":[int,...]}`; returns `[{"entity_id", "closure_score", "churn_score", "unavailable_reason"}]` with null-safe per-entity scoring, 5 s timeout, and a structured `unavailable_reason` describing exactly which input is missing (no `deal_analysis` row yet, missing `created_at`, unrecognised `status`, no contract + no `deal_value` fallback, contract missing `amount`, etc) |
 
 ### Status: Functional scoring + async recalculation workers
 

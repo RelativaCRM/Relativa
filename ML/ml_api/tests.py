@@ -83,6 +83,7 @@ class ScoreBatchTests(TestCase):
         self.assertEqual(response.data[0]["entity_id"], 101)
         self.assertIsInstance(response.data[0]["closure_score"], float)
         self.assertIsInstance(response.data[0]["churn_score"], float)
+        self.assertIsNone(response.data[0]["unavailable_reason"])
 
     @patch("ml_api.views._load_contract_inputs")
     @patch("ml_api.views._load_deal_inputs")
@@ -108,6 +109,49 @@ class ScoreBatchTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data[0]["closure_score"], None)
         self.assertEqual(response.data[0]["churn_score"], None)
+        self.assertIn("analysis has not been computed", response.data[0]["unavailable_reason"])
+
+    @patch("ml_api.views._load_contract_inputs")
+    @patch("ml_api.views._load_deal_inputs")
+    @patch("ml_api.views._load_analysis_state")
+    @patch("ml_api.views._ensure_deal_analysis_entities")
+    @patch("ml_api.views._load_schema_config")
+    def test_missing_status_reports_actionable_reason(
+        self,
+        schema_mock,
+        ensure_mock,
+        analysis_mock,
+        deal_mock,
+        contract_mock,
+    ):
+        schema_mock.return_value = {"type_ids": {}, "rel_ids": {}, "prop_ids": {}}
+        ensure_mock.return_value = None
+        analysis_mock.side_effect = [
+            {
+                42: {
+                    "analysis_entity_id": 4242,
+                    "days_since_created": None,
+                    "stage_encoded": None,
+                    "num_interactions": None,
+                    "days_since_last_contact": None,
+                    "num_open_deals": None,
+                    "avg_deal_value": None,
+                    "source_updated_at": date.today(),
+                    "calculated_at": date.today(),
+                }
+            }
+        ]
+        deal_mock.return_value = {42: {"created_at": date.today(), "status": None}}
+        contract_mock.return_value = []
+
+        request = self.factory.post("/api/ml/score/batch", {"entity_ids": [42]}, format="json")
+        response = score_batch(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["closure_score"], None)
+        self.assertEqual(response.data[0]["churn_score"], None)
+        reason = response.data[0]["unavailable_reason"]
+        self.assertIn("status", reason)
+        self.assertIn("opened", reason)
 
     @patch("ml_api.views.recompute_deal_analysis")
     @patch("ml_api.views._load_contract_inputs")

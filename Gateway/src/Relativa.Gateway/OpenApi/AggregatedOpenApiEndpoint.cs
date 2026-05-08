@@ -581,7 +581,8 @@ public static class AggregatedOpenApiEndpoint
                                         {
                                             ["entity_id"] = new JsonObject { ["type"] = "integer" },
                                             ["closure_score"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
-                                            ["churn_score"] = new JsonObject { ["type"] = new JsonArray("number", "null") }
+                                            ["churn_score"] = new JsonObject { ["type"] = new JsonArray("number", "null") },
+                                            ["unavailable_reason"] = new JsonObject { ["type"] = new JsonArray("string", "null") }
                                         }
                                     }
                                 }

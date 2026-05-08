@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-08 (query-driven entities UI; workspacePermissions; Graph create client path.)
+> **Last verified:** 2026-05-08 (deal-info Scores card calls ML via gateway with non-blocking fetch + Refresh; inbound entity tabs deduped against complementary outbounds.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -48,7 +48,7 @@ The workspace **Entities** experience uses one named route (`workspace-entities`
 | Query | Behavior |
 |---|---|
 | `entityType` | List filter / context by entity type **name** (e.g. `deal`). |
-| `id` | Read/detail view with inbound + outbound relationship links (`EntityReadView.vue`). |
+| `id` | Read/detail view with outbound + inbound relationship tabs (`EntityReadView.vue`). Inbound tabs are **deduped against complementary outbounds**: a tab is hidden when the current entity type already has an outgoing relationship type whose `target` equals the inbound tab's `source` (so on a `deal`, the `contract_deal` inbound disappears because `deal_contract` already provides the deal-side outbound; on a `client`, the `deal_client` inbound stays visible because there is no `client_deal` to subsume it). |
 | `action=create` | Embeds `EntityCreateForm.vue`. `/w/:id/entities/new` **redirects** to `?action=create`. |
 
 **Permissions:** Core includes `myPermissions` on workspace DTOs. Use [`Client/src/utils/workspacePermissions.ts`](../../Client/src/utils/workspacePermissions.ts) (`hasWorkspacePermission`) — **New entity** → `create_entities`; **Edit** on detail → `edit_entities`; **Archive** → `delete_entities`.
@@ -100,6 +100,18 @@ Do not re-introduce green/amber `severity` here. Render with `scopeBadgeFullClas
 The vis-network graph in [GraphView.vue](../../Client/src/views/GraphView.vue) overrides vis's default per-group rainbow palette with a **single brand-blue scheme** (see `NODE_COLOR` constant): `brand-100` fill + `brand-600` border for default state, `brand-700` fill on selection, `brand-200` on hover. Labels are `ink-900` with `Inter` font, no stroke. The canvas has a `radial-gradient` dot grid (16 px, `brand-600` at 8 % opacity) for spatial reference.
 
 Do not re-introduce per-`group` coloring or vis's default palette. If a future requirement needs to distinguish entity types visually, add a small icon-shape scheme (`shape: 'icon'` with a font like FontAwesome) but keep colors monochromatic blue — multi-hue palettes break the brand and were rejected during the CR-190 review.
+
+## Deal scores panel
+
+When `EntityReadView.vue` opens an entity whose type is `deal`, the Overview tab renders a dedicated **Scores** card above the property grid. The card shows live closure / churn scores fetched from the ML service.
+
+Constraints (do not regress):
+
+- **Gateway is the only entry point.** The SPA calls `POST /ml/api/ml/score/batch` via [`mlApi`](../../Client/src/api/ml.ts), which routes through `gatewayFetch`. Never hit the ML container directly from the browser.
+- **Fetch is non-blocking.** `loadScore()` is fired (without `await`) at the end of `loadDetail`, so the page paints with property data first; the Scores card swaps from its loading skeleton to the result a moment later. The handler captures `props.entityId` at call time and discards stale responses if the user has already navigated to a different deal.
+- **Three render states use only existing tokens** (no new accent hues): loading shows `pi pi-spin pi-spinner` + an "ink-500" message; available shows two `bg-surface/40` stat tiles with `text-brand-700` numbers; unavailable shows a single PrimeVue `<Message severity="info">` carrying `score.unavailable_reason` verbatim. A network failure renders `<Message severity="warn">` with the normalized error.
+- **"Refresh data" button** lives on the card header (PrimeVue `Button` `outlined size="small"` with `pi pi-refresh`). It re-runs the same `score/batch` call and emits a single toast (success or error) so the user gets a clear signal — the staleness check that decides whether to recompute analysis features is server-side in `score_batch` and does not need a separate "recalculate" endpoint from the SPA.
+- **Other entity types render no Scores card.** The `isDeal` gate prevents wasted ML calls on `client`, `contract`, `deal_analysis`, etc. The two `closure_score` / `churn_score` deal properties continue to appear in the bottom property grid as system-readonly fields — they will stay empty until score persistence is wired up; the live values surface only through the Scores card today.
 
 ## Voice & terminology
 
