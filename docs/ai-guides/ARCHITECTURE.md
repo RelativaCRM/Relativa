@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-08 (Graph→Core Rabbit RPC for entity create; `relationship_cardinality` on relationship types; split entity workspace permissions.)
+> **Last verified:** 2026-05-08 (`GraphQueryDbContext` added to Graph service as a second read-oriented DbContext applying `ApplyAllEntityConfigurations()`; `GraphDataService` implements RBAC-filtered graph queries alongside the existing `GraphDbContext` idempotency context.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -59,7 +59,7 @@ The project uses a **ports-and-adapters (Clean Architecture)** pattern. Each ser
 | **Authentication** | Implemented | Implemented (AuthService, UserProvisioningService, DTOs, validators) | Implemented (interfaces only) | Implemented (AuthDbContext, repos, JWT, bcrypt) |
 | **Core** | Implemented (org, workspace, member, invitation, role, join-request, permission, org-user-admin endpoints) | Implemented (+ `OrganizationUserAdminService`; references Authentication.Application for shared user writes) | Implemented (repository interfaces, IWorkspaceContext) | Implemented (RelativaDbContext, repos, WorkspaceContext, AuthDbContext + Auth repos for provisioning) |
 | **Gateway** | Implemented | N/A (single project) | N/A | N/A |
-| **Graph** | Implemented (SignalR hub + workspace choreography consumer + **HTTP entity-graph create** RPC client) | N/A (single project) | N/A | Postgres idempotency inbox + Rabbit publish/reply for graph commands |
+| **Graph** | Implemented (SignalR hub + workspace choreography consumer + **HTTP entity-graph create** RPC client + **`GET /api/v1/graph`** RBAC-filtered graph query) | N/A (single project) | N/A | Two DbContexts: `GraphDbContext` (Rabbit idempotency) + `GraphQueryDbContext` (full read model for graph queries); Rabbit publish/reply for graph commands |
 | **Audit** | Implemented (stub) | N/A (single project) | N/A | N/A |
 
 Gateway, Graph, and Audit are single-project services with no layered split. When they grow, they should follow the same four-layer convention as Authentication.
@@ -99,7 +99,7 @@ All tables must satisfy **Third Normal Form**:
 
 **Path:** `Persistence/src/Relativa.Persistence/`
 
-This is a **.NET class library** (no solution, no runnable host) that holds the EF Core entity model shared across services. It is referenced via `ProjectReference` by Core, Authentication, Migration, and Graph (Graph consumes only the Contracts + entity metadata it needs alongside SignalR choreography).
+This is a **.NET class library** (no solution, no runnable host) that holds the EF Core entity model shared across services. It is referenced via `ProjectReference` by Core, Authentication, Migration, and Graph. Graph now uses the full `ApplyAllEntityConfigurations()` in its `GraphQueryDbContext` to query users, workspaces, entities, and relationships for graph assembly.
 
 **Related shared library:** `Messaging/src/Relativa.Messaging/` — RabbitMQ connection helpers reused by Authentication + Core infrastructure dispatchers.
 
@@ -160,6 +160,8 @@ Different services compose **different slices** of the entity model:
 | `AuthDbContext` | `Authentication/.../Infrastructure/Data/AuthDbContext.cs` | User only (other entities reachable via `User` navigation properties are cut with `Ignore<UserRoleWorkspace>()` + `Ignore<UserRoleOrganization>()`) | `ApplyAuthEntityConfigurations` |
 | `RelativaDbContext` | `Core/.../Infrastructure/Data/RelativaDbContext.cs` | Full Persistence slice | `ApplyAllEntityConfigurations` |
 | `MigrationDbContext` | `Migration/.../Data/MigrationDbContext.cs` | Full Persistence slice | `ApplyAllEntityConfigurations` |
+| `GraphDbContext` | `Graph/.../Data/GraphDbContext.cs` | `RabbitMqProcessedDelivery` only (choreography idempotency) | `RabbitMqProcessedDeliveryConfiguration` only |
+| `GraphQueryDbContext` | `Graph/.../Data/GraphQueryDbContext.cs` | Full Persistence slice — read-only queries for graph assembly (users, org/workspace RBAC, entities, relationships) | `ApplyAllEntityConfigurations` |
 
 Migrations are owned by the **Migration** service. The migration assembly name is `Relativa.Migration`. Schema changes always go through `Migration/src/Relativa.Migration/Migrations/`.
 

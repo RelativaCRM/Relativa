@@ -21,6 +21,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
 
     private RelativaDbContext _db = null!;
     private EntityRepository _repo = null!;
+    private int _seedUserId;
 
     public async Task InitializeAsync()
     {
@@ -60,6 +61,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
         };
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
+        _seedUserId = user.Id;
 
         var clientType = new EntityType { Name = "client" };
         var dealType   = new EntityType { Name = "deal" };
@@ -96,8 +98,9 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
 
         var entity = new Entity
         {
-            EntityTypeId = _db.EntityTypes.Single(t => t.Name == "client").Id,
-            IsArchived   = false
+            EntityTypeId    = _db.EntityTypes.Single(t => t.Name == "client").Id,
+            CreatedByUserId = _seedUserId,
+            IsArchived      = false
         };
         var pvs = new List<EntityPropertyValue>
         {
@@ -120,7 +123,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
         var dealTypeId  = _db.EntityTypes.Single(t => t.Name == "deal").Id;
         var typeProps   = await _repo.GetTypePropertiesAsync(dealTypeId);
 
-        var entity = new Entity { EntityTypeId = dealTypeId, IsArchived = false };
+        var entity = new Entity { EntityTypeId = dealTypeId, CreatedByUserId = _seedUserId, IsArchived = false };
         var pvs = new List<EntityPropertyValue>
         {
             new()
@@ -156,8 +159,9 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
 
         var entity = new Entity
         {
-            EntityTypeId = _db.EntityTypes.Single(t => t.Name == "client").Id,
-            IsArchived   = false
+            EntityTypeId    = _db.EntityTypes.Single(t => t.Name == "client").Id,
+            CreatedByUserId = _seedUserId,
+            IsArchived      = false
         };
         var pvs = new List<EntityPropertyValue>
         {
@@ -185,7 +189,7 @@ public sealed class EntityIntegrationTests : IAsyncLifetime
             new() { PropertyId = 999999, ValueString = "orphan" }
         };
 
-        var entity = new Entity { EntityTypeId = clientTypeId, IsArchived = false };
+        var entity = new Entity { EntityTypeId = clientTypeId, CreatedByUserId = _seedUserId, IsArchived = false };
 
         await _repo.Invoking(r => r.CreateAsync(entity, pvWithInvalidPropertyId, workspaceId, null))
             .Should().ThrowAsync<Exception>("FK violation on property_id=999999 must roll back the transaction");

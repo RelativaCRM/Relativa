@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Relativa.Graph;
 using Relativa.Graph.Data;
+using Relativa.Graph.Graph;
 using Relativa.Graph.Hubs;
 using Relativa.Graph.Messaging;
 
@@ -16,6 +17,9 @@ if (string.IsNullOrWhiteSpace(graphConnectionString))
 }
 
 builder.Services.AddDbContext<GraphDbContext>(opt => opt.UseNpgsql(graphConnectionString));
+builder.Services.AddDbContext<GraphQueryDbContext>(opt => opt.UseNpgsql(graphConnectionString));
+builder.Services.AddScoped<IGraphDataService, GraphDataService>();
+
 builder.Services.Configure<RabbitMqGraphConsumerOptions>(
     builder.Configuration.GetSection(RabbitMqGraphConsumerOptions.SectionKey));
 builder.Services.AddHostedService<DomainEventConsumerHostedService>();
@@ -35,6 +39,7 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/", () => Results.Ok(new { service = "relativa-graph" }));
 
 EntityGraphEndpoints.MapEntityGraphEndpoints(app);
+GraphQueryEndpoints.MapGraphQueryEndpoints(app);
 
 app.MapHub<GraphHub>("/hubs/graph");
 

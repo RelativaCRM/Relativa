@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-08 (deal-info Scores card calls ML via gateway with non-blocking fetch + Refresh; inbound entity tabs deduped against complementary outbounds.)
+> **Last verified:** 2026-05-08 (Graph rendering section updated: multi-type dynamic color palette replaces monochromatic blue; node action panel introduced; graph moved to org scope.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -97,9 +97,33 @@ Do not re-introduce green/amber `severity` here. Render with `scopeBadgeFullClas
 
 ## Graph rendering
 
-The vis-network graph in [GraphView.vue](../../Client/src/views/GraphView.vue) overrides vis's default per-group rainbow palette with a **single brand-blue scheme** (see `NODE_COLOR` constant): `brand-100` fill + `brand-600` border for default state, `brand-700` fill on selection, `brand-200` on hover. Labels are `ink-900` with `Inter` font, no stroke. The canvas has a `radial-gradient` dot grid (16 px, `brand-600` at 8 % opacity) for spatial reference.
+The vis-network graph in [GraphView.vue](../../Client/src/views/GraphView.vue) uses a **multi-type color scheme** where node colors reflect the node's role in the data model, not a monochromatic brand palette.
 
-Do not re-introduce per-`group` coloring or vis's default palette. If a future requirement needs to distinguish entity types visually, add a small icon-shape scheme (`shape: 'icon'` with a font like FontAwesome) but keep colors monochromatic blue — multi-hue palettes break the brand and were rejected during the CR-190 review.
+**Reserved type colors (fixed):**
+| Node type | Color | Token |
+|---|---|---|
+| `user_self` (the requesting user) | `#1d4ed8` | brand-700 |
+| `user` (other org members) | `#93c5fd` | brand-300 |
+| `workspace` | `#0d9488` | teal-600 |
+
+**Entity type colors (dynamic palette):**
+Entity nodes receive colors from `ENTITY_PALETTE` (violet-600, amber-600, green-600, red-600, cyan-600, purple-600, orange-600, sky-600). Colors are assigned at render time by sequential discovery order of `entityTypeName` values — **no color is hardcoded to any entity type name in source**. The mapping is built fresh on each render. If there are more entity types than palette slots, colors wrap around (modulo).
+
+**Edges:**
+| Edge type | Style | Color |
+|---|---|---|
+| `user_workspace` | solid | brand-300 |
+| `workspace_entity` | solid | slate-300 |
+| `entity_entity` | dashed + arrow | slate-400; carries relationship type name as label |
+| `user_user` | solid | brand-200 |
+
+**Node action panel:** clicking a node opens a detail panel (`w-64`, right side of the graph area) showing type badge, label, subtitle, and action buttons: **View** (always shown), **Edit** (if `node.permissions` includes `"edit"`), **Delete** (if `permissions` includes `"delete"` AND `node.type === "entity"`). Delete uses PrimeVue `useConfirm` + `ConfirmDialog`. Non-entity resources navigate to their existing detail views for editing/deletion.
+
+**Canvas background:** `radial-gradient` dot grid (16 px, `brand-600` at 6 % opacity) for spatial reference — consistent with previous placeholder.
+
+**Legend:** a row of color swatches above the canvas is built dynamically from the same type color map — one entry per node type/entity type actually present in the response.
+
+**Graph scope:** graph is org-level (route `/graph`, not workspace-scoped). Data fetched from `GET /graph/api/v1/graph?organizationId={id}` via [`Client/src/api/graph.ts`](../../Client/src/api/graph.ts). Graph store ([`Client/src/stores/graph.ts`](../../Client/src/stores/graph.ts)) holds `nodes`, `edges`, `isLoading`, `error`.
 
 ## Deal scores panel
 

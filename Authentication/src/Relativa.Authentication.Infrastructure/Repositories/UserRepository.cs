@@ -35,4 +35,13 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         db.Users.Update(user);
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task<User?> GetByResetTokenAsync(string tokenHash, CancellationToken ct = default)
+    {
+        return await db.Users.FirstOrDefaultAsync(
+            u => u.PasswordResetToken == tokenHash
+              && u.PasswordResetTokenExpiresAt > DateTime.UtcNow
+              && !u.IsArchived,
+            ct);
+    }
 }

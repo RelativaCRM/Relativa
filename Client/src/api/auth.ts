@@ -54,4 +54,13 @@ export const authApi = {
   deleteMe(): Promise<void> {
     return api.del<void>(`${AUTH_PREFIX}/me`);
   },
+  forgotPassword(email: string): Promise<void> {
+    return api.post<void>(`${AUTH_PREFIX}/forgot-password`, { email });
+  },
+  validateResetToken(token: string): Promise<void> {
+    return api.get<void>(`${AUTH_PREFIX}/reset-password/validate?token=${encodeURIComponent(token)}`);
+  },
+  resetPassword(token: string, newPassword: string): Promise<void> {
+    return api.post<void>(`${AUTH_PREFIX}/reset-password`, { token, newPassword });
+  },
 };
