@@ -32,6 +32,10 @@ const RelativaAura = definePreset(Aura, {
 
 const app = createApp(App);
 
+app.config.errorHandler = (err, _instance, info) => {
+  console.error('[Vue error]', info, err);
+};
+
 app.use(createPinia());
 app.use(router);
 app.use(PrimeVue, {

@@ -66,13 +66,14 @@ public partial class RichMLHighlightSeedData : EfMigration
                 v_prop_contract_type    int;
 
                 -- scratch
-                v_workspace_id   int;
-                v_client_ids     int[] := ARRAY[]::int[];
-                v_deal_ids       int[]  := ARRAY[]::int[];
-                v_new_entity_id  int;
-                v_analysis_id    int;
-                v_contract_id    int;
-                i                int;
+                v_workspace_id      int;
+                v_creator_user_id   int;
+                v_client_ids        int[] := ARRAY[]::int[];
+                v_deal_ids          int[]  := ARRAY[]::int[];
+                v_new_entity_id     int;
+                v_analysis_id       int;
+                v_contract_id       int;
+                i                   int;
             BEGIN
                 -- ── guard ───────────────────────────────────────────────────────
                 SELECT id INTO v_deal_type_id   FROM entity_type WHERE name = 'deal'          LIMIT 1;
@@ -84,8 +85,10 @@ public partial class RichMLHighlightSeedData : EfMigration
                     RETURN;
                 END IF;
 
-                SELECT id INTO v_workspace_id FROM workspace WHERE is_archived = FALSE ORDER BY id LIMIT 1;
+                SELECT id INTO v_workspace_id FROM workspaces WHERE is_archived = FALSE ORDER BY id LIMIT 1;
                 IF v_workspace_id IS NULL THEN RETURN; END IF;
+
+                SELECT created_by_user_id INTO v_creator_user_id FROM workspaces WHERE id = v_workspace_id;
 
                 -- ── resolve types / relationships ────────────────────────────────
                 SELECT id INTO v_deal_analysis_type_id FROM entity_type WHERE name = 'deal_analysis' LIMIT 1;
@@ -126,7 +129,7 @@ public partial class RichMLHighlightSeedData : EfMigration
                 -- ── create 6 client entities ─────────────────────────────────────
                 -- first_name, last_name pairs: Alpha Corp, Beta Ltd, Gamma Inc, Delta Co, Epsilon Group, Zeta Partners
                 FOR i IN 1..6 LOOP
-                    INSERT INTO entity (entity_type_id, is_archived) VALUES (v_client_type_id, FALSE)
+                    INSERT INTO entity (entity_type_id, is_archived, created_by_user_id) VALUES (v_client_type_id, FALSE, v_creator_user_id)
                     RETURNING id INTO v_new_entity_id;
 
                     INSERT INTO entity_workspace (entity_id, workspace_id) VALUES (v_new_entity_id, v_workspace_id)
@@ -157,7 +160,7 @@ public partial class RichMLHighlightSeedData : EfMigration
                 -- Mid:  D3(67000,pending,2026-07-01,c2), D4(58000,pending,2026-07-20,c2),
                 --        D8(45000,opened,2026-08-01,c6)
                 FOR i IN 1..10 LOOP
-                    INSERT INTO entity (entity_type_id, is_archived) VALUES (v_deal_type_id, FALSE)
+                    INSERT INTO entity (entity_type_id, is_archived, created_by_user_id) VALUES (v_deal_type_id, FALSE, v_creator_user_id)
                     RETURNING id INTO v_new_entity_id;
 
                     INSERT INTO entity_workspace (entity_id, workspace_id) VALUES (v_new_entity_id, v_workspace_id)
@@ -213,7 +216,7 @@ public partial class RichMLHighlightSeedData : EfMigration
                 FOR i IN 1..10 LOOP
                     IF v_deal_analysis_type_id IS NULL OR v_rel_deal_analysis_id IS NULL THEN EXIT; END IF;
 
-                    INSERT INTO entity (entity_type_id, is_archived) VALUES (v_deal_analysis_type_id, FALSE)
+                    INSERT INTO entity (entity_type_id, is_archived, created_by_user_id) VALUES (v_deal_analysis_type_id, FALSE, v_creator_user_id)
                     RETURNING id INTO v_analysis_id;
 
                     INSERT INTO entity_workspace (entity_id, workspace_id) VALUES (v_analysis_id, v_workspace_id)
@@ -268,7 +271,7 @@ public partial class RichMLHighlightSeedData : EfMigration
                 FOR i IN 1..10 LOOP
                     IF v_contract_type_id IS NULL OR v_rel_deal_contract_id IS NULL THEN EXIT; END IF;
 
-                    INSERT INTO entity (entity_type_id, is_archived) VALUES (v_contract_type_id, FALSE)
+                    INSERT INTO entity (entity_type_id, is_archived, created_by_user_id) VALUES (v_contract_type_id, FALSE, v_creator_user_id)
                     RETURNING id INTO v_contract_id;
 
                     INSERT INTO entity_workspace (entity_id, workspace_id) VALUES (v_contract_id, v_workspace_id)

@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-08 (`GraphQueryDbContext` added to Graph service as a second read-oriented DbContext applying `ApplyAllEntityConfigurations()`; `GraphDataService` implements RBAC-filtered graph queries alongside the existing `GraphDbContext` idempotency context.)
+> **Last verified:** 2026-05-15 (`PropertyAllowedValue` entity added and enforced at application layer; Graph→ML communication migrated from HTTP to RabbitMQ RPC; `GraphGlobalExceptionHandler` extended; global error handling hardened across all services.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -33,6 +33,7 @@ flowchart LR
     RMQ -->|audit.topic| Audit
     RMQ -->|domain.topic| Graph
     RMQ -->|domain.topic| ML
+    Graph -->|"RPC (relativa.graph_ml)"| ML
 ```
 
 All **browser** traffic flows through the **Gateway**. There is **no synchronous service-to-service HTTP**: backends do not call each other directly for domain work.
@@ -135,6 +136,7 @@ Several tables use `is_archived` instead of hard deletes for domain records. For
 | `Entity` | `entity` | Business record typed by EntityType. Singular table name. |
 | `EntityWorkspace` | `entity_workspace` | Join between Entity and Workspace. Singular table name. |
 | `Property` | `property` | **EAV.** Named attribute definition with data type (`String/Int/Decimal/Bool/Date`). `organization_id` nullable: `null` = global, set = org-specific custom property. |
+| `PropertyAllowedValue` | `property_allowed_value` | **EAV constraint.** Optional enumeration of permitted string values for a `Property` of type `String`. Composite PK `(property_id, value)`. When rows exist for a property, `EntityService` validates submitted `ValueString` against this set on create and update (throws `ArgumentException` if not in the list). |
 | `EntityTypeProperty` | `entity_type_property` | **EAV schema layer.** Maps which properties belong to which entity type, with `is_required` flag. Composite PK `(entity_type_id, property_id)`. |
 | `EntityPropertyValue` | `entity_property_value` | **EAV data layer.** Stores a concrete attribute value for an entity. Composite PK `(entity_id, property_id)`. Five typed value columns: `value_string`, `value_int`, `value_decimal`, `value_bool`, `value_date`. Only one is populated per row. |
 | `EntityRelationshipType` | `entity_relationship_type` | **EAV schema layer.** Directed link schema (source type → target type). Columns include `is_required` (outgoing obligation on **creates of the source type**) and `relationship_cardinality` (`one_to_one`, `one_to_many`, …) with optional partial unique indexes for one-to-one enforcement. |
@@ -254,9 +256,10 @@ erDiagram
   - **Resend / expiry:** Org invitation resend + expiry handling unchanged (`POST …/organizations/{id}/invitations/{id}/resend`).
 - `Entity` belongs to workspaces via `EntityWorkspace` and is typed by `EntityType` (`client`, `deal`, `deal_analysis`, `contract`). All entity types use the same EAV storage — there are no separate per-type tables.
 - ML processing split:
-  - `POST /api/ml/score/batch` is the on-demand scoring path.
-  - `POST /api/ml/recalculate/` enqueues asynchronous recomputation jobs over RabbitMQ.
-  - `run_recalculate_consumer` performs heavy write-back recomputation, while `run_domain_consumer` marks freshness (`source_updated_at`) from Core domain events.
+  - Graph→ML scoring uses **RabbitMQ RPC** (`relativa.graph_ml` exchange). `RabbitMqMlScoringClient` (Graph) publishes and awaits reply; `run_graph_score_consumer` (ML) processes and replies.
+  - `POST /api/ml/recalculate/` remains for manual/workspace-level recomputation via HTTP.
+  - `run_recalculate_consumer` performs heavy write-back recomputation; `run_domain_consumer` marks freshness (`source_updated_at`) from Core domain events.
+  - The `deal_analysis` entity type stores **ML feature cache** (derived columns: `days_since_created`, `avg_deal_value`, `num_interactions`, etc.). These are not source-of-truth data — they are refreshed by `run_recalculate_consumer` and validated for freshness via `source_updated_at`/`calculated_at` timestamps before scoring.
 - **EAV two-level pattern:**
   - **Schema layer:** `EntityTypeProperty` defines which `Property` definitions belong to each `EntityType` (with `is_required`). `EntityRelationshipType` defines which entity type pairs can be linked (e.g. `deal_client`: deal → client).
   - **Data layer:** `EntityPropertyValue` holds a concrete typed value for one entity+property pair (composite PK). `EntityRelationship` holds a directed link between two entity instances, typed by `EntityRelationshipType`.
@@ -396,11 +399,15 @@ Authorization for workspace endpoints:
 
 - **HTTP via Gateway only** for client-facing SPA traffic (no alternate client entry points).
 - **Transactional outbox (`audit_outbox`)** inside Core + Authentication Postgres databases co-locates business writes with **pending RabbitMQ payloads**. Hosted dispatchers periodically publish to RabbitMQ and mark `published_at_utc`.
-- **Two durable topic exchanges (default names):**
+- **Three durable topic exchanges:**
   - **`audit.events`** — payloads whose routing keys use the **`audit.<scope>`** pattern (serialized `AuditEventContract`). Consumers: **Audit** (`audit.#`).
-  - **`relativa.domain`** — choreography/domain payloads keyed off **`DomainRouting`** verbs (serialized `DomainMessageEnvelope` + typed `PayloadJson`). Example pilot: **`core.workspace.*`** emits when workspaces are created/updated/archived. Consumers: **Graph** (workspace queue + SignalR broadcast), **ML** (`run_domain_consumer` management command; stub logs).
+  - **`relativa.domain`** — choreography/domain payloads keyed off **`DomainRouting`** verbs (serialized `DomainMessageEnvelope` + typed `PayloadJson`). Consumers: **Graph** (workspace queue + SignalR broadcast), **ML** (`run_domain_consumer` + `run_recalculate_consumer` management commands).
+  - **`relativa.graph_ml`** — RabbitMQ RPC for Graph→ML batch scoring. Graph publishes `MlScoreRpcRequestV1` with `ReplyTo` + `CorrelationId`; ML `run_graph_score_consumer` replies with `MlScoreRpcReplyV1`. 8 s timeout; graceful degradation (empty scores) on timeout or error. Contracts in `Persistence/Contracts/MlScoringRouting.cs`.
+- **RPC pattern (request/reply):** Two paths use RabbitMQ RPC with exclusive auto-delete reply queues and correlation IDs:
+  1. **Graph → Core entity create** (`relativa.entity_graph` exchange, `EntityGraphRouting.cs`)
+  2. **Graph → ML batch scoring** (`relativa.graph_ml` exchange, `MlScoringRouting.cs`)
 - **SignalR:** Graph pushes `domain.workspace.lifecycle.v1` to connected clients **after** idempotent ingestion from the choreography bus (`rabbitmq_processed_delivery` guards replays).
-- **Shared envelopes / contracts:** `Persistence/src/Relativa.Persistence/Contracts/` defines `AuditEventContract`, `DomainMessageEnvelope`, `IOutboxWriter`, and payload structs (e.g. `WorkspaceLifecyclePayloadV1`).
+- **Shared envelopes / contracts:** `Persistence/src/Relativa.Persistence/Contracts/` defines `AuditEventContract`, `DomainMessageEnvelope`, `IOutboxWriter`, `EntityGraphRouting`, `MlScoringRouting`, and payload structs.
 - **Operational runbook:** DLQ queues, purge commands, and configuration keys — [RABBITMQ-CHOREOGRAPHY.md](../runbooks/RABBITMQ-CHOREOGRAPHY.md).
 
 ---

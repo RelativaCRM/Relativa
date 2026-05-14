@@ -1,6 +1,6 @@
 # Docker Setup -- Infrastructure and Deployment
 
-> **Last verified:** 2026-05-02 (Graph compose build context shares Persistence + Rabbit choreography for Graph/ML)
+> **Last verified:** 2026-05-15 (ML startup script now also launches `run_graph_score_consumer`; no new env vars needed — ML already has `RABBITMQ_*`.)
 
 > **Maintenance obligation:** If you change Docker Compose, Dockerfiles, networking, volumes, or environment variables, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 

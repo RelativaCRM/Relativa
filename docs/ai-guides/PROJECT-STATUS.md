@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-08 (Graph service now implements full RBAC-filtered user-centric graph via `GET /api/v1/graph`; `GraphQueryDbContext` added; client `GraphView.vue` fully rewritten with dynamic color palette, vis-network edges, and per-node action panel.)
+> **Last verified:** 2026-05-15 (Graph→ML scoring migrated to RabbitMQ RPC; `PropertyAllowedValue` enforcement added; global error handling hardened; `run_graph_score_consumer` added to ML startup.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -16,7 +16,7 @@
 | Graph | **Functional** | `GET /api/v1/graph` (RBAC-filtered user-centric graph), `POST .../entity-graph/create` (Rabbit RPC → Core), SignalR hub, workspace choreography consumer |
 | Audit | **Functional** | Consumes RabbitMQ events and persists audit logs with idempotency |
 | Migration | **Functional** | Applies EF migrations on startup; schema + seed data work, including outbox/idempotency tables |
-| ML | **Functional (batch scoring)** | `POST /api/ml/score/batch` scores deals from EAV + sklearn models; consumer ingests workspace/entity choreography with idempotency |
+| ML | **Functional (batch scoring via RabbitMQ RPC)** | Graph→ML scoring via `relativa.graph_ml` RPC exchange; `run_graph_score_consumer` added; domain + recalculate consumers ingest choreography with idempotency |
 | Client | **Functional** | Vue 3 + PrimeVue + Tailwind. Auth + org/workspace onboarding + account/profile + org members + invitations + workspace members + **query-driven entities** + **full graph view** (user-centric, RBAC-filtered, vis-network, node action panel). Persisted state via `localStorage` |
 | Persistence | **Functional** | Full EAV + audit/outbox/idempotency entity model, fluent configs, contracts (`Persistence/Contracts/*`), ModelBuilderExtensions; performance indexes on membership/org invitations/audit logs/outbox + unique `entity_workspace (entity_id, workspace_id)` + partial unique `users.email` where not archived |
 
@@ -216,7 +216,7 @@
 - Recursive CTE queries for entity-relationship traversal using `entity_relationship` and `entity_relationship_type`.
 - Dynamic RBAC-based filtering of graph data (workspace-scoped via `entity_workspace`).
 - ~~Live SignalR push updates when workspaces change via choreography envelope.~~ *(partial — choreography consumer broadcasts workspace lifecycle but no entity-graph projection yet)*.
-- ML score integration on graph nodes. `closure_score` / `churn_score` exist as readonly deal properties; the SPA already calls `POST /ml/api/ml/score/batch` (via the gateway) on Deal info-view open and renders the result, including the `unavailable_reason` explanation when scoring is blocked. Persisting scores into `entity_property_value` on a recalculation cycle is still pending.
+- ML score integration on graph nodes. `closure_score` / `churn_score` exist as readonly deal properties; Graph uses **RabbitMQ RPC** (`relativa.graph_ml` exchange) to request scores from ML (`run_graph_score_consumer`), replacing the earlier HTTP call. The SPA renders scores including `unavailable_reason`. Persisting scores into `entity_property_value` on a recalculation cycle is still pending.
 
 ### Audit service
 

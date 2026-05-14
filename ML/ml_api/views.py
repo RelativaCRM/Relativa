@@ -1,6 +1,10 @@
+import logging
 import time
+
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
 
 from .apps import MlApiConfig
 from .recalculate_service import (
@@ -51,16 +55,16 @@ def recalculate(request):
     mode = payload.get("mode")
     entity_ids = payload.get("entity_ids")
     if entity_ids is not None and workspace_id is not None and mode == "workspace":
-        return Response({"detail": "Provide either entity_ids or workspace mode, not both."}, status=400)
+        return Response({"status": 400, "title": "Bad Request", "detail": "Provide either entity_ids or workspace mode, not both."}, status=400)
     if workspace_id is not None and mode == "workspace":
         if not isinstance(workspace_id, int) or workspace_id <= 0:
-            return Response({"detail": "workspace_id must be a positive integer."}, status=400)
+            return Response({"status": 400, "title": "Bad Request", "detail": "workspace_id must be a positive integer."}, status=400)
         normalized = []
     else:
         try:
             normalized = normalize_entity_ids(entity_ids)
         except ValueError as exc:
-            return Response({"detail": str(exc)}, status=400)
+            return Response({"status": 400, "title": "Bad Request", "detail": str(exc)}, status=400)
     requested_by_user_id = _extract_user_id(request)
     reason = payload.get("reason") or "manual"
     try:
@@ -70,8 +74,9 @@ def recalculate(request):
             requested_by_user_id=requested_by_user_id,
             reason=reason,
         )
-    except Exception as exc:
-        return Response({"detail": f"Failed to enqueue recalculation job: {exc}"}, status=500)
+    except Exception:
+        logger.exception("Failed to enqueue recalculation job")
+        return Response({"status": 500, "title": "Internal Server Error", "detail": "Failed to enqueue recalculation job."}, status=500)
     return Response(
         {
             "status": "accepted",
@@ -88,7 +93,7 @@ def recalculate(request):
 def score_batch(request):
     if (MlApiConfig.churn_model is None) or (MlApiConfig.closure_model is None):
         return Response(
-            {"detail": "ML models are not loaded."},
+            {"status": 503, "title": "Service Unavailable", "detail": "ML models are not loaded."},
             status=503,
         )
 
@@ -96,7 +101,7 @@ def score_batch(request):
     try:
         normalized = normalize_entity_ids(entity_ids)
     except ValueError as exc:
-        return Response({"detail": str(exc)}, status=400)
+        return Response({"status": 400, "title": "Bad Request", "detail": str(exc)}, status=400)
 
     started = time.perf_counter()
     deadline = started + BATCH_TIMEOUT_SECONDS
@@ -163,11 +168,12 @@ def score_batch(request):
         return Response(response_payload, status=200)
     except TimeoutError:
         return Response(
-            {"detail": "Batch scoring timeout exceeded (5 seconds)."},
+            {"status": 504, "title": "Gateway Timeout", "detail": "Batch scoring timeout exceeded."},
             status=504,
         )
-    except Exception as exc:
-        return Response({"detail": f"Failed to score batch: {exc}"}, status=500)
+    except Exception:
+        logger.exception("Unexpected error in score_batch")
+        return Response({"status": 500, "title": "Internal Server Error", "detail": "An unexpected error occurred."}, status=500)
 
 
 # ---------------------------------------------------------------------------

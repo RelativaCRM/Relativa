@@ -3,6 +3,7 @@ using System;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Relativa.Migration.Data;
@@ -12,9 +13,11 @@ using Relativa.Migration.Data;
 namespace Relativa.Migration.Migrations
 {
     [DbContext(typeof(MigrationDbContext))]
-    partial class MigrationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260514224916_SyncPropertyAllowedValueSnapshot")]
+    partial class SyncPropertyAllowedValueSnapshot
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

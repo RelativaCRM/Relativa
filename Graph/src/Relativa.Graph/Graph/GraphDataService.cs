@@ -212,7 +212,7 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
         {
             var dealClientRels = await db.EntityRelationships
                 .Where(er => dealEntityIds.Contains(er.SourceEntityId)
-                             && string.Equals(er.RelationshipType.Name, "deal_client", StringComparison.OrdinalIgnoreCase))
+                             && er.RelationshipType.Name == "deal_client")
                 .Select(er => new { er.SourceEntityId, er.TargetEntityId })
                 .ToListAsync(ct);
 
@@ -224,7 +224,7 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
             {
                 var ltvRows = await db.EntityPropertyValues
                     .Where(epv => clientIds.Contains(epv.EntityId)
-                                  && string.Equals(epv.Property.Name, "client_lifetime_value", StringComparison.OrdinalIgnoreCase)
+                                  && epv.Property.Name == "client_lifetime_value"
                                   && epv.ValueDecimal != null)
                     .Select(epv => new { epv.EntityId, epv.ValueDecimal })
                     .ToListAsync(ct);

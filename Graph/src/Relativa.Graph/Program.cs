@@ -21,12 +21,7 @@ builder.Services.AddDbContext<GraphDbContext>(opt => opt.UseNpgsql(graphConnecti
 builder.Services.AddDbContext<GraphQueryDbContext>(opt => opt.UseNpgsql(graphConnectionString));
 builder.Services.AddScoped<IGraphDataService, GraphDataService>();
 
-var mlBaseUrl = builder.Configuration["MlApi:BaseUrl"] ?? "http://localhost:8084";
-builder.Services.AddHttpClient<IMlScoringClient, HttpMlScoringClient>(client =>
-{
-    client.BaseAddress = new Uri(mlBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(8);
-});
+builder.Services.AddSingleton<IMlScoringClient, RabbitMqMlScoringClient>();
 
 builder.Services.Configure<RabbitMqGraphConsumerOptions>(
     builder.Configuration.GetSection(RabbitMqGraphConsumerOptions.SectionKey));

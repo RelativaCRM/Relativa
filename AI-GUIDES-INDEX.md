@@ -1,6 +1,6 @@
 # Relativa -- AI Agent Context Guides
 
-> **Last verified:** 2026-05-08 (deduped inbound entity tabs; deal `closure_score` + new `churn_score` flagged readonly; ML `score/batch` returns `unavailable_reason`; deal-side relationship cardinalities corrected; SPA renders deal scores via gateway.)
+> **Last verified:** 2026-05-15 (`PropertyAllowedValue` enforced in EntityService; Graph→ML scoring migrated to RabbitMQ RPC (`relativa.graph_ml`); `run_graph_score_consumer` added; global error handling hardened across all services; all guides updated.)
 
 Relativa is a multi-tenant CRM / sales-workspace platform built as a microservice monorepo. It includes .NET 10 backend services, a Vue 3 SPA client, a Django ML service, PostgreSQL 16, a YARP API gateway, and SignalR for real-time graph updates. Everything runs locally via Docker Compose.
 

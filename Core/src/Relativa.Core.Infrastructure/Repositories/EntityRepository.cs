@@ -23,6 +23,7 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
         return await db.EntityTypeProperties
             .AsNoTracking()
             .Include(etp => etp.Property)
+                .ThenInclude(p => p.AllowedValues)
             .Where(etp => etp.EntityTypeId == entityTypeId)
             .ToListAsync(ct);
     }
