@@ -1,0 +1,70 @@
+root = true
+
+# All files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Python files
+[*.py]
+indent_style = space
+indent_size = 4
+tab_width = 4
+
+# Max line length (узгоджено з black)
+max_line_length = 88
+
+#### Naming conventions (рекомендаційні через лінтери) ####
+# snake_case: functions, variables
+# PascalCase: classes (models, forms, serializers)
+# UPPER_CASE: constants
+
+#### Imports ####
+# isort-compatible (групування)
+# 1. stdlib
+# 2. third-party
+# 3. django
+# 4. local apps
+
+#### Strings ####
+# black використовує подвійні лапки за замовчуванням
+
+#### Django templates ####
+[*.html]
+indent_style = space
+indent_size = 2
+
+#### YAML / JSON ####
+[*.{yml,yaml,json}]
+indent_style = space
+indent_size = 2
+
+#### Markdown ####
+[*.md]
+trim_trailing_whitespace = false
+
+#### Migrations ####
+[*/migrations/*.py]
+# допускаємо менш строгі правила
+max_line_length = off
+
+#### Manage / settings ####
+[manage.py]
+indent_size = 4
+
+[*/settings/*.py]
+indent_size = 4
+
+#### Tests ####
+[*/tests/*.py]
+indent_size = 4
+
+#### Optional stricter rules (якщо IDE підтримує) ####
+
+# trailing commas (узгоджено з black)
+insert_final_newline = true
+
+# keep imports sorted (IDE-level)
+# (реально enforce через isort)

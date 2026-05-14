@@ -1,0 +1,6 @@
+@Relativa.Authentication_HostAddress = http://localhost:5055
+
+GET {{Relativa.Authentication_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

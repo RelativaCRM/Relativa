@@ -1,0 +1,35 @@
+using Microsoft.EntityFrameworkCore;
+using Relativa.Persistence;
+using Relativa.Persistence.Entities;
+
+namespace Relativa.Graph.Data;
+
+public sealed class GraphQueryDbContext(DbContextOptions<GraphQueryDbContext> options) : DbContext(options)
+{
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Permission> Permissions => Set<Permission>();
+
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationRole> OrganizationRoles => Set<OrganizationRole>();
+    public DbSet<OrganizationRolePermission> OrganizationRolePermissions => Set<OrganizationRolePermission>();
+    public DbSet<UserRoleOrganization> UserRoleOrganizations => Set<UserRoleOrganization>();
+
+    public DbSet<Workspace> Workspaces => Set<Workspace>();
+    public DbSet<WorkspaceRole> WorkspaceRoles => Set<WorkspaceRole>();
+    public DbSet<WorkspaceRolePermission> WorkspaceRolePermissions => Set<WorkspaceRolePermission>();
+    public DbSet<UserRoleWorkspace> UserRoleWorkspaces => Set<UserRoleWorkspace>();
+
+    public DbSet<EntityType> EntityTypes => Set<EntityType>();
+    public DbSet<Entity> Entities => Set<Entity>();
+    public DbSet<EntityWorkspace> EntityWorkspaces => Set<EntityWorkspace>();
+    public DbSet<Property> Properties => Set<Property>();
+    public DbSet<EntityPropertyValue> EntityPropertyValues => Set<EntityPropertyValue>();
+    public DbSet<EntityRelationshipType> EntityRelationshipTypes => Set<EntityRelationshipType>();
+    public DbSet<EntityRelationship> EntityRelationships => Set<EntityRelationship>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        modelBuilder.ApplyAllEntityConfigurations();
+    }
+}

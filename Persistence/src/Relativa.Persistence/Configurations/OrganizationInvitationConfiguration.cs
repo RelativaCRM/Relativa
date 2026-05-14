@@ -1,0 +1,45 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Relativa.Persistence.Entities;
+
+namespace Relativa.Persistence.Configurations;
+
+public class OrganizationInvitationConfiguration : IEntityTypeConfiguration<OrganizationInvitation>
+{
+    public void Configure(EntityTypeBuilder<OrganizationInvitation> builder)
+    {
+        builder.ToTable("organization_invitations");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
+        builder.Property(e => e.OrganizationId).HasColumnName("organization_id").IsRequired();
+        builder.Property(e => e.Email).HasColumnName("email").IsRequired();
+        builder.Property(e => e.OrgRoleId).HasColumnName("org_role_id").IsRequired();
+        builder.Property(e => e.InvitedByUserId).HasColumnName("invited_by_user_id").IsRequired();
+        builder.Property(e => e.Token).HasColumnName("token").IsRequired();
+        builder.HasIndex(e => e.Token)
+            .IsUnique()
+            .HasDatabaseName("ix_org_invitations_token");
+        builder.HasIndex(e => new { e.OrganizationId, e.Status })
+            .HasDatabaseName("ix_oi_org_status");
+        builder.HasIndex(e => new { e.Email, e.Status })
+            .HasDatabaseName("ix_oi_email_status");
+        builder.Property(e => e.Status).HasColumnName("status").IsRequired();
+        builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+        builder.Property(e => e.ExpiresAt).HasColumnName("expires_at").IsRequired();
+        builder.HasOne(e => e.Organization)
+            .WithMany(o => o.Invitations)
+            .HasForeignKey(e => e.OrganizationId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("fk_oi_organization");
+        builder.HasOne(e => e.Role)
+            .WithMany()
+            .HasForeignKey(e => e.OrgRoleId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_oi_org_role");
+        builder.HasOne(e => e.InvitedBy)
+            .WithMany()
+            .HasForeignKey(e => e.InvitedByUserId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_oi_invited_by");
+    }
+}
