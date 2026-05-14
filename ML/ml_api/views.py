@@ -8,16 +8,22 @@ from .recalculate_service import (
     ANALYSIS_PROP_CALCULATED_AT,
     ANALYSIS_PROP_DAYS_SINCE_CREATED,
     ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT,
+    ANALYSIS_PROP_DAYS_UNTIL_CLOSE,
+    ANALYSIS_PROP_HIST_CLOSE_RATE,
     ANALYSIS_PROP_NUM_INTERACTIONS,
     ANALYSIS_PROP_NUM_OPEN_DEALS,
     ANALYSIS_PROP_SOURCE_UPDATED_AT,
     ANALYSIS_PROP_STAGE_ENCODED,
     BATCH_TIMEOUT_SECONDS,
     CONTRACT_PROP_AMOUNT,
+    DAYS_UNTIL_CLOSE_MEDIAN,
+    DEAL_PROP_CLOSURE_SCORE,
+    DEAL_PROP_CHURN_SCORE,
     DEAL_PROP_CREATED_AT,
     DEAL_PROP_STATUS,
     DEAL_STATUS_TO_STAGE,
-    FEATURE_KEYS,
+    HIST_CLOSE_RATE_MEDIAN,
+    REQUIRED_FEATURE_KEYS,
     enqueue_recalculation_job,
     normalize_entity_ids,
     recompute_deal_analysis,
@@ -27,6 +33,7 @@ from .recalculate_service import (
     _load_contract_inputs,
     _load_deal_inputs,
     _load_schema_config,
+    _upsert_property,
 )
 
 
@@ -152,6 +159,7 @@ def score_batch(request):
             }
             for entity_id in entity_ids
         ]
+        _persist_scores(response_payload, config)
         return Response(response_payload, status=200)
     except TimeoutError:
         return Response(
@@ -160,6 +168,30 @@ def score_batch(request):
         )
     except Exception as exc:
         return Response({"detail": f"Failed to score batch: {exc}"}, status=500)
+
+
+# ---------------------------------------------------------------------------
+# Score persistence
+# ---------------------------------------------------------------------------
+
+def _persist_scores(scored_items, config):
+    from django.db import connection, transaction
+    closure_prop = config["prop_ids"].get(DEAL_PROP_CLOSURE_SCORE)
+    churn_prop = config["prop_ids"].get(DEAL_PROP_CHURN_SCORE)
+    if not closure_prop and not churn_prop:
+        return
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            for item in scored_items:
+                entity_id = item.get("entity_id")
+                if entity_id is None or item.get("unavailable_reason") is not None:
+                    continue
+                closure = item.get("closure_score")
+                churn = item.get("churn_score")
+                if closure_prop and closure is not None:
+                    _upsert_property(cursor, entity_id, closure_prop, {"value_decimal": closure})
+                if churn_prop and churn is not None:
+                    _upsert_property(cursor, entity_id, churn_prop, {"value_decimal": churn})
 
 
 # ---------------------------------------------------------------------------
@@ -175,16 +207,23 @@ def _score_or_diagnose(analysis, deal_row, contracts):
     if reason is not None:
         return {"closure_score": None, "churn_score": None, "unavailable_reason": reason}
 
+    days_until_close = analysis.get(ANALYSIS_PROP_DAYS_UNTIL_CLOSE)
+    days_until_close = float(days_until_close) if days_until_close is not None else float(DAYS_UNTIL_CLOSE_MEDIAN)
+    hist_close_rate = analysis.get(ANALYSIS_PROP_HIST_CLOSE_RATE)
+    hist_close_rate = float(hist_close_rate) if hist_close_rate is not None else float(HIST_CLOSE_RATE_MEDIAN)
+
     closure_input = [[
         float(analysis[ANALYSIS_PROP_AVG_DEAL_VALUE]),
         int(analysis[ANALYSIS_PROP_DAYS_SINCE_CREATED]),
         int(analysis[ANALYSIS_PROP_STAGE_ENCODED]),
         int(analysis[ANALYSIS_PROP_NUM_INTERACTIONS]),
+        days_until_close,
     ]]
     churn_input = [[
         int(analysis[ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT]),
         int(analysis[ANALYSIS_PROP_NUM_OPEN_DEALS]),
         float(analysis[ANALYSIS_PROP_AVG_DEAL_VALUE]),
+        hist_close_rate,
     ]]
     closure_score = float(MlApiConfig.closure_model.predict_proba(closure_input)[0][1]) * 100.0
     churn_score = float(MlApiConfig.churn_model.predict_proba(churn_input)[0][1]) * 100.0
@@ -218,7 +257,7 @@ def _diagnose_missing_inputs(analysis, deal_row, contracts):
             f"set it to {_ALLOWED_STATUSES_HUMAN} to enable scoring."
         )
 
-    missing_features = [k for k in FEATURE_KEYS if analysis.get(k) is None]
+    missing_features = [k for k in REQUIRED_FEATURE_KEYS if analysis.get(k) is None]
     if not missing_features:
         return None
 

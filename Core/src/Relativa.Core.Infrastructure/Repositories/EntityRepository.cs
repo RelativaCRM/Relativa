@@ -172,4 +172,41 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
 
     public Task ArchiveAsync(int entityId, CancellationToken ct = default) =>
         SetArchivedStateAsync(entityId, true, ct);
+
+    public Task<EntityRelationshipType?> GetRelationshipTypeByIdAsync(int relationshipTypeId, CancellationToken ct = default) =>
+        db.EntityRelationshipTypes
+            .AsNoTracking()
+            .Include(rt => rt.SourceEntityType)
+            .Include(rt => rt.TargetEntityType)
+            .FirstOrDefaultAsync(rt => rt.Id == relationshipTypeId, ct);
+
+    public Task<EntityRelationship?> GetRelationshipByIdAsync(int relationshipId, CancellationToken ct = default) =>
+        db.EntityRelationships
+            .AsNoTracking()
+            .Include(r => r.RelationshipType)
+            .Include(r => r.SourceEntity)
+                .ThenInclude(e => e.EntityWorkspaces)
+            .FirstOrDefaultAsync(r => r.Id == relationshipId, ct);
+
+    public async Task<EntityRelationship> AddRelationshipAsync(EntityRelationship relationship, CancellationToken ct = default)
+    {
+        db.EntityRelationships.Add(relationship);
+        await db.SaveChangesAsync(ct);
+        return relationship;
+    }
+
+    public async Task RemoveRelationshipAsync(int relationshipId, CancellationToken ct = default)
+    {
+        await db.EntityRelationships
+            .Where(r => r.Id == relationshipId)
+            .ExecuteDeleteAsync(ct);
+    }
+
+    public Task<int> CountRelationshipsBySourceAsync(int sourceEntityId, int relationshipTypeId, CancellationToken ct = default) =>
+        db.EntityRelationships
+            .CountAsync(r => r.SourceEntityId == sourceEntityId && r.RelationshipTypeId == relationshipTypeId, ct);
+
+    public Task<int> CountRelationshipsByTargetAsync(int targetEntityId, int relationshipTypeId, CancellationToken ct = default) =>
+        db.EntityRelationships
+            .CountAsync(r => r.TargetEntityId == targetEntityId && r.RelationshipTypeId == relationshipTypeId, ct);
 }

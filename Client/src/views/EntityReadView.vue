@@ -5,9 +5,11 @@ import Button from 'primevue/button';
 import Message from 'primevue/message';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
+import Select from 'primevue/select';
 import DatePicker from 'primevue/datepicker';
 import ToggleSwitch from 'primevue/toggleswitch';
 import ConfirmDialog from 'primevue/confirmdialog';
+import Dialog from 'primevue/dialog';
 import { useConfirm } from 'primevue/useconfirm';
 import { useToast } from 'primevue/usetoast';
 import { normalizeError, firstFieldError, type FieldErrors } from '@/api/errors';
@@ -17,7 +19,9 @@ import { hasWorkspacePermission } from '@/utils/workspacePermissions';
 import type {
   EntityDetailDto,
   EntityPropertyValueDto,
+  EntityListItemDto,
 } from '@/api/entities';
+import { entityApi } from '@/api/entities';
 import { mlApi, type DealScoreDto } from '@/api/ml';
 
 const props = defineProps<{
@@ -79,6 +83,78 @@ const typeSchema = computed(() => {
   if (!d) return null;
   return entityStore.types.find((t) => t.id === d.entityTypeId) ?? null;
 });
+
+function allowedValuesFor(propertyId: number): string[] {
+  return typeSchema.value?.properties.find((p) => p.propertyId === propertyId)?.allowedValues ?? [];
+}
+
+// ── Link / Unlink modal state ────────────────────────────────────────────────
+const linkModalOpen = ref(false);
+const linkModalTab = ref<EdgeRelTab | null>(null);
+const linkCandidates = ref<EntityListItemDto[]>([]);
+const linkLoading = ref(false);
+const linkError = ref<string | null>(null);
+
+async function openLinkModal(tab: EdgeRelTab) {
+  linkModalTab.value = tab;
+  linkModalOpen.value = true;
+  linkError.value = null;
+  linkCandidates.value = [];
+  linkLoading.value = true;
+  try {
+    const targetTypeName = tab.otherEntityTypeName;
+    const targetType = entityStore.types.find((t) => t.name === targetTypeName);
+    if (!targetType) { linkCandidates.value = []; return; }
+    const all = await entityApi.list(props.workspaceId, { entityTypeId: targetType.id });
+    const d = detail.value;
+    const linkedIds = new Set(
+      (tab.direction === 'out' ? d?.outboundRelationships : d?.inboundRelationships)
+        ?.filter((r) => r.relationshipTypeId === tab.relationshipTypeId)
+        .map((r) => r.relatedEntityId) ?? [],
+    );
+    linkCandidates.value = all.filter((e) => !linkedIds.has(e.id));
+  } catch (err) {
+    linkError.value = normalizeError(err);
+  } finally {
+    linkLoading.value = false;
+  }
+}
+
+function previewLinkLabel(item: EntityListItemDto): string {
+  const v = item.propertyValues.find(
+    (p) => ['name', 'first_name', 'title', 'email'].includes(p.propertyName.toLowerCase()),
+  );
+  return v ? String(v.value ?? '') : `#${item.id}`;
+}
+
+async function confirmLink(candidate: EntityListItemDto) {
+  const tab = linkModalTab.value;
+  if (!tab || !detail.value) return;
+  try {
+    const sourceId = tab.direction === 'out' ? detail.value.id : candidate.id;
+    const targetId = tab.direction === 'out' ? candidate.id : detail.value.id;
+    await entityApi.createRelationship(props.workspaceId, {
+      sourceEntityId: sourceId,
+      targetEntityId: targetId,
+      relationshipTypeId: tab.relationshipTypeId,
+    });
+    linkModalOpen.value = false;
+    await loadDetail();
+    toast.add({ severity: 'success', summary: 'Linked', life: 2500 });
+  } catch (err) {
+    linkError.value = normalizeError(err);
+  }
+}
+
+async function unlinkRelationship(relationshipId: number) {
+  try {
+    await entityApi.deleteRelationship(props.workspaceId, relationshipId);
+    await loadDetail();
+    toast.add({ severity: 'success', summary: 'Unlinked', life: 2500 });
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Error', detail: normalizeError(err), life: 4000 });
+  }
+}
 
 type EdgeRelTab = {
   direction: 'out' | 'in';
@@ -698,8 +774,15 @@ watch(
               </dt>
               <dd class="mt-1 text-sm text-ink-900">
                 <template v-if="editMode && !p.isReadonly">
+                  <Select
+                    v-if="p.dataType === 'String' && allowedValuesFor(p.propertyId).length > 0"
+                    v-model="editValues[p.propertyId] as string"
+                    :options="allowedValuesFor(p.propertyId)"
+                    class="w-full"
+                    :invalid="!!fieldError(p)"
+                  />
                   <InputText
-                    v-if="p.dataType === 'String'"
+                    v-else-if="p.dataType === 'String'"
                     v-model="editValues[p.propertyId] as string"
                     class="w-full !h-10"
                     :invalid="!!fieldError(p)"
@@ -750,20 +833,34 @@ watch(
           v-show="activeTab === relTabKey(tab)"
           class="rounded-xl border border-line bg-white p-6 mb-6"
         >
-          <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-1">
-            {{ humanize(tab.name) }}
-          </h2>
-          <p class="text-xs text-ink-500 mb-4">
-            Linked {{ tab.otherEntityTypeName.replace(/_/g, ' ') }} records (outgoing).
-          </p>
+          <div class="flex items-start justify-between gap-2 mb-4">
+            <div>
+              <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-1">
+                {{ humanize(tab.name) }}
+              </h2>
+              <p class="text-xs text-ink-500">
+                Linked {{ tab.otherEntityTypeName.replace(/_/g, ' ') }} records (outgoing).
+              </p>
+            </div>
+            <Button
+              v-if="canEditCurrentEntity"
+              icon="pi pi-link"
+              label="Link existing"
+              severity="secondary"
+              outlined
+              size="small"
+              @click="openLinkModal(tab)"
+            />
+          </div>
           <ul v-if="outboundLinksForTab(tab).length" class="space-y-2 text-sm">
             <li
               v-for="r in outboundLinksForTab(tab)"
               :key="`o-${r.relationshipTypeId}-${r.relatedEntityId}`"
+              class="flex items-center gap-2"
             >
               <button
                 type="button"
-                class="text-left w-full rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
+                class="text-left flex-1 rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
                 @click="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
               >
                 <span class="text-brand-700">{{ r.relatedEntityTypeName.replace(/_/g, ' ') }}</span>
@@ -772,6 +869,15 @@ watch(
                   {{ previewLabel(r.previewPropertyValues) }}
                 </span>
               </button>
+              <Button
+                v-if="canEditCurrentEntity"
+                icon="pi pi-times"
+                severity="danger"
+                text
+                size="small"
+                title="Unlink"
+                @click="unlinkRelationship(r.relationshipId)"
+              />
             </li>
           </ul>
           <p v-else class="text-sm text-ink-500">No links of this type yet.</p>
@@ -783,21 +889,35 @@ watch(
           v-show="activeTab === relTabKey(tab)"
           class="rounded-xl border border-line bg-white p-6 mb-6"
         >
-          <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-1">
-            {{ humanize(tab.name) }}
-          </h2>
-          <p class="text-xs text-ink-500 mb-4">
-            {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
-            records pointing here (incoming).
-          </p>
+          <div class="flex items-start justify-between gap-2 mb-4">
+            <div>
+              <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-1">
+                {{ humanize(tab.name) }}
+              </h2>
+              <p class="text-xs text-ink-500">
+                {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
+                records pointing here (incoming).
+              </p>
+            </div>
+            <Button
+              v-if="canEditCurrentEntity"
+              icon="pi pi-link"
+              label="Link existing"
+              severity="secondary"
+              outlined
+              size="small"
+              @click="openLinkModal(tab)"
+            />
+          </div>
           <ul v-if="inboundLinksFor(tab.relationshipTypeId).length" class="space-y-2 text-sm">
             <li
               v-for="r in inboundLinksFor(tab.relationshipTypeId)"
               :key="`i-${r.relationshipTypeId}-${r.relatedEntityId}`"
+              class="flex items-center gap-2"
             >
               <button
                 type="button"
-                class="text-left w-full rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
+                class="text-left flex-1 rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
                 @click="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
               >
                 <span class="text-brand-700">{{ r.relatedEntityTypeName.replace(/_/g, ' ') }}</span>
@@ -806,6 +926,15 @@ watch(
                   {{ previewLabel(r.previewPropertyValues) }}
                 </span>
               </button>
+              <Button
+                v-if="canEditCurrentEntity"
+                icon="pi pi-times"
+                severity="danger"
+                text
+                size="small"
+                title="Unlink"
+                @click="unlinkRelationship(r.relationshipId)"
+              />
             </li>
           </ul>
           <p v-else class="text-sm text-ink-500">No links of this type yet.</p>
@@ -813,4 +942,35 @@ watch(
       </template>
     </template>
   </section>
+
+  <Dialog
+    v-model:visible="linkModalOpen"
+    :header="linkModalTab ? `Link ${linkModalTab.otherEntityTypeName.replace(/_/g, ' ')}` : 'Link'"
+    modal
+    class="w-full max-w-lg"
+  >
+    <div v-if="linkLoading" class="flex items-center gap-2 py-4 text-sm text-ink-500">
+      <i class="pi pi-spin pi-spinner" />
+      <span>Loading…</span>
+    </div>
+    <Message v-else-if="linkError" severity="error" :closable="false" class="!my-0">
+      {{ linkError }}
+    </Message>
+    <p v-else-if="linkCandidates.length === 0" class="text-sm text-ink-500 py-4">
+      No linkable records found.
+    </p>
+    <ul v-else class="space-y-2 py-2 max-h-80 overflow-y-auto text-sm">
+      <li v-for="item in linkCandidates" :key="item.id">
+        <button
+          type="button"
+          class="w-full text-left rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
+          @click="confirmLink(item)"
+        >
+          <span class="text-brand-700">{{ item.entityTypeName.replace(/_/g, ' ') }}</span>
+          <span class="font-mono text-xs text-ink-600"> #{{ item.id }}</span>
+          <span class="block text-xs text-ink-500 mt-0.5">{{ previewLinkLabel(item) }}</span>
+        </button>
+      </li>
+    </ul>
+  </Dialog>
 </template>

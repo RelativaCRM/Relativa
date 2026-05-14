@@ -4,6 +4,7 @@ using Relativa.Graph.Data;
 using Relativa.Graph.Graph;
 using Relativa.Graph.Hubs;
 using Relativa.Graph.Messaging;
+using Relativa.Graph.ML;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +20,13 @@ if (string.IsNullOrWhiteSpace(graphConnectionString))
 builder.Services.AddDbContext<GraphDbContext>(opt => opt.UseNpgsql(graphConnectionString));
 builder.Services.AddDbContext<GraphQueryDbContext>(opt => opt.UseNpgsql(graphConnectionString));
 builder.Services.AddScoped<IGraphDataService, GraphDataService>();
+
+var mlBaseUrl = builder.Configuration["MlApi:BaseUrl"] ?? "http://localhost:8084";
+builder.Services.AddHttpClient<IMlScoringClient, HttpMlScoringClient>(client =>
+{
+    client.BaseAddress = new Uri(mlBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(8);
+});
 
 builder.Services.Configure<RabbitMqGraphConsumerOptions>(
     builder.Configuration.GetSection(RabbitMqGraphConsumerOptions.SectionKey));

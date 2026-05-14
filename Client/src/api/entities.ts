@@ -14,6 +14,8 @@ export interface EntityTypePropertyDto {
   isRequired: boolean;
   /** From `property.is_readonly`; if all properties are readonly, creation/editing is blocked in the UI. */
   isReadonly: boolean;
+  /** Non-empty when only specific string values are allowed (e.g. deal status, contract_status). */
+  allowedValues: string[];
 }
 
 export interface OutgoingRelationshipDto {
@@ -52,11 +54,18 @@ export interface EntityPropertyValueDto {
 }
 
 export interface EntityRelationshipRefDto {
+  relationshipId: number;
   relationshipTypeId: number;
   relationshipName: string;
   relatedEntityId: number;
   relatedEntityTypeName: string;
   previewPropertyValues: EntityPropertyValueDto[];
+}
+
+export interface CreateEntityRelationshipRequest {
+  sourceEntityId: number;
+  targetEntityId: number;
+  relationshipTypeId: number;
 }
 
 export interface EntityListItemDto {
@@ -147,6 +156,17 @@ export const entityApi = {
   archive(workspaceId: number, entityId: number): Promise<void> {
     return api.del<void>(
       `${CORE}/workspaces/${workspaceId}/entities/${entityId}`,
+    );
+  },
+  createRelationship(workspaceId: number, body: CreateEntityRelationshipRequest): Promise<EntityRelationshipRefDto> {
+    return api.post<EntityRelationshipRefDto>(
+      `${CORE}/workspaces/${workspaceId}/entity-relationships`,
+      body as unknown as Record<string, unknown>,
+    );
+  },
+  deleteRelationship(workspaceId: number, relationshipId: number): Promise<void> {
+    return api.del<void>(
+      `${CORE}/workspaces/${workspaceId}/entity-relationships/${relationshipId}`,
     );
   },
 };
