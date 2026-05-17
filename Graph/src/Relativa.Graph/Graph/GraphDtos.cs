@@ -9,7 +9,8 @@ public record GraphNodeDto(
     int ResourceId,
     string ResourceType,
     int? WorkspaceId,
-    IReadOnlyList<string> Permissions
+    IReadOnlyList<string> Permissions,
+    string? HighlightTag = null
 );
 
 public record GraphEdgeDto(

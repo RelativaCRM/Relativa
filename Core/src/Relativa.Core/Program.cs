@@ -98,6 +98,7 @@ try
     app.MapHealthChecks("/health");
     app.MapEntityTypeEndpoints();
     app.MapEntityEndpoints();
+    app.MapEntityRelationshipEndpoints();
     app.MapWorkspaceEndpoints();
     app.MapMemberEndpoints();
     app.MapInvitationEndpoints();

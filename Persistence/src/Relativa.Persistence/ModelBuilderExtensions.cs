@@ -48,6 +48,7 @@ public static class PersistenceModelBuilderExtensions
         modelBuilder.ApplyConfiguration(new EntityPropertyValueConfiguration());
         modelBuilder.ApplyConfiguration(new EntityRelationshipTypeConfiguration());
         modelBuilder.ApplyConfiguration(new EntityRelationshipConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyAllowedValueConfiguration());
 
         modelBuilder.ApplyConfiguration(new EntityAuditLogConfiguration());
         modelBuilder.ApplyConfiguration(new WorkspaceAuditLogConfiguration());

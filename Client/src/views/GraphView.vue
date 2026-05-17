@@ -10,7 +10,7 @@ import { Network, type Options } from 'vis-network/standalone';
 import { useGraphStore } from '@/stores/graph';
 import { useEntityStore } from '@/stores/entity';
 import { useOrganizationStore } from '@/stores/organization';
-import type { GraphNodeDto } from '@/api/graph';
+import type { GraphNodeDto, GraphHighlightTag } from '@/api/graph';
 
 const router = useRouter();
 const graphStore = useGraphStore();
@@ -24,6 +24,14 @@ const network = shallowRef<Network | null>(null);
 const selectedNode = ref<GraphNodeDto | null>(null);
 
 const orgId = computed(() => orgStore.currentOrgId);
+
+// ── Highlight palette ────────────────────────────────────────────────────────
+const HIGHLIGHT: Record<GraphHighlightTag, { border: string; shadow: string; label: string }> = {
+  best_deal:    { border: '#16a34a', shadow: 'rgba(22,163,74,0.55)',  label: 'Best deal (top 20%)' },
+  worst_deal:   { border: '#dc2626', shadow: 'rgba(220,38,38,0.55)',  label: 'Worst deal (bottom 20%)' },
+  best_client:  { border: '#16a34a', shadow: 'rgba(22,163,74,0.55)',  label: 'Best client (top 20%)' },
+  worst_client: { border: '#dc2626', shadow: 'rgba(220,38,38,0.55)',  label: 'Worst client (bottom 20%)' },
+};
 
 // ── Color palette ────────────────────────────────────────────────────────────
 const TYPE_COLORS: Record<string, string> = {
@@ -81,7 +89,7 @@ function nodeColor(node: GraphNodeDto, typeColorMap: Map<string, string>) {
 
 // ── Legend data ──────────────────────────────────────────────────────────────
 const legendItems = computed(() => {
-  const items: { label: string; color: string }[] = [
+  const items: { label: string; color: string; border?: string }[] = [
     { label: 'You', color: TYPE_COLORS.user_self },
     { label: 'User', color: TYPE_COLORS.user },
     { label: 'Workspace', color: TYPE_COLORS.workspace },
@@ -89,6 +97,17 @@ const legendItems = computed(() => {
   const typeMap = buildEntityTypeColorMap(graphStore.nodes);
   for (const [name, color] of typeMap) {
     items.push({ label: formatTypeName(name), color });
+  }
+  // Append highlight legend entries when any highlighted nodes exist
+  const usedTags = new Set(
+    graphStore.nodes.map(n => n.highlightTag).filter(Boolean) as string[]
+  );
+  const addedBorders = new Set<string>();
+  for (const tag of ['best_deal', 'worst_deal', 'best_client', 'worst_client'] as const) {
+    if (usedTags.has(tag) && !addedBorders.has(HIGHLIGHT[tag].border)) {
+      items.push({ label: HIGHLIGHT[tag].label, color: 'transparent', border: HIGHLIGHT[tag].border });
+      addedBorders.add(HIGHLIGHT[tag].border);
+    }
   }
   return items;
 });
@@ -104,16 +123,24 @@ async function render() {
 
   const typeColorMap = buildEntityTypeColorMap(graphStore.nodes);
 
-  const visNodes = graphStore.nodes.map(n => ({
-    id: n.id,
-    label: n.label,
-    title: n.subtitle ? `${n.label}\n${n.subtitle}` : n.label,
-    color: nodeColor(n, typeColorMap),
-    size: n.type === 'user_self' ? 24 : 18,
-    borderWidth: n.type === 'user_self' ? 3 : 2,
-    font: { size: 13, face: 'Inter, sans-serif', color: '#0f172a', strokeWidth: 0, vadjust: 4 },
-    shadow: { enabled: true, color: 'rgba(0,0,0,0.10)', size: 6, x: 0, y: 2 },
-  }));
+  const visNodes = graphStore.nodes.map(n => {
+    const hl = n.highlightTag ? HIGHLIGHT[n.highlightTag] : null;
+    const baseColor = nodeColor(n, typeColorMap);
+    return {
+      id: n.id,
+      label: n.label,
+      title: n.subtitle ? `${n.label}\n${n.subtitle}` : n.label,
+      color: hl
+        ? { ...baseColor, border: hl.border, highlight: { ...baseColor.highlight, border: hl.border } }
+        : baseColor,
+      size: hl ? 22 : (n.type === 'user_self' ? 24 : 18),
+      borderWidth: hl ? 4 : (n.type === 'user_self' ? 3 : 2),
+      font: { size: 13, face: 'Inter, sans-serif', color: '#0f172a', strokeWidth: 0, vadjust: 4 },
+      shadow: hl
+        ? { enabled: true, color: hl.shadow, size: 14, x: 0, y: 0 }
+        : { enabled: true, color: 'rgba(0,0,0,0.10)', size: 6, x: 0, y: 2 },
+    };
+  });
 
   const visEdges = graphStore.edges.map(e => ({
     id: e.id,
@@ -293,7 +320,11 @@ const hasGraph = computed(() => graphStore.nodes.length > 0);
           >
             <span
               class="w-3 h-3 rounded-full shrink-0"
-              :style="{ backgroundColor: item.color }"
+              :style="{
+                backgroundColor: item.color,
+                border: item.border ? `2px solid ${item.border}` : undefined,
+                boxShadow: item.border ? `0 0 5px ${item.border}` : undefined,
+              }"
             />
             {{ item.label }}
           </div>

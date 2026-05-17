@@ -715,8 +715,19 @@ watch(
             <span v-if="isPropertyRequired(prop)" class="text-danger">*</span>
           </label>
 
+          <Select
+            v-if="prop.dataType === 'String' && prop.allowedValues?.length > 0"
+            :id="`p-${prop.propertyId}`"
+            v-model="values[prop.propertyId] as string"
+            :options="prop.allowedValues"
+            placeholder="Select..."
+            class="w-full"
+            :invalid="!!propertyFieldError(prop)"
+            @update:model-value="clearPropertyFieldError(prop)"
+          />
+
           <InputText
-            v-if="prop.dataType === 'String'"
+            v-else-if="prop.dataType === 'String'"
             :id="`p-${prop.propertyId}`"
             v-model="values[prop.propertyId] as string"
             class="!h-10"

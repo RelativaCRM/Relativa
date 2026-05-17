@@ -11,15 +11,20 @@ public sealed class GraphGlobalExceptionHandler(ILogger<GraphGlobalExceptionHand
         Exception exception,
         CancellationToken cancellationToken)
     {
-        logger.LogError(exception, "Unhandled Graph exception");
-
-        var status = exception switch
+        var (status, logAsError) = exception switch
         {
-            UnauthorizedAccessException => StatusCodes.Status401Unauthorized,
-            ArgumentException => StatusCodes.Status400BadRequest,
-            TimeoutException => StatusCodes.Status504GatewayTimeout,
-            _ => StatusCodes.Status500InternalServerError,
+            UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, false),
+            ArgumentException           => (StatusCodes.Status400BadRequest,   false),
+            KeyNotFoundException        => (StatusCodes.Status404NotFound,      false),
+            InvalidOperationException   => (StatusCodes.Status409Conflict,      false),
+            TimeoutException            => (StatusCodes.Status504GatewayTimeout, false),
+            _                           => (StatusCodes.Status500InternalServerError, true),
         };
+
+        if (logAsError)
+            logger.LogError(exception, "Unhandled Graph exception");
+        else
+            logger.LogWarning(exception, "Handled Graph exception");
 
         await Results.Problem(
                 title: "Request failed",

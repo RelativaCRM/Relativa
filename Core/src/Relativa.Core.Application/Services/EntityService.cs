@@ -397,6 +397,13 @@ public sealed class EntityService(
             switch (prop.DataType)
             {
                 case PropertyDataType.String:
+                    if (prop.AllowedValues.Count > 0
+                        && !prop.AllowedValues.Any(av => string.Equals(av.Value, input.Value, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        throw new ArgumentException(
+                            $"'{input.Value}' is not a valid value for '{prop.Name}'. " +
+                            $"Allowed: {string.Join(", ", prop.AllowedValues.Select(av => av.Value))}.");
+                    }
                     pv.ValueString = input.Value;
                     break;
 
@@ -460,6 +467,7 @@ public sealed class EntityService(
         e.SourceRelationships
             .OrderBy(r => r.Id)
             .Select(r => new EntityRelationshipRefDto(
+                r.Id,
                 r.RelationshipTypeId,
                 r.RelationshipType.Name,
                 r.TargetEntityId,
@@ -471,6 +479,7 @@ public sealed class EntityService(
         e.TargetRelationships
             .OrderBy(r => r.Id)
             .Select(r => new EntityRelationshipRefDto(
+                r.Id,
                 r.RelationshipTypeId,
                 r.RelationshipType.Name,
                 r.SourceEntityId,
@@ -510,6 +519,74 @@ public sealed class EntityService(
         PropertyDataType.Date    => pv.ValueDate?.ToString("yyyy-MM-dd"),
         _                        => null
     };
+
+    public async Task<EntityRelationshipRefDto> CreateRelationshipAsync(int workspaceId, int userId, CreateEntityRelationshipRequest request, CancellationToken ct = default)
+    {
+        await RequirePermission(userId, workspaceId, "edit_entities", ct);
+
+        var relType = await entityRepository.GetRelationshipTypeByIdAsync(request.RelationshipTypeId, ct)
+            ?? throw new ArgumentException($"Relationship type {request.RelationshipTypeId} does not exist.");
+
+        var source = await entityRepository.GetByIdInWorkspaceAsync(request.SourceEntityId, workspaceId, ct)
+            ?? throw new ArgumentException($"Source entity {request.SourceEntityId} not found in workspace {workspaceId}.");
+
+        var target = await entityRepository.GetByIdInWorkspaceAsync(request.TargetEntityId, workspaceId, ct)
+            ?? throw new ArgumentException($"Target entity {request.TargetEntityId} not found in workspace {workspaceId}.");
+
+        if (source.IsArchived || target.IsArchived)
+            throw new ArgumentException("Cannot create a relationship involving an archived entity.");
+
+        if (source.EntityTypeId != relType.SourceEntityTypeId)
+            throw new ArgumentException($"Source entity type does not match relationship type '{relType.Name}'.");
+
+        if (target.EntityTypeId != relType.TargetEntityTypeId)
+            throw new ArgumentException($"Target entity type does not match relationship type '{relType.Name}'.");
+
+        if (relType.RelationshipCardinality == Persistence.Entities.RelationshipCardinality.ManyToOne
+            || relType.RelationshipCardinality == Persistence.Entities.RelationshipCardinality.OneToOne)
+        {
+            if (await entityRepository.CountRelationshipsBySourceAsync(source.Id, relType.Id, ct) > 0)
+                throw new ArgumentException($"Source entity already has a '{relType.Name}' link (cardinality constraint).");
+        }
+
+        if (relType.RelationshipCardinality == Persistence.Entities.RelationshipCardinality.OneToOne)
+        {
+            if (await entityRepository.CountRelationshipsByTargetAsync(target.Id, relType.Id, ct) > 0)
+                throw new ArgumentException($"Target entity already has a '{relType.Name}' link (cardinality constraint).");
+        }
+
+        var rel = await entityRepository.AddRelationshipAsync(new Persistence.Entities.EntityRelationship
+        {
+            SourceEntityId = source.Id,
+            TargetEntityId = target.Id,
+            RelationshipTypeId = relType.Id,
+        }, ct);
+
+        const int previewCap = 12;
+        return new EntityRelationshipRefDto(
+            rel.Id,
+            relType.Id,
+            relType.Name,
+            target.Id,
+            relType.TargetEntityType.Name,
+            MapPreview(target, previewCap));
+    }
+
+    public async Task DeleteRelationshipAsync(int workspaceId, int userId, int relationshipId, CancellationToken ct = default)
+    {
+        await RequirePermission(userId, workspaceId, "edit_entities", ct);
+
+        var rel = await entityRepository.GetRelationshipByIdAsync(relationshipId, ct)
+            ?? throw new KeyNotFoundException($"Relationship {relationshipId} not found.");
+
+        if (!rel.SourceEntity.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId))
+            throw new UnauthorizedAccessException("Relationship does not belong to an entity in this workspace.");
+
+        if (rel.RelationshipType.IsRequired)
+            throw new ArgumentException($"Cannot delete required relationship '{rel.RelationshipType.Name}'.");
+
+        await entityRepository.RemoveRelationshipAsync(relationshipId, ct);
+    }
 
     private static Task PublishEntityRefreshDomainAsync(
         IOutboxWriter outboxWriter,

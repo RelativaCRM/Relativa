@@ -1,5 +1,7 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Relativa.Core.Application.Exceptions;
 
 namespace Relativa.Core.Middleware;
@@ -21,6 +23,8 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
             UnauthorizedAccessException ue => (StatusCodes.Status401Unauthorized, "Unauthorized",       ue.Message),
             ForbiddenAccessException fe   => (StatusCodes.Status403Forbidden,     "Forbidden",          fe.Message),
             InvalidOperationException ioe => (StatusCodes.Status409Conflict,    "Conflict",             ioe.Message),
+            DbUpdateException { InnerException: PostgresException { SqlState: "23505" } }
+                                          => (StatusCodes.Status409Conflict,    "Conflict",             "A record with this value already exists."),
             _                             => (StatusCodes.Status500InternalServerError, "Internal Server Error", "An unexpected error occurred.")
         };
 

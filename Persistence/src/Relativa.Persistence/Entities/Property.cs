@@ -19,4 +19,5 @@ public class Property
     public Organization? Organization { get; set; }
     public ICollection<EntityTypeProperty> EntityTypeProperties { get; set; } = new List<EntityTypeProperty>();
     public ICollection<EntityPropertyValue> EntityPropertyValues { get; set; } = new List<EntityPropertyValue>();
+    public ICollection<PropertyAllowedValue> AllowedValues { get; set; } = new List<PropertyAllowedValue>();
 }

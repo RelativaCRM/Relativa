@@ -5,4 +5,5 @@ public sealed record EntityTypePropertyDto(
     string Name,
     string DataType,
     bool IsRequired,
-    bool IsReadonly);
+    bool IsReadonly,
+    IReadOnlyList<string> AllowedValues);

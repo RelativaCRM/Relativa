@@ -25,4 +25,12 @@ public interface IEntityRepository
     Task UpdateAsync(Entity entity, List<EntityPropertyValue> newPropertyValues, CancellationToken ct = default);
     Task SetArchivedStateAsync(int entityId, bool isArchived, CancellationToken ct = default);
     Task ArchiveAsync(int entityId, CancellationToken ct = default);
+
+    // Relationship management
+    Task<EntityRelationshipType?> GetRelationshipTypeByIdAsync(int relationshipTypeId, CancellationToken ct = default);
+    Task<EntityRelationship?> GetRelationshipByIdAsync(int relationshipId, CancellationToken ct = default);
+    Task<EntityRelationship> AddRelationshipAsync(EntityRelationship relationship, CancellationToken ct = default);
+    Task RemoveRelationshipAsync(int relationshipId, CancellationToken ct = default);
+    Task<int> CountRelationshipsBySourceAsync(int sourceEntityId, int relationshipTypeId, CancellationToken ct = default);
+    Task<int> CountRelationshipsByTargetAsync(int targetEntityId, int relationshipTypeId, CancellationToken ct = default);
 }

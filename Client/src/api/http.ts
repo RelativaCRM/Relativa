@@ -35,7 +35,11 @@ export async function gatewayFetch(
     headers.set('X-Workspace-ID', String(wsStore.currentWorkspaceId));
   }
   const url = path.startsWith('http') ? path : `${gatewayBase()}${path}`;
-  return fetch(url, { ...init, headers });
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(), 30_000);
+  return fetch(url, { ...init, headers, signal: controller.signal }).finally(() =>
+    clearTimeout(timerId),
+  );
 }
 
 const AUTH_PATHS = ['/auth/me', '/auth/refresh'];

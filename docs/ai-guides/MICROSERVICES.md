@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-08 (Graph service now serves full RBAC-filtered graph via `GET /api/v1/graph`; graph route moved to org scope; `GraphQueryDbContext` added to Graph service; client GraphView fully rewritten.)
+> **Last verified:** 2026-05-15 (Graph→ML communication migrated from HTTP to RabbitMQ RPC (`relativa.graph_ml` exchange); ML `run_graph_score_consumer` added; `PropertyAllowedValue` enforced in Core EntityService; error handling hardened.)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -16,7 +16,7 @@
 | Graph | 8083 | .NET 10, SignalR, RabbitMQ | Functional — `GET /api/v1/graph` (RBAC-filtered user-centric graph), `POST .../entity-graph/create` (RPC to Core), SignalR hub, workspace choreography consumer |
 | Audit | 8086 | .NET 10, EF Core, RabbitMQ | Functional |
 | Migration | -- | .NET 10, EF Core (console) | Functional |
-| ML | 8084 | Django 5.1, DRF, pika | Functional batch scoring API + choreography subscriber |
+| ML | 8084 | Django 5.1, DRF, pika | Functional batch scoring (RabbitMQ RPC from Graph) + choreography subscriber |
 | Client | 3000 | Vue 3, Vite | Scaffold |
 
 ---
@@ -380,7 +380,7 @@ None -- this is a console application, not a web service.
 
 ### Status: Functional scoring + async recalculation workers
 
-Docker runs `manage.py run_domain_consumer` and `manage.py run_recalculate_consumer` concurrently with Django (see `ML/scripts/run_api_and_consumer.sh`). The domain subscriber binds `domain.events.ml.workspace.v1` to `relativa.domain` for both `core.workspace.*` and `core.entity.*`, and uses `rabbitmq_processed_delivery` for idempotency. Recalculation jobs are consumed from `domain.events.ml.recalculate.v1`.
+Docker runs `manage.py run_domain_consumer`, `manage.py run_recalculate_consumer`, and `manage.py run_graph_score_consumer` concurrently with Django (see `ML/scripts/run_api_and_consumer.sh`). The domain subscriber binds `domain.events.ml.workspace.v1` to `relativa.domain` for both `core.workspace.*` and `core.entity.*`, and uses `rabbitmq_processed_delivery` for idempotency. Recalculation jobs are consumed from `domain.events.ml.recalculate.v1`. The graph score consumer listens on `ml.graph.score_request.v1` (exchange `relativa.graph_ml`) and replies to Graph RPC calls with scored results.
 
 `POST /api/ml/recalculate/` publishes `ml.recalculate.enqueued` domain events with a job payload; `run_recalculate_consumer` performs recomputation and emits progress/completed events. `POST /api/ml/score/batch` focuses on scoring and uses recompute service as stale-data fallback. Celery beat remains commented-out in `settings.py`.
 
@@ -388,6 +388,7 @@ Docker runs `manage.py run_domain_consumer` and `manage.py run_recalculate_consu
 
 - `ML/ml_api/management/commands/run_domain_consumer.py` — Rabbit consumer (blocking)
 - `ML/ml_api/management/commands/run_recalculate_consumer.py` — async recalculation consumer
+- `ML/ml_api/management/commands/run_graph_score_consumer.py` — RabbitMQ RPC consumer; replies to Graph `relativa.graph_ml` scoring requests
 - `ML/ml_api/recalculate_service.py` — shared enqueue/recompute logic
 - `ML/ml_api/views.py` — health + async recalculate + batch scoring handlers
 - `ML/ml_api/urls.py` — URL routing

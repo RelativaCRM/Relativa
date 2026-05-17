@@ -1,6 +1,10 @@
+import logging
 import time
+
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
 
 from .apps import MlApiConfig
 from .recalculate_service import (
@@ -8,16 +12,22 @@ from .recalculate_service import (
     ANALYSIS_PROP_CALCULATED_AT,
     ANALYSIS_PROP_DAYS_SINCE_CREATED,
     ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT,
+    ANALYSIS_PROP_DAYS_UNTIL_CLOSE,
+    ANALYSIS_PROP_HIST_CLOSE_RATE,
     ANALYSIS_PROP_NUM_INTERACTIONS,
     ANALYSIS_PROP_NUM_OPEN_DEALS,
     ANALYSIS_PROP_SOURCE_UPDATED_AT,
     ANALYSIS_PROP_STAGE_ENCODED,
     BATCH_TIMEOUT_SECONDS,
     CONTRACT_PROP_AMOUNT,
+    DAYS_UNTIL_CLOSE_MEDIAN,
+    DEAL_PROP_CLOSURE_SCORE,
+    DEAL_PROP_CHURN_SCORE,
     DEAL_PROP_CREATED_AT,
     DEAL_PROP_STATUS,
     DEAL_STATUS_TO_STAGE,
-    FEATURE_KEYS,
+    HIST_CLOSE_RATE_MEDIAN,
+    REQUIRED_FEATURE_KEYS,
     enqueue_recalculation_job,
     normalize_entity_ids,
     recompute_deal_analysis,
@@ -27,6 +37,7 @@ from .recalculate_service import (
     _load_contract_inputs,
     _load_deal_inputs,
     _load_schema_config,
+    _upsert_property,
 )
 
 
@@ -44,16 +55,16 @@ def recalculate(request):
     mode = payload.get("mode")
     entity_ids = payload.get("entity_ids")
     if entity_ids is not None and workspace_id is not None and mode == "workspace":
-        return Response({"detail": "Provide either entity_ids or workspace mode, not both."}, status=400)
+        return Response({"status": 400, "title": "Bad Request", "detail": "Provide either entity_ids or workspace mode, not both."}, status=400)
     if workspace_id is not None and mode == "workspace":
         if not isinstance(workspace_id, int) or workspace_id <= 0:
-            return Response({"detail": "workspace_id must be a positive integer."}, status=400)
+            return Response({"status": 400, "title": "Bad Request", "detail": "workspace_id must be a positive integer."}, status=400)
         normalized = []
     else:
         try:
             normalized = normalize_entity_ids(entity_ids)
         except ValueError as exc:
-            return Response({"detail": str(exc)}, status=400)
+            return Response({"status": 400, "title": "Bad Request", "detail": str(exc)}, status=400)
     requested_by_user_id = _extract_user_id(request)
     reason = payload.get("reason") or "manual"
     try:
@@ -63,8 +74,9 @@ def recalculate(request):
             requested_by_user_id=requested_by_user_id,
             reason=reason,
         )
-    except Exception as exc:
-        return Response({"detail": f"Failed to enqueue recalculation job: {exc}"}, status=500)
+    except Exception:
+        logger.exception("Failed to enqueue recalculation job")
+        return Response({"status": 500, "title": "Internal Server Error", "detail": "Failed to enqueue recalculation job."}, status=500)
     return Response(
         {
             "status": "accepted",
@@ -81,7 +93,7 @@ def recalculate(request):
 def score_batch(request):
     if (MlApiConfig.churn_model is None) or (MlApiConfig.closure_model is None):
         return Response(
-            {"detail": "ML models are not loaded."},
+            {"status": 503, "title": "Service Unavailable", "detail": "ML models are not loaded."},
             status=503,
         )
 
@@ -89,7 +101,7 @@ def score_batch(request):
     try:
         normalized = normalize_entity_ids(entity_ids)
     except ValueError as exc:
-        return Response({"detail": str(exc)}, status=400)
+        return Response({"status": 400, "title": "Bad Request", "detail": str(exc)}, status=400)
 
     started = time.perf_counter()
     deadline = started + BATCH_TIMEOUT_SECONDS
@@ -152,14 +164,40 @@ def score_batch(request):
             }
             for entity_id in entity_ids
         ]
+        _persist_scores(response_payload, config)
         return Response(response_payload, status=200)
     except TimeoutError:
         return Response(
-            {"detail": "Batch scoring timeout exceeded (5 seconds)."},
+            {"status": 504, "title": "Gateway Timeout", "detail": "Batch scoring timeout exceeded."},
             status=504,
         )
-    except Exception as exc:
-        return Response({"detail": f"Failed to score batch: {exc}"}, status=500)
+    except Exception:
+        logger.exception("Unexpected error in score_batch")
+        return Response({"status": 500, "title": "Internal Server Error", "detail": "An unexpected error occurred."}, status=500)
+
+
+# ---------------------------------------------------------------------------
+# Score persistence
+# ---------------------------------------------------------------------------
+
+def _persist_scores(scored_items, config):
+    from django.db import connection, transaction
+    closure_prop = config["prop_ids"].get(DEAL_PROP_CLOSURE_SCORE)
+    churn_prop = config["prop_ids"].get(DEAL_PROP_CHURN_SCORE)
+    if not closure_prop and not churn_prop:
+        return
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            for item in scored_items:
+                entity_id = item.get("entity_id")
+                if entity_id is None or item.get("unavailable_reason") is not None:
+                    continue
+                closure = item.get("closure_score")
+                churn = item.get("churn_score")
+                if closure_prop and closure is not None:
+                    _upsert_property(cursor, entity_id, closure_prop, {"value_decimal": closure})
+                if churn_prop and churn is not None:
+                    _upsert_property(cursor, entity_id, churn_prop, {"value_decimal": churn})
 
 
 # ---------------------------------------------------------------------------
@@ -175,16 +213,23 @@ def _score_or_diagnose(analysis, deal_row, contracts):
     if reason is not None:
         return {"closure_score": None, "churn_score": None, "unavailable_reason": reason}
 
+    days_until_close = analysis.get(ANALYSIS_PROP_DAYS_UNTIL_CLOSE)
+    days_until_close = float(days_until_close) if days_until_close is not None else float(DAYS_UNTIL_CLOSE_MEDIAN)
+    hist_close_rate = analysis.get(ANALYSIS_PROP_HIST_CLOSE_RATE)
+    hist_close_rate = float(hist_close_rate) if hist_close_rate is not None else float(HIST_CLOSE_RATE_MEDIAN)
+
     closure_input = [[
         float(analysis[ANALYSIS_PROP_AVG_DEAL_VALUE]),
         int(analysis[ANALYSIS_PROP_DAYS_SINCE_CREATED]),
         int(analysis[ANALYSIS_PROP_STAGE_ENCODED]),
         int(analysis[ANALYSIS_PROP_NUM_INTERACTIONS]),
+        days_until_close,
     ]]
     churn_input = [[
         int(analysis[ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT]),
         int(analysis[ANALYSIS_PROP_NUM_OPEN_DEALS]),
         float(analysis[ANALYSIS_PROP_AVG_DEAL_VALUE]),
+        hist_close_rate,
     ]]
     closure_score = float(MlApiConfig.closure_model.predict_proba(closure_input)[0][1]) * 100.0
     churn_score = float(MlApiConfig.churn_model.predict_proba(churn_input)[0][1]) * 100.0
@@ -218,7 +263,7 @@ def _diagnose_missing_inputs(analysis, deal_row, contracts):
             f"set it to {_ALLOWED_STATUSES_HUMAN} to enable scoring."
         )
 
-    missing_features = [k for k in FEATURE_KEYS if analysis.get(k) is None]
+    missing_features = [k for k in REQUIRED_FEATURE_KEYS if analysis.get(k) is None]
     if not missing_features:
         return None
 

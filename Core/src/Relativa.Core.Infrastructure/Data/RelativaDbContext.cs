@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Relativa.Persistence;
 using Relativa.Persistence.Entities;
 using Relativa.Persistence.Entities.AuditLogs;
+using Relativa.Persistence.Configurations;
 
 namespace Relativa.Core.Infrastructure.Data;
 
@@ -30,6 +31,7 @@ public sealed class RelativaDbContext(DbContextOptions<RelativaDbContext> option
     public DbSet<EntityPropertyValue> EntityPropertyValues => Set<EntityPropertyValue>();
     public DbSet<EntityRelationshipType> EntityRelationshipTypes => Set<EntityRelationshipType>();
     public DbSet<EntityRelationship> EntityRelationships => Set<EntityRelationship>();
+    public DbSet<PropertyAllowedValue> PropertyAllowedValues => Set<PropertyAllowedValue>();
     public DbSet<EntityAuditLog> EntityAuditLogs => Set<EntityAuditLog>();
     public DbSet<WorkspaceAuditLog> WorkspaceAuditLogs => Set<WorkspaceAuditLog>();
     public DbSet<UserAuditLog> UserAuditLogs => Set<UserAuditLog>();

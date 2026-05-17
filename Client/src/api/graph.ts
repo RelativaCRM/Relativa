@@ -3,6 +3,7 @@ import { api } from '@/api/http';
 export type GraphNodeType = 'user_self' | 'user' | 'workspace' | 'entity';
 export type GraphEdgeType = 'user_workspace' | 'workspace_entity' | 'entity_entity' | 'user_user';
 export type GraphResourceType = 'user' | 'workspace' | 'entity';
+export type GraphHighlightTag = 'best_deal' | 'worst_deal' | 'best_client' | 'worst_client';
 
 export interface GraphNodeDto {
   id: string;
@@ -14,6 +15,7 @@ export interface GraphNodeDto {
   resourceType: GraphResourceType;
   workspaceId?: number;
   permissions: string[];
+  highlightTag?: GraphHighlightTag;
 }
 
 export interface GraphEdgeDto {
