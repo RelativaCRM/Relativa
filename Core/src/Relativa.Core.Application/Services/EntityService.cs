@@ -156,7 +156,13 @@ public sealed class EntityService(
         ValidateRequestPropertyIds(request.Properties, typeProperties);
         var merged = MergePropertyPayload(entity, request.Properties);
         ValidateReadonlyPreserved(entity, merged, typeProperties);
-        ValidatePropertyPayload(merged, typeProperties);
+        var readonlyIds = typeProperties
+            .Where(tp => tp.Property.IsReadonly)
+            .Select(tp => tp.PropertyId)
+            .ToHashSet();
+        ValidatePropertyPayload(
+            merged.Where(p => !readonlyIds.Contains(p.PropertyId)).ToList(),
+            typeProperties);
 
         var propertyValues = BuildPropertyValues(merged, typeProperties);
         await entityRepository.UpdateAsync(entity, propertyValues, ct);

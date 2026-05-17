@@ -747,4 +747,103 @@ public sealed class EntityServiceTests
         capturedValues!.Single(v => v.PropertyId == 6).ValueBool.Should().BeTrue();
         result.PropertyValues.Should().Contain(p => p.PropertyName == "is_active" && (bool?)p.Value == true);
     }
+
+    // ------------------------------------------------------------------
+    // Read-only property decoupling tests
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task UpdateAsync_EntityWithNonNullReadonlyProperty_SucceedsAndPreservesReadonlyValue()
+    {
+        var storedEntity = new Entity
+        {
+            Id = 1, EntityTypeId = 2, CreatedByUserId = 1, IsArchived = false,
+            EntityType = new EntityType { Id = 2, Name = "deal" },
+            EntityPropertyValues =
+            [
+                new EntityPropertyValue
+                {
+                    EntityId = 1, PropertyId = 7, ValueString = "opened",
+                    Property = new Property { Id = 7, Name = "status", DataType = PropertyDataType.String }
+                },
+                new EntityPropertyValue
+                {
+                    EntityId = 1, PropertyId = 10, ValueDecimal = 0.75m,
+                    Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true }
+                }
+            ]
+        };
+        var typeProps = new List<EntityTypeProperty>
+        {
+            new() { PropertyId = 7,  IsRequired = true,  Property = new Property { Id = 7,  Name = "status",        DataType = PropertyDataType.String,  IsReadonly = false } },
+            new() { PropertyId = 10, IsRequired = false, Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true  } }
+        };
+
+        _entityRepo.SetupSequence(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(storedEntity)
+            .ReturnsAsync(storedEntity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(7, "closed")]));
+
+        _entityRepo.Verify(r => r.UpdateAsync(
+            storedEntity,
+            It.Is<List<EntityPropertyValue>>(l =>
+                l.Any(x => x.PropertyId == 7  && x.ValueString == "closed") &&
+                l.Any(x => x.PropertyId == 10 && x.ValueDecimal == 0.75m)),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UserAttemptsToChangeReadonlyProperty_ThrowsArgumentException()
+    {
+        var storedEntity = new Entity
+        {
+            Id = 1, EntityTypeId = 2, CreatedByUserId = 1, IsArchived = false,
+            EntityType = new EntityType { Id = 2, Name = "deal" },
+            EntityPropertyValues =
+            [
+                new EntityPropertyValue
+                {
+                    EntityId = 1, PropertyId = 10, ValueDecimal = 0.75m,
+                    Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true }
+                }
+            ]
+        };
+        var typeProps = new List<EntityTypeProperty>
+        {
+            new() { PropertyId = 10, IsRequired = false, Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true } }
+        };
+
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(storedEntity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(10, "0.99")])))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*closure_score*read-only*");
+    }
+
+    [Fact]
+    public async Task CreateAsync_ExplicitlySubmittingReadonlyProperty_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            new() { PropertyId = 7,  IsRequired = true,  Property = new Property { Id = 7,  Name = "status",        DataType = PropertyDataType.String,  IsReadonly = false } },
+            new() { PropertyId = 10, IsRequired = false, Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true  } }
+        };
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, new CreateEntityRequest(2,
+        [
+            new PropertyValueInput(7,  "opened"),
+            new PropertyValueInput(10, "0.75")
+        ])))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*closure_score*read-only*");
+    }
 }

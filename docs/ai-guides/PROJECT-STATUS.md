@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-15 (Graph→ML scoring migrated to RabbitMQ RPC; `PropertyAllowedValue` enforcement added; global error handling hardened; `run_graph_score_consumer` added to ML startup.)
+> **Last verified:** 2026-05-17 (Graph→ML scoring migrated to RabbitMQ RPC; `PropertyAllowedValue` enforcement added; global error handling hardened; `run_graph_score_consumer` added to ML startup; readonly property decoupling fixed in `EntityService.UpdateAsync`.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -63,7 +63,7 @@
   - `GET /` — list non-archived entities; optional `entityTypeId`, `q`, `take`; requires `view_entities`.
   - `GET /{entityId}` — detail including archived rows, `isReadonly` per value, inbound/outbound relationship previews; requires `view_entities`.
   - `POST /` — create with optional **links** (`relationshipTypeId`, `targetEntityId`); enforces standalone, readonly, and required-outgoing rules; requires **`create_entities`**.
-  - `PATCH /{entityId}` — partial property update; readonly columns rejected on change; requires **`edit_entities`**.
+  - `PATCH /{entityId}` — partial property update; readonly columns rejected only if the user **changes** the value (carry-forward of existing readonly values is allowed); requires **`edit_entities`**.
   - `DELETE /{entityId}` — soft-delete (`is_archived = true`); requires **`delete_entities`**.
 - **Workspace DTO:** list/detail responses include **`myPermissions`** for the caller's effective workspace permission names (drives SPA gates).
 - **GlobalExceptionHandler extended:** `KeyNotFoundException` → 404, `ValidationException` → 400 with error detail.
