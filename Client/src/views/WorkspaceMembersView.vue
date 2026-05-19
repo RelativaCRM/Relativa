@@ -12,6 +12,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { ApiError } from '@/api/http';
 import { useApiErrorHandler } from '@/api/errorToast';
 import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -284,7 +285,7 @@ onMounted(loadAll);
       </div>
     </div>
 
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="table" :rows="5" label="Loading workspace members" />
 
     <div v-else class="rounded-xl border border-line bg-white overflow-hidden">
       <table class="w-full text-sm">

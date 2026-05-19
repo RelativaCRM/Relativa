@@ -18,6 +18,7 @@ import {
 } from '@/api/organizations';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -192,9 +193,12 @@ function handleLogout() {
       v-if="activeTab === 'invitations'"
       class="mt-5 flex flex-col gap-3"
     >
-      <div v-if="inboxLoading" class="text-center text-sm text-ink-500 py-4">
-        Loading...
-      </div>
+      <LoadingSkeleton
+        v-if="inboxLoading"
+        variant="list"
+        :rows="2"
+        label="Loading invitations"
+      />
 
       <div
         v-else-if="!hasInboxItems"

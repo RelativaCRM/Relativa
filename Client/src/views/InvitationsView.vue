@@ -11,6 +11,7 @@ import {
 } from '@/api/organizations';
 import { useOrganizationStore } from '@/stores/organization';
 import { normalizeError } from '@/api/errors';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const router = useRouter();
 const orgStore = useOrganizationStore();
@@ -153,7 +154,7 @@ defineExpose({ loadInbox });
       {{ success }}
     </Message>
 
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="list" :rows="3" label="Loading invitations" />
 
     <div
       v-else-if="!hasAnything"
