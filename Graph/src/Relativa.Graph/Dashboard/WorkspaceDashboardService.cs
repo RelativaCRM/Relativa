@@ -5,7 +5,10 @@ using Relativa.Graph.ML;
 
 namespace Relativa.Graph.Dashboard;
 
-public sealed class WorkspaceDashboardService(GraphQueryDbContext db, IMlScoringClient mlClient)
+public sealed class WorkspaceDashboardService(
+    GraphQueryDbContext db,
+    IMlScoringClient mlClient,
+    IMlRecalculationClient mlRecalc)
     : IWorkspaceDashboardService
 {
     private const string ViewAnalytics   = "view_analytics";
@@ -294,6 +297,13 @@ public sealed class WorkspaceDashboardService(GraphQueryDbContext db, IMlScoring
             .ToList();
 
         var mlScores = await mlClient.ScoreBatchAsync(activeDealIds, ct);
+
+        // Enqueue only deals that have no score yet so already-calculated deals are not re-processed.
+        var unscoredIds = activeDealIds
+            .Where(id => !mlScores.TryGetValue(id, out var s) || s.ClosureScore is null)
+            .ToList();
+        if (unscoredIds.Count > 0)
+            _ = mlRecalc.EnqueueAsync(unscoredIds, userId, workspaceId);
 
         var dealClientRels = await db.EntityRelationships
             .Where(er => dealIds.Contains(er.SourceEntityId) && er.RelationshipType.Name == "deal_client")

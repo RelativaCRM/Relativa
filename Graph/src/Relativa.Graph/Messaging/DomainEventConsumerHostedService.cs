@@ -28,7 +28,8 @@ public sealed class DomainEventConsumerHostedService(
         PropertyNameCaseInsensitive = true
     };
 
-    private const string ConsumerGroup = "graph.domain.workspace.v1";
+    private const string ConsumerGroup   = "graph.domain.workspace.v1";
+    private const string MlConsumerGroup = "graph.domain.ml.v1";
     private readonly RabbitMqGraphConsumerOptions _opts = optionsAccessor.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -110,7 +111,7 @@ public sealed class DomainEventConsumerHostedService(
                            ["MessageId"] = envelope.MessageId
                        }))
                 {
-                    var inserted = await TryMarkProcessedOnceAsync(envelope.MessageId, stoppingToken);
+                    var inserted = await TryMarkProcessedOnceAsync(envelope.MessageId, ConsumerGroup, stoppingToken);
                     if (!inserted)
                     {
                         logger.LogDebug("Skipping duplicate choreography delivery {MessageId}", envelope.MessageId);
@@ -155,18 +156,119 @@ public sealed class DomainEventConsumerHostedService(
         };
 
         await channel.BasicConsumeAsync(_opts.WorkspaceQueueName, autoAck: false, consumer: consumer, cancellationToken: stoppingToken);
+
+        // ── ML recalculation consumer ─────────────────────────────────────────
+        await channel.ExchangeDeclareAsync(
+            exchange:   _opts.MlDeadLetterExchange,
+            type:       ExchangeType.Fanout,
+            durable:    true,
+            autoDelete: false,
+            cancellationToken: stoppingToken);
+
+        await channel.QueueDeclareAsync(
+            queue:      _opts.MlDeadLetterQueueName,
+            durable:    true,
+            exclusive:  false,
+            autoDelete: false,
+            cancellationToken: stoppingToken);
+
+        await channel.QueueBindAsync(
+            queue:      _opts.MlDeadLetterQueueName,
+            exchange:   _opts.MlDeadLetterExchange,
+            routingKey: string.Empty,
+            cancellationToken: stoppingToken);
+
+        await channel.QueueDeclareAsync(
+            queue:      _opts.MlQueueName,
+            durable:    true,
+            exclusive:  false,
+            autoDelete: false,
+            arguments:  new Dictionary<string, object?> { ["x-dead-letter-exchange"] = _opts.MlDeadLetterExchange },
+            cancellationToken: stoppingToken);
+
+        await channel.QueueBindAsync(
+            queue:      _opts.MlQueueName,
+            exchange:   _opts.DomainExchange,
+            routingKey: _opts.MlBindingRoutingKeyPattern,
+            cancellationToken: stoppingToken);
+
+        var mlConsumer = new AsyncEventingBasicConsumer(channel);
+        mlConsumer.ReceivedAsync += async (_, ea) =>
+        {
+            var body = Encoding.UTF8.GetString(ea.Body.ToArray());
+            try
+            {
+                var envelope = JsonSerializer.Deserialize<DomainMessageEnvelope>(body, SerializerJson);
+                if (envelope is null)
+                {
+                    await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                    return;
+                }
+
+                var inserted = await TryMarkProcessedOnceAsync(envelope.MessageId, MlConsumerGroup, stoppingToken);
+                if (!inserted)
+                {
+                    await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                    return;
+                }
+
+                if (string.Equals(envelope.PayloadTypeName, DomainPayloadTypes.MlRecalculateProgressV1, StringComparison.Ordinal))
+                {
+                    var prog = JsonSerializer.Deserialize<MlRecalculateProgressPayloadV1>(envelope.PayloadJson, SerializerJson);
+                    if (prog?.WorkspaceId is { } wsId)
+                    {
+                        await hubContext.Clients
+                            .Group($"workspace-{wsId}")
+                            .SendAsync(GraphSignalREvents.MlRecalculateProgress,
+                                new { prog.JobId, prog.WorkspaceId, prog.ProcessedCount, prog.TotalCount, prog.Status },
+                                stoppingToken);
+                    }
+                }
+                else if (string.Equals(envelope.PayloadTypeName, DomainPayloadTypes.MlRecalculateCompletedV1, StringComparison.Ordinal))
+                {
+                    var comp = JsonSerializer.Deserialize<MlRecalculateCompletedPayloadV1>(envelope.PayloadJson, SerializerJson);
+                    if (comp?.WorkspaceId is { } wsId)
+                    {
+                        await hubContext.Clients
+                            .Group($"workspace-{wsId}")
+                            .SendAsync(GraphSignalREvents.MlRecalculateCompleted,
+                                new { comp.JobId, comp.WorkspaceId, comp.SucceededCount, comp.FailedCount, comp.Status },
+                                stoppingToken);
+                    }
+                }
+
+                logger.LogInformation(
+                    "Processed ML recalculate choreography routingKey={RoutingKey} type={Type}",
+                    ea.RoutingKey,
+                    envelope.PayloadTypeName);
+
+                await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+            }
+            catch (JsonException jx)
+            {
+                logger.LogError(jx, "Malformed ML recalculate envelope; rejecting without requeue.");
+                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false, cancellationToken: stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "ML recalculate handler failed.");
+                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false, cancellationToken: stoppingToken);
+            }
+        };
+
+        await channel.BasicConsumeAsync(_opts.MlQueueName, autoAck: false, consumer: mlConsumer, cancellationToken: stoppingToken);
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
     /// <returns>True when this consumer should process the payload (fresh insert).</returns>
-    private async Task<bool> TryMarkProcessedOnceAsync(Guid messageId, CancellationToken ct)
+    private async Task<bool> TryMarkProcessedOnceAsync(Guid messageId, string consumerGroup, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<GraphDbContext>();
         db.RabbitMqProcessedDeliveries.Add(new RabbitMqProcessedDelivery
         {
             MessageId = messageId,
-            ConsumerGroup = ConsumerGroup,
+            ConsumerGroup = consumerGroup,
             ProcessedAtUtc = DateTimeOffset.UtcNow
         });
         try

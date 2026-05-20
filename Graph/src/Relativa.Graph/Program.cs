@@ -25,6 +25,7 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IWorkspaceDashboardService, WorkspaceDashboardService>();
 
 builder.Services.AddSingleton<IMlScoringClient, RabbitMqMlScoringClient>();
+builder.Services.AddSingleton<IMlRecalculationClient, RabbitMqMlRecalculationClient>();
 
 builder.Services.Configure<RabbitMqGraphConsumerOptions>(
     builder.Configuration.GetSection(RabbitMqGraphConsumerOptions.SectionKey));

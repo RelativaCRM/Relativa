@@ -16,17 +16,24 @@ const store   = useWorkspaceDashboardStore();
 const workspaceId = computed(() => Number(route.params.workspaceId));
 
 onMounted(() => {
-  if (workspaceId.value) store.fetchAll(workspaceId.value);
+  if (workspaceId.value) {
+    store.fetchAll(workspaceId.value);
+    void store.startMlProgressTracking(workspaceId.value);
+  }
 });
 
 onUnmounted(() => store.clear());
 
 watch(workspaceId, (id) => {
-  if (id) store.fetchAll(id);
+  store.clear();
+  if (id) {
+    store.fetchAll(id);
+    void store.startMlProgressTracking(id);
+  }
 });
 
 const isFullAccess  = computed(() => store.summary?.accessLevel === 'full');
-const hasMemberData = computed(() => store.memberActivity !== null);
+const hasMemberData = computed(() => store.memberActivity !== null && store.memberActivity.length > 0);
 
 // ── KPI cards ────────────────────────────────────────────────────────────────
 const kpis = computed(() => {
@@ -164,7 +171,7 @@ const pipelineChartOptions = {
 // ── Risk doughnut ─────────────────────────────────────────────────────────────
 const riskChartData = computed(() => {
   const r = store.riskDistribution;
-  if (!r) return null;
+  if (!r || !r.items.length) return null;
   return {
     labels: ['High Risk', 'Medium Risk', 'Low Risk'],
     datasets: [{
@@ -300,303 +307,399 @@ function scoreBar(score?: number | null) {
   <div class="space-y-8">
 
     <!-- Header -->
-    <section>
-      <h1 class="text-xl font-semibold text-ink-900">
-        {{ store.summary?.workspaceName ?? wsStore.currentWorkspace?.name ?? 'Workspace' }}
-      </h1>
-      <p class="text-sm text-ink-400 mt-0.5">Dashboard overview</p>
+    <section class="flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-semibold text-ink-900">
+          {{ store.summary?.workspaceName ?? wsStore.currentWorkspace?.name ?? 'Workspace' }}
+        </h1>
+        <p class="text-sm text-ink-400 mt-0.5">Dashboard overview</p>
+      </div>
+      <button
+        v-if="isFullAccess && !store.isLoadingSummary"
+        type="button"
+        class="flex items-center gap-1.5 text-sm text-ink-500 hover:text-brand-600 px-3 py-1.5 rounded-lg hover:bg-brand-50 transition-colors"
+        @click="workspaceId && store.fetchAll(workspaceId)"
+      >
+        <i class="pi pi-refresh text-xs" />
+        Refresh
+      </button>
     </section>
 
-    <!-- Loading skeleton -->
-    <div v-if="store.isLoading" class="space-y-4">
-      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
-        <div v-for="i in 6" :key="i" class="h-24 rounded-xl bg-slate-100 animate-pulse" />
-      </div>
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div class="h-52 rounded-xl bg-slate-100 animate-pulse" />
-        <div class="h-52 rounded-xl bg-slate-100 animate-pulse" />
-      </div>
+    <!-- Error banner -->
+    <div
+      v-if="store.error"
+      class="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700"
+    >
+      <i class="pi pi-exclamation-circle shrink-0" />
+      {{ store.error }}
     </div>
 
-    <template v-else>
-      <!-- Error banner -->
-      <div
-        v-if="store.error"
-        class="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700"
-      >
-        <i class="pi pi-exclamation-circle shrink-0" />
-        {{ store.error }}
-      </div>
+    <!-- ── KPI row ── -->
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+      <!-- skeleton while summary loads -->
+      <template v-if="store.isLoadingSummary">
+        <div v-for="i in 6" :key="i" class="h-24 rounded-xl skeleton-shimmer" />
+      </template>
 
-      <template v-if="store.summary">
-
-        <!-- ── KPI row ── -->
-        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div
-            v-for="kpi in kpis"
-            :key="kpi.label"
-            class="flex flex-col gap-2 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
-          >
-            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
-              <i :class="['pi text-sm', kpi.icon, kpi.color]" />
-            </div>
-            <div>
-              <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-none mb-1">{{ kpi.label }}</p>
-              <p :class="['text-xl font-semibold leading-none', kpi.color]">{{ kpi.value }}</p>
-            </div>
+      <template v-else-if="store.summary">
+        <div
+          v-for="kpi in kpis"
+          :key="kpi.label"
+          class="flex flex-col gap-2 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
+        >
+          <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
+            <i :class="['pi text-sm', kpi.icon, kpi.color]" />
+          </div>
+          <div>
+            <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-none mb-1">{{ kpi.label }}</p>
+            <p :class="['text-xl font-semibold leading-none', kpi.color]">{{ kpi.value }}</p>
           </div>
         </div>
+      </template>
+    </div>
 
-        <!-- ── Basic access notice + status chart ── -->
-        <template v-if="!isFullAccess">
-          <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-center gap-3 text-sm text-amber-800">
-            <i class="pi pi-lock shrink-0" />
-            <span>You have limited analytics access. Contact your workspace admin to see full analytics.</span>
-          </div>
+    <!-- ── Basic access sections ── -->
+    <template v-if="store.summary && !isFullAccess">
+      <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-center gap-3 text-sm text-amber-800">
+        <i class="pi pi-lock shrink-0" />
+        <span>You have limited analytics access. Contact your workspace admin to see full analytics.</span>
+      </div>
+      <div v-if="basicStatusChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
+        <h3 class="text-sm font-semibold text-ink-700 mb-4">Deal Status Distribution</h3>
+        <div style="height: 160px">
+          <Chart type="bar" :data="basicStatusChartData" :options="basicChartOptions" />
+        </div>
+      </div>
+    </template>
 
-          <div v-if="basicStatusChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
-            <h3 class="text-sm font-semibold text-ink-700 mb-4">Deal Status Distribution</h3>
-            <div style="height: 160px">
-              <Chart type="bar" :data="basicStatusChartData" :options="basicChartOptions" />
+    <!-- ── Full analytics sections ── -->
+    <template v-if="store.summary && isFullAccess">
+
+      <!-- ── Pipeline + Risk ── -->
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+        <!-- Pipeline -->
+        <div class="bg-white rounded-xl border border-line shadow-sm p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold text-ink-700">Deal Pipeline</h3>
+            <div v-if="store.pipeline" class="flex items-center gap-3 text-xs text-ink-400">
+              <span>Win rate <strong class="text-emerald-600">{{ (store.pipeline.conversionRate * 100).toFixed(0) }}%</strong></span>
+              <span>Avg close <strong class="text-ink-700">{{ store.pipeline.avgDaysToClose }}d</strong></span>
             </div>
           </div>
-        </template>
-
-        <!-- ── Full analytics sections ── -->
-        <template v-if="isFullAccess">
-
-          <!-- Refresh button -->
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-base font-semibold text-ink-900">Analytics</h2>
-              <p class="text-sm text-ink-400 mt-0.5">Workspace-level CRM metrics</p>
-            </div>
-            <button
-              v-if="!store.isLoading"
-              type="button"
-              class="flex items-center gap-1.5 text-sm text-ink-500 hover:text-brand-600 px-3 py-1.5 rounded-lg hover:bg-brand-50 transition-colors"
-              @click="workspaceId && store.fetchAll(workspaceId)"
-            >
-              <i class="pi pi-refresh text-xs" />
-              Refresh
-            </button>
+          <!-- skeleton -->
+          <div v-if="store.isLoadingPipeline" class="space-y-2">
+            <div class="h-5 skeleton-shimmer rounded w-3/4" />
+            <div class="h-5 skeleton-shimmer rounded w-1/2" />
+            <div class="h-5 skeleton-shimmer rounded w-2/3" />
+            <div class="h-5 skeleton-shimmer rounded w-5/12" />
           </div>
-
-          <!-- ── Pipeline + Risk ── -->
-          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-
-            <div class="bg-white rounded-xl border border-line shadow-sm p-5">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-sm font-semibold text-ink-700">Deal Pipeline</h3>
-                <div v-if="store.pipeline" class="flex items-center gap-3 text-xs text-ink-400">
-                  <span>Win rate <strong class="text-emerald-600">{{ (store.pipeline.conversionRate * 100).toFixed(0) }}%</strong></span>
-                  <span>Avg close <strong class="text-ink-700">{{ store.pipeline.avgDaysToClose }}d</strong></span>
-                </div>
+          <template v-else>
+            <div v-if="pipelineChartData" style="height: 180px">
+              <Chart type="bar" :data="pipelineChartData" :options="pipelineChartOptions" />
+            </div>
+            <div v-if="store.pipeline" class="mt-4 grid grid-cols-4 gap-2 border-t border-line pt-3">
+              <div
+                v-for="(count, status) in store.pipeline.statusBreakdown"
+                :key="status"
+                class="text-center"
+              >
+                <p class="text-lg font-semibold text-ink-800">{{ count }}</p>
+                <p class="text-[10px] uppercase tracking-wide text-ink-400">{{ status }}</p>
               </div>
-              <div v-if="pipelineChartData" style="height: 180px">
-                <Chart type="bar" :data="pipelineChartData" :options="pipelineChartOptions" />
+            </div>
+          </template>
+        </div>
+
+        <!-- Risk distribution -->
+        <div class="bg-white rounded-xl border border-line shadow-sm p-5">
+          <h3 class="text-sm font-semibold text-ink-700 mb-4">Risk Distribution</h3>
+          <!-- skeleton -->
+          <div v-if="store.isLoadingRisk" class="flex items-center gap-6">
+            <div class="w-[180px] h-[180px] rounded-full skeleton-shimmer shrink-0" />
+            <div class="flex-1 space-y-2">
+              <div class="h-4 skeleton-shimmer rounded w-full" />
+              <div class="h-4 skeleton-shimmer rounded w-4/5" />
+              <div class="h-4 skeleton-shimmer rounded w-full" />
+              <div class="h-4 skeleton-shimmer rounded w-3/5" />
+            </div>
+          </div>
+          <template v-else>
+            <!-- Chart (shown normally, or dimmed while ML is recalculating with partial data) -->
+            <div v-if="riskChartData" :class="['flex items-center gap-6', store.isMlRecalculating && 'opacity-60']">
+              <div style="height: 180px; width: 180px; flex-shrink: 0">
+                <Chart type="doughnut" :data="riskChartData" :options="riskChartOptions" />
               </div>
-              <div v-if="store.pipeline" class="mt-4 grid grid-cols-4 gap-2 border-t border-line pt-3">
+              <div class="flex-1 space-y-2 overflow-auto max-h-48">
                 <div
-                  v-for="(count, status) in store.pipeline.statusBreakdown"
-                  :key="status"
-                  class="text-center"
+                  v-for="item in store.riskDistribution?.items.slice(0, 6)"
+                  :key="item.entityId"
+                  class="flex items-center justify-between text-xs gap-2"
                 >
-                  <p class="text-lg font-semibold text-ink-800">{{ count }}</p>
-                  <p class="text-[10px] uppercase tracking-wide text-ink-400">{{ status }}</p>
+                  <div class="min-w-0">
+                    <p class="truncate text-ink-700 font-medium">{{ item.title }}</p>
+                    <p v-if="item.clientName" class="truncate text-ink-400">{{ item.clientName }}</p>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <Tag :value="item.riskBucket" :severity="riskClass(item.riskBucket)" class="!text-[10px] !px-1.5 !py-0" />
+                    <span class="text-ink-500 w-8 text-right">{{ (item.score * 100).toFixed(0) }}%</span>
+                  </div>
                 </div>
               </div>
             </div>
-
-            <div class="bg-white rounded-xl border border-line shadow-sm p-5">
-              <h3 class="text-sm font-semibold text-ink-700 mb-4">Risk Distribution (Active Deals)</h3>
-              <div v-if="riskChartData" class="flex items-center gap-6">
-                <div style="height: 180px; width: 180px; flex-shrink: 0">
-                  <Chart type="doughnut" :data="riskChartData" :options="riskChartOptions" />
-                </div>
-                <div class="flex-1 space-y-2 overflow-auto max-h-48">
-                  <div
-                    v-for="item in store.riskDistribution?.items.slice(0, 6)"
-                    :key="item.entityId"
-                    class="flex items-center justify-between text-xs gap-2"
-                  >
-                    <div class="min-w-0">
-                      <p class="truncate text-ink-700 font-medium">{{ item.title }}</p>
-                      <p v-if="item.clientName" class="truncate text-ink-400">{{ item.clientName }}</p>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                      <Tag :value="item.riskBucket" :severity="riskClass(item.riskBucket)" class="!text-[10px] !px-1.5 !py-0" />
-                      <span class="text-ink-500 w-8 text-right">{{ (item.score * 100).toFixed(0) }}%</span>
-                    </div>
-                  </div>
-                  <p v-if="!store.riskDistribution?.items.length" class="text-xs text-ink-400 italic">
-                    ML scores unavailable.
+            <!-- ML recalculation progress banner -->
+            <div v-if="store.isMlRecalculating" class="mt-3 space-y-2">
+              <div class="flex items-center gap-3 px-3 py-2.5 bg-brand-50 border border-brand-100 rounded-lg text-xs text-brand-700">
+                <i class="pi pi-spin pi-spinner shrink-0 text-brand-500" />
+                <div class="flex-1">
+                  <p class="font-medium">Calculating risk scores…</p>
+                  <p v-if="store.mlRecalcProgress" class="text-brand-500 mt-0.5">
+                    {{ store.mlRecalcProgress.processedCount }} / {{ store.mlRecalcProgress.totalCount }} deals
                   </p>
                 </div>
+                <span
+                  v-if="store.mlRecalcProgress && store.mlRecalcProgress.totalCount > 0"
+                  class="font-semibold tabular-nums"
+                >
+                  {{ Math.round((store.mlRecalcProgress.processedCount / store.mlRecalcProgress.totalCount) * 100) }}%
+                </span>
               </div>
+              <ProgressBar
+                v-if="store.mlRecalcProgress && store.mlRecalcProgress.totalCount > 0"
+                :value="Math.round((store.mlRecalcProgress.processedCount / store.mlRecalcProgress.totalCount) * 100)"
+                :pt="{ value: { class: 'transition-none' } }"
+                class="!h-1.5"
+                :show-value="false"
+              />
+            </div>
+            <!-- No data and not recalculating -->
+            <p v-else-if="!riskChartData" class="text-xs text-ink-400 italic">No risk score data available.</p>
+          </template>
+        </div>
+      </div>
+
+      <!-- ── Trends ── -->
+      <div class="bg-white rounded-xl border border-line shadow-sm p-5">
+        <h3 class="text-sm font-semibold text-ink-700 mb-4">6-Month Deal Trends</h3>
+        <!-- skeleton -->
+        <div v-if="store.isLoadingTrends" class="space-y-2">
+          <div class="flex items-end gap-1 h-44">
+            <div v-for="i in 12" :key="i" :style="`height: ${30 + (i * 13) % 70}%`" class="flex-1 skeleton-shimmer rounded-t" />
+          </div>
+          <div class="h-3 skeleton-shimmer rounded w-full mt-1" />
+        </div>
+        <div v-else-if="trendsChartData" style="height: 220px">
+          <Chart type="line" :data="trendsChartData" :options="trendsChartOptions" />
+        </div>
+      </div>
+
+      <!-- ── Top entities ── -->
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+        <!-- Top deals -->
+        <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
+          <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Deals by Value</h3>
+          <!-- skeleton -->
+          <div v-if="store.isLoadingTopEntities" class="space-y-3">
+            <div v-for="i in 5" :key="i" class="flex items-center justify-between gap-4">
+              <div class="space-y-1.5 flex-1">
+                <div class="h-3 skeleton-shimmer rounded w-3/4" />
+                <div class="h-2.5 skeleton-shimmer rounded w-1/2" />
+              </div>
+              <div class="h-4 skeleton-shimmer rounded w-20 shrink-0" />
             </div>
           </div>
-
-          <!-- ── Trends ── -->
-          <div class="bg-white rounded-xl border border-line shadow-sm p-5">
-            <h3 class="text-sm font-semibold text-ink-700 mb-4">6-Month Deal Trends</h3>
-            <div v-if="trendsChartData" style="height: 220px">
-              <Chart type="line" :data="trendsChartData" :options="trendsChartOptions" />
-            </div>
-          </div>
-
-          <!-- ── Top entities ── -->
-          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-
-            <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
-              <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Deals by Value</h3>
-              <DataTable
-                v-if="store.topEntities?.topDeals.length"
-                :value="store.topEntities.topDeals"
-                size="small"
-                class="!text-xs"
-                :pt="{ thead: { class: 'hidden' } }"
-              >
-                <Column field="title" header="Deal">
-                  <template #body="{ data }">
-                    <div>
-                      <p class="font-medium text-ink-800 truncate max-w-[160px]">{{ data.title }}</p>
-                      <p v-if="data.clientName" class="text-ink-400 truncate max-w-[160px]">{{ data.clientName }}</p>
-                    </div>
-                  </template>
-                </Column>
-                <Column field="value" header="Value">
-                  <template #body="{ data }">
-                    <span class="font-semibold text-ink-700">{{ formatCurrency(data.value) }}</span>
-                  </template>
-                </Column>
-                <Column field="stage" header="Stage">
-                  <template #body="{ data }">
-                    <span class="text-ink-500">{{ data.stage ?? '—' }}</span>
-                  </template>
-                </Column>
-                <Column field="priority" header="Priority">
-                  <template #body="{ data }">
-                    <Tag
-                      v-if="data.priority"
-                      :value="data.priority"
-                      :severity="priorityClass(data.priority)"
-                      class="!text-[10px] !px-1.5 !py-0 capitalize"
-                    />
-                  </template>
-                </Column>
-                <Column field="closureScore" header="Score">
-                  <template #body="{ data }">
-                    <div v-if="scoreBar(data.closureScore) != null" class="flex items-center gap-1.5">
-                      <ProgressBar
-                        :value="scoreBar(data.closureScore)!"
-                        :pt="{ value: { class: 'transition-none' } }"
-                        class="!h-1.5 !w-16 !bg-slate-100"
-                      />
-                      <span class="text-ink-500 shrink-0">{{ scoreBar(data.closureScore) }}%</span>
-                    </div>
-                    <span v-else class="text-ink-300">—</span>
-                  </template>
-                </Column>
-              </DataTable>
-              <p v-else class="text-sm text-ink-400 italic">No deal data yet.</p>
-            </div>
-
-            <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
-              <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Clients by Lifetime Value</h3>
-              <DataTable
-                v-if="store.topEntities?.topClients.length"
-                :value="store.topEntities.topClients"
-                size="small"
-                class="!text-xs"
-                :pt="{ thead: { class: 'hidden' } }"
-              >
-                <Column field="name" header="Client">
-                  <template #body="{ data }">
-                    <div>
-                      <p class="font-medium text-ink-800 truncate max-w-[160px]">{{ data.name }}</p>
-                      <p v-if="data.industry" class="text-ink-400 capitalize">{{ data.industry }}</p>
-                    </div>
-                  </template>
-                </Column>
-                <Column field="lifetimeValue" header="LTV">
-                  <template #body="{ data }">
-                    <span class="font-semibold text-ink-700">{{ formatCurrency(data.lifetimeValue) }}</span>
-                  </template>
-                </Column>
-                <Column field="activeDeals" header="Active">
-                  <template #body="{ data }">
-                    <Tag :value="`${data.activeDeals} deals`" severity="secondary" class="!text-[10px] !px-1.5 !py-0" />
-                  </template>
-                </Column>
-                <Column field="avgClosureScore" header="Avg Score">
-                  <template #body="{ data }">
-                    <div v-if="scoreBar(data.avgClosureScore) != null" class="flex items-center gap-1.5">
-                      <ProgressBar
-                        :value="scoreBar(data.avgClosureScore)!"
-                        :pt="{ value: { class: 'transition-none' } }"
-                        class="!h-1.5 !w-16 !bg-slate-100"
-                      />
-                      <span class="text-ink-500 shrink-0">{{ scoreBar(data.avgClosureScore) }}%</span>
-                    </div>
-                    <span v-else class="text-ink-300">—</span>
-                  </template>
-                </Column>
-              </DataTable>
-              <p v-else class="text-sm text-ink-400 italic">No client data yet.</p>
-            </div>
-          </div>
-
-          <!-- ── Member activity (view_team_analytics) ── -->
-          <div v-if="hasMemberData" class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
-            <h3 class="text-sm font-semibold text-ink-700 mb-3">Member Activity</h3>
+          <template v-else>
             <DataTable
-              :value="store.memberActivity!"
+              v-if="store.topEntities?.topDeals.length"
+              :value="store.topEntities.topDeals"
               size="small"
               class="!text-xs"
-              :pt="{ thead: { class: '!text-[11px] !uppercase !tracking-wide !text-ink-400' } }"
+              :pt="{ thead: { class: 'hidden' } }"
             >
-              <Column field="fullName" header="Member">
+              <Column field="title" header="Deal">
                 <template #body="{ data }">
                   <div>
-                    <p class="font-medium text-ink-800">{{ data.fullName }}</p>
-                    <p class="text-ink-400 text-[10px] capitalize">{{ data.roleName.replace('ws_', '') }}</p>
+                    <p class="font-medium text-ink-800 truncate max-w-[160px]">{{ data.title }}</p>
+                    <p v-if="data.clientName" class="text-ink-400 truncate max-w-[160px]">{{ data.clientName }}</p>
                   </div>
                 </template>
               </Column>
-              <Column field="dealsOwned" header="Deals Owned">
+              <Column field="value" header="Value">
                 <template #body="{ data }">
-                  <Tag :value="String(data.dealsOwned)" severity="secondary" class="!text-[10px] !px-1.5 !py-0" />
+                  <span class="font-semibold text-ink-700">{{ formatCurrency(data.value) }}</span>
                 </template>
               </Column>
-              <Column field="tasksOwned" header="Tasks">
+              <Column field="stage" header="Stage">
                 <template #body="{ data }">
-                  <span class="text-ink-700">{{ data.tasksOwned }}</span>
+                  <span class="text-ink-500">{{ data.stage ?? '—' }}</span>
                 </template>
               </Column>
-              <Column field="tasksDone" header="Done">
+              <Column field="priority" header="Priority">
                 <template #body="{ data }">
-                  <span class="text-emerald-600 font-medium">{{ data.tasksDone }}</span>
+                  <Tag
+                    v-if="data.priority"
+                    :value="data.priority"
+                    :severity="priorityClass(data.priority)"
+                    class="!text-[10px] !px-1.5 !py-0 capitalize"
+                  />
                 </template>
               </Column>
-              <Column header="Completion">
+              <Column field="closureScore" header="Score">
                 <template #body="{ data }">
-                  <div v-if="data.tasksOwned > 0" class="flex items-center gap-1.5">
+                  <div v-if="scoreBar(data.closureScore) != null" class="flex items-center gap-1.5">
                     <ProgressBar
-                      :value="Math.round((data.tasksDone / data.tasksOwned) * 100)"
+                      :value="scoreBar(data.closureScore)!"
                       :pt="{ value: { class: 'transition-none' } }"
-                      class="!h-1.5 !w-20 !bg-slate-100"
+                      class="!h-1.5 !w-16 !bg-slate-100"
                     />
-                    <span class="text-ink-500 shrink-0">{{ Math.round((data.tasksDone / data.tasksOwned) * 100) }}%</span>
+                    <span class="text-ink-500 shrink-0">{{ scoreBar(data.closureScore) }}%</span>
                   </div>
                   <span v-else class="text-ink-300">—</span>
                 </template>
               </Column>
             </DataTable>
-          </div>
+            <p v-else class="text-sm text-ink-400 italic">No deal data yet.</p>
+          </template>
+        </div>
 
+        <!-- Top clients -->
+        <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
+          <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Clients by Lifetime Value</h3>
+          <!-- skeleton -->
+          <div v-if="store.isLoadingTopEntities" class="space-y-3">
+            <div v-for="i in 5" :key="i" class="flex items-center justify-between gap-4">
+              <div class="space-y-1.5 flex-1">
+                <div class="h-3 skeleton-shimmer rounded w-2/3" />
+                <div class="h-2.5 skeleton-shimmer rounded w-1/3" />
+              </div>
+              <div class="h-4 skeleton-shimmer rounded w-20 shrink-0" />
+            </div>
+          </div>
+          <template v-else>
+            <DataTable
+              v-if="store.topEntities?.topClients.length"
+              :value="store.topEntities.topClients"
+              size="small"
+              class="!text-xs"
+              :pt="{ thead: { class: 'hidden' } }"
+            >
+              <Column field="name" header="Client">
+                <template #body="{ data }">
+                  <div>
+                    <p class="font-medium text-ink-800 truncate max-w-[160px]">{{ data.name }}</p>
+                    <p v-if="data.industry" class="text-ink-400 capitalize">{{ data.industry }}</p>
+                  </div>
+                </template>
+              </Column>
+              <Column field="lifetimeValue" header="LTV">
+                <template #body="{ data }">
+                  <span class="font-semibold text-ink-700">{{ formatCurrency(data.lifetimeValue) }}</span>
+                </template>
+              </Column>
+              <Column field="activeDeals" header="Active">
+                <template #body="{ data }">
+                  <Tag :value="`${data.activeDeals} deals`" severity="secondary" class="!text-[10px] !px-1.5 !py-0" />
+                </template>
+              </Column>
+              <Column field="avgClosureScore" header="Avg Score">
+                <template #body="{ data }">
+                  <div v-if="scoreBar(data.avgClosureScore) != null" class="flex items-center gap-1.5">
+                    <ProgressBar
+                      :value="scoreBar(data.avgClosureScore)!"
+                      :pt="{ value: { class: 'transition-none' } }"
+                      class="!h-1.5 !w-16 !bg-slate-100"
+                    />
+                    <span class="text-ink-500 shrink-0">{{ scoreBar(data.avgClosureScore) }}%</span>
+                  </div>
+                  <span v-else class="text-ink-300">—</span>
+                </template>
+              </Column>
+            </DataTable>
+            <p v-else class="text-sm text-ink-400 italic">No client data yet.</p>
+          </template>
+        </div>
+      </div>
+
+      <!-- ── Member activity ── -->
+      <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
+        <h3 class="text-sm font-semibold text-ink-700 mb-3">Member Activity</h3>
+        <!-- skeleton -->
+        <div v-if="store.isLoadingMemberActivity" class="space-y-3">
+          <div v-for="i in 3" :key="i" class="flex items-center gap-4">
+            <div class="w-8 h-8 rounded-full skeleton-shimmer shrink-0" />
+            <div class="flex-1 space-y-1.5">
+              <div class="h-3 skeleton-shimmer rounded w-1/3" />
+              <div class="h-2.5 skeleton-shimmer rounded w-1/4" />
+            </div>
+            <div class="h-4 skeleton-shimmer rounded w-12 shrink-0" />
+            <div class="h-4 skeleton-shimmer rounded w-12 shrink-0" />
+            <div class="h-2 skeleton-shimmer rounded w-20 shrink-0" />
+          </div>
+        </div>
+        <template v-else-if="hasMemberData">
+          <DataTable
+            :value="store.memberActivity!"
+            size="small"
+            class="!text-xs"
+            :pt="{ thead: { class: '!text-[11px] !uppercase !tracking-wide !text-ink-400' } }"
+          >
+            <Column field="fullName" header="Member">
+              <template #body="{ data }">
+                <div>
+                  <p class="font-medium text-ink-800">{{ data.fullName }}</p>
+                  <p class="text-ink-400 text-[10px] capitalize">{{ data.roleName.replace('ws_', '') }}</p>
+                </div>
+              </template>
+            </Column>
+            <Column field="dealsOwned" header="Deals Owned">
+              <template #body="{ data }">
+                <Tag :value="String(data.dealsOwned)" severity="secondary" class="!text-[10px] !px-1.5 !py-0" />
+              </template>
+            </Column>
+            <Column field="tasksOwned" header="Tasks">
+              <template #body="{ data }">
+                <span class="text-ink-700">{{ data.tasksOwned }}</span>
+              </template>
+            </Column>
+            <Column field="tasksDone" header="Done">
+              <template #body="{ data }">
+                <span class="text-emerald-600 font-medium">{{ data.tasksDone }}</span>
+              </template>
+            </Column>
+            <Column header="Completion">
+              <template #body="{ data }">
+                <div v-if="data.tasksOwned > 0" class="flex items-center gap-1.5">
+                  <ProgressBar
+                    :value="Math.round((data.tasksDone / data.tasksOwned) * 100)"
+                    :pt="{ value: { class: 'transition-none' } }"
+                    class="!h-1.5 !w-20 !bg-slate-100"
+                  />
+                  <span class="text-ink-500 shrink-0">{{ Math.round((data.tasksDone / data.tasksOwned) * 100) }}%</span>
+                </div>
+                <span v-else class="text-ink-300">—</span>
+              </template>
+            </Column>
+          </DataTable>
         </template>
-      </template>
+        <p v-else-if="!store.isLoadingMemberActivity" class="text-sm text-ink-400 italic">
+          No member activity data available.
+        </p>
+      </div>
+
     </template>
   </div>
 </template>
+
+<style scoped>
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+</style>

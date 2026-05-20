@@ -151,12 +151,16 @@ def publish_domain_event(routing_key, envelope):
         conn.close()
 
 
+PROGRESS_CHUNK_SIZE = 10
+
+
 def process_recalc_payload(payload):
     entity_ids = payload.get("EntityIds") or payload.get("entityIds") or []
     workspace_id = payload.get("WorkspaceId") or payload.get("workspaceId")
     job_id_raw = payload.get("JobId") or payload.get("jobId")
     job_id = str(job_id_raw) if job_id_raw else str(uuid.uuid4())
     started_at = datetime.now(timezone.utc)
+    today = date.today()
 
     if workspace_id is not None and not entity_ids:
         entity_ids = _load_workspace_deal_ids(int(workspace_id))
@@ -169,19 +173,31 @@ def process_recalc_payload(payload):
         return
 
     config = _load_schema_config()
-    deadline = time.perf_counter() + max(BATCH_TIMEOUT_SECONDS * 10, 30.0)
-    _ensure_deal_analysis_entities(entity_ids, config, deadline)
-    analysis_rows = _load_analysis_state(entity_ids, config)
-    deal_rows = _load_deal_inputs(entity_ids, config)
-    contracts = _load_contract_inputs(entity_ids, config)
-    contracts_by_deal = {}
-    for row in contracts:
-        contracts_by_deal.setdefault(row["deal_id"], []).append(row)
+    # Scale deadline: 3 s per deal, at least 120 s, capped at 600 s.
+    deadline = time.perf_counter() + min(max(120.0, total_count * 3.0), 600.0)
 
-    _recompute_analysis(entity_ids, analysis_rows, deal_rows, contracts_by_deal, config, deadline, date.today())
-    _recompute_client_properties(entity_ids, config, deadline, date.today())
-    _emit_progress(job_id, workspace_id, total_count, total_count, "running", "recompute done")
-    _emit_completed(job_id, workspace_id, "completed", total_count, total_count, 0, started_at, None)
+    processed = 0
+    try:
+        for chunk_start in range(0, total_count, PROGRESS_CHUNK_SIZE):
+            chunk = entity_ids[chunk_start:chunk_start + PROGRESS_CHUNK_SIZE]
+            _ensure_deal_analysis_entities(chunk, config, deadline)
+            analysis_rows = _load_analysis_state(chunk, config)
+            deal_rows = _load_deal_inputs(chunk, config)
+            contracts = _load_contract_inputs(chunk, config)
+            contracts_by_deal = {}
+            for row in contracts:
+                contracts_by_deal.setdefault(row["deal_id"], []).append(row)
+            _recompute_analysis(chunk, analysis_rows, deal_rows, contracts_by_deal, config, deadline, today)
+            processed = chunk_start + len(chunk)
+            _emit_progress(job_id, workspace_id, processed, total_count, "running", "")
+
+        _recompute_client_properties(entity_ids, config, deadline, today)
+        _emit_completed(job_id, workspace_id, "completed", total_count, total_count, 0, started_at, None)
+
+    except TimeoutError:
+        failed = total_count - processed
+        _emit_completed(job_id, workspace_id, "timeout", processed, processed, failed, started_at, "deadline exceeded")
+        raise
 
 
 def _emit_progress(job_id, workspace_id, processed_count, total_count, status, message):

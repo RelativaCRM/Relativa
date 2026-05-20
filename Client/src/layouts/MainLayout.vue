@@ -107,14 +107,6 @@ async function handleOrgChange(orgId: number | null) {
   }
 }
 
-const workspaceRouteNames = new Set([
-  'workspace-dashboard',
-  'workspace-entities',
-  'workspace-members',
-  'workspace-users',
-  'workspace-user',
-]);
-
 function formatTypeName(name: string): string {
   return name
     .split('_')
@@ -126,18 +118,10 @@ function formatTypeName(name: string): string {
 async function handleWorkspaceChange(wsId: number | null) {
   if (wsId == null) return;
   wsStore.setCurrentWorkspace(wsId);
-  const name = route.name;
-  if (name && workspaceRouteNames.has(String(name))) {
-    await router.push({
-      name,
-      params: { ...route.params, workspaceId: String(wsId) },
-    });
-  } else {
-    await router.push({
-      name: 'workspace-dashboard',
-      params: { workspaceId: String(wsId) },
-    });
-  }
+  await router.push({
+    name: 'workspace-dashboard',
+    params: { workspaceId: String(wsId) },
+  });
 }
 
 function handleLogout() {

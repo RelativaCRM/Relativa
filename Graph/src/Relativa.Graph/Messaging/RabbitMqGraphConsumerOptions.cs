@@ -21,4 +21,13 @@ public sealed class RabbitMqGraphConsumerOptions
     public string DeadLetterFanoutExchange { get; set; } = "relativa.consumer.graph.workspace.v1.dlx";
 
     public string DeadLetterQueueName { get; set; } = "domain.events.graph.workspace.v1.failed";
+
+    /// <summary>ML recalculation consumer queue (+ DLX-backed dead-letter).</summary>
+    public string MlQueueName { get; set; } = "domain.events.graph.ml.v1";
+
+    public string MlBindingRoutingKeyPattern { get; set; } = "ml.recalculate.*";
+
+    public string MlDeadLetterExchange { get; set; } = "relativa.consumer.graph.ml.v1.dlx";
+
+    public string MlDeadLetterQueueName { get; set; } = "domain.events.graph.ml.v1.failed";
 }
