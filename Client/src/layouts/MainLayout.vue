@@ -108,6 +108,7 @@ async function handleOrgChange(orgId: number | null) {
 }
 
 const workspaceRouteNames = new Set([
+  'workspace-dashboard',
   'workspace-entities',
   'workspace-members',
   'workspace-users',
@@ -133,7 +134,7 @@ async function handleWorkspaceChange(wsId: number | null) {
     });
   } else {
     await router.push({
-      name: 'workspace-entities',
+      name: 'workspace-dashboard',
       params: { workspaceId: String(wsId) },
     });
   }
@@ -417,6 +418,14 @@ onMounted(async () => {
             </div>
 
             <div v-if="wsExpanded" class="ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
+
+              <RouterLink
+                :to="{ name: 'workspace-dashboard', params: { workspaceId: workspaceIdStr } }"
+                class="nav-link"
+                active-class="nav-link--active"
+              >
+                <i class="pi pi-th-large" />Dashboard
+              </RouterLink>
 
               <!-- Entities (collapsible) -->
               <div class="relative flex items-stretch nav-entry">
