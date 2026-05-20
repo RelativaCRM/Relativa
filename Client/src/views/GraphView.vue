@@ -11,7 +11,7 @@ import { useGraphStore } from '@/stores/graph';
 import { useEntityStore } from '@/stores/entity';
 import { useOrganizationStore } from '@/stores/organization';
 import type { GraphNodeDto, GraphHighlightTag } from '@/api/graph';
-import ChartSkeleton from '@/components/feedback/ChartSkeleton.vue';
+import GraphSkeleton from '@/components/feedback/GraphSkeleton.vue';
 
 const router = useRouter();
 const graphStore = useGraphStore();
@@ -311,7 +311,7 @@ const hasGraph = computed(() => graphStore.nodes.length > 0);
     </div>
 
     <!-- Loading -->
-    <ChartSkeleton
+    <GraphSkeleton
       v-else-if="graphStore.isLoading && !hasGraph"
       class="flex-1"
       fill
