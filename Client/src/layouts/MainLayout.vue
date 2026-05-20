@@ -289,9 +289,9 @@ onMounted(async () => {
     </header>
 
     <div class="flex-1 flex">
-      <aside class="w-60 border-r border-line bg-white py-4 px-3 hidden md:flex md:flex-col">
+      <aside class="w-60 border-r border-line bg-white py-4 px-3 hidden md:flex md:flex-col sticky top-16 h-[calc(100vh-4rem)] overflow-hidden">
 
-        <nav class="nav flex flex-col text-sm text-ink-700 flex-1">
+        <nav class="nav flex flex-col text-sm text-ink-700 flex-1 overflow-y-auto">
 
           <!-- Home -->
           <RouterLink to="/" class="nav-link" active-class="" exact-active-class="nav-link--active">

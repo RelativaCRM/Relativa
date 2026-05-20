@@ -13,7 +13,7 @@ public sealed class GraphGlobalExceptionHandler(ILogger<GraphGlobalExceptionHand
     {
         var (status, logAsError) = exception switch
         {
-            UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, false),
+            UnauthorizedAccessException => (StatusCodes.Status403Forbidden, false),
             ArgumentException           => (StatusCodes.Status400BadRequest,   false),
             KeyNotFoundException        => (StatusCodes.Status404NotFound,      false),
             InvalidOperationException   => (StatusCodes.Status409Conflict,      false),

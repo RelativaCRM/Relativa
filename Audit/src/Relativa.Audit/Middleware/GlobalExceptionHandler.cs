@@ -20,7 +20,7 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
             ArgumentException ae => (StatusCodes.Status400BadRequest, "Bad Request", ae.Message),
             KeyNotFoundException ke => (StatusCodes.Status404NotFound, "Not Found", ke.Message),
             ForbiddenAccessException fe => (StatusCodes.Status403Forbidden, "Forbidden", fe.Message),
-            UnauthorizedAccessException ue => (StatusCodes.Status401Unauthorized, "Unauthorized", ue.Message),
+            UnauthorizedAccessException ue => (StatusCodes.Status403Forbidden, "Forbidden", ue.Message),
             InvalidOperationException ioe => (StatusCodes.Status409Conflict, "Conflict", ioe.Message),
             DbUpdateException { InnerException: PostgresException { SqlState: "23505" } }
                               => (StatusCodes.Status409Conflict, "Conflict", "A record with this value already exists."),
