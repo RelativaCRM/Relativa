@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-08 (Graph rendering section updated: multi-type dynamic color palette replaces monochromatic blue; node action panel introduced; graph moved to org scope.)
+> **Last verified:** 2026-05-19 (Global error boundary + centralized HTTP toast wired up via `setGlobalToast` / `notifyGlobal`; loading skeletons standardized through `LoadingSkeleton` and `ChartSkeleton` — see "Error handling" and "Loading states" sections.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -136,6 +136,35 @@ Constraints (do not regress):
 - **Three render states use only existing tokens** (no new accent hues): loading shows `pi pi-spin pi-spinner` + an "ink-500" message; available shows two `bg-surface/40` stat tiles with `text-brand-700` numbers; unavailable shows a single PrimeVue `<Message severity="info">` carrying `score.unavailable_reason` verbatim. A network failure renders `<Message severity="warn">` with the normalized error.
 - **"Refresh data" button** lives on the card header (PrimeVue `Button` `outlined size="small"` with `pi pi-refresh`). It re-runs the same `score/batch` call and emits a single toast (success or error) so the user gets a clear signal — the staleness check that decides whether to recompute analysis features is server-side in `score_batch` and does not need a separate "recalculate" endpoint from the SPA.
 - **Other entity types render no Scores card.** The `isDeal` gate prevents wasted ML calls on `client`, `contract`, `deal_analysis`, etc. The two `closure_score` / `churn_score` deal properties continue to appear in the bottom property grid as system-readonly fields — they will stay empty until score persistence is wired up; the live values surface only through the Scores card today.
+
+## Error handling
+
+The SPA has a **two-layer error boundary**:
+
+1. **HTTP layer** — [`Client/src/api/http.ts`](../../Client/src/api/http.ts) throws `ApiError` on every non-2xx response and, for the statuses **400 / 403 / 409 / 422 / 500 / 502 / 503 / 504**, automatically pushes a toast via `notifyGlobal()` from [`Client/src/api/errorToast.ts`](../../Client/src/api/errorToast.ts). `401` is deliberately excluded (the auth flow handles the redirect) and so is `404` (detail screens render inline "not found" UI).
+2. **Vue layer** — [`Client/src/main.ts`](../../Client/src/main.ts) installs `app.config.errorHandler` (uncaught render/lifecycle errors) and a `window.unhandledrejection` listener (forgotten `await`s, fire-and-forget calls). Both funnel into `notifyGlobal()` so the user always sees something instead of a silent broken view.
+
+`useApiErrorHandler().notify()` and `notifyGlobal()` share a short dedup window (3 s, keyed by `status + summary + message`) so a single failed request never produces two toasts when both layers fire for the same error.
+
+**Opt-out:** API helpers (`api.get/post/put/patch/del`) accept `{ silent: true }` — use it when the caller already renders the error inline (form field highlighting, an inline `<Message>` etc.) and the toast would be redundant. Components that explicitly call `useApiErrorHandler().notify()` should NOT also rely on the http-level toast — the dedup window covers the overlap, but `silent: true` makes the intent explicit.
+
+**Graph & chart fallback:** when async visualization data is unavailable, the corresponding view renders an inline error card with a `Try again` button (see [GraphView.vue](../../Client/src/views/GraphView.vue) — the `graphStore.error` branch). Do not bury graph failures in a toast only; the user needs the retry affordance in place of the canvas.
+
+## Loading states
+
+All async views show a **layout-matching skeleton** instead of plain "Loading…" text, so the chrome doesn't shift when data lands. Two reusable components live in [`Client/src/components/feedback/`](../../Client/src/components/feedback/):
+
+| Component | Use for | Variants |
+|---|---|---|
+| `LoadingSkeleton` | Tables, card grids, key/value detail, lists, stat tiles | `variant="table" \| "cards" \| "list" \| "detail" \| "stats"` plus `rows` |
+| `ChartSkeleton` | Graph / chart canvases | Pass `fill` when the parent is a flex column with defined height; otherwise pass `height="..."` |
+
+Rules:
+
+- **Never render the literal string "Loading..."** in a top-level async view. Pick the `LoadingSkeleton` variant whose shape matches the eventual content (`table` for member lists, `cards` for workspaces, `detail` for entity read/edit, `stats` for the deal Scores card, `list` for compact stacks).
+- **PrimeVue `DataTable` already handles its own loading state** via `:loading="..."`. Don't wrap a DataTable with `LoadingSkeleton` — let PrimeVue render its built-in skeleton rows.
+- **Graph view** uses `<ChartSkeleton fill ... />` inside the existing flex-column shell. The legend is part of the skeleton so the layout never jumps when the real legend renders.
+- Inline skeletons for small sections (e.g. the deal Scores card on `EntityReadView.vue`) can use `<Skeleton>` from `primevue/skeleton` directly to avoid double-wrapping a card already provided by the parent.
 
 ## Voice & terminology
 

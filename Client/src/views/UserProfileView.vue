@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useApiErrorHandler } from '@/api/errorToast';
 import { ApiError } from '@/api/http';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -207,7 +208,7 @@ onMounted(loadAll);
       />
     </div>
 
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="detail" :rows="4" label="Loading user profile" />
 
     <div
       v-else-if="!member"

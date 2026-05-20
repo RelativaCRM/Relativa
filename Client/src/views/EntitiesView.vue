@@ -14,6 +14,7 @@ import { isEntityTypeUiLocked } from '@/utils/entityTypes';
 import { hasWorkspacePermission } from '@/utils/workspacePermissions';
 import EntityReadView from '@/views/EntityReadView.vue';
 import EntityCreateForm from '@/views/EntityCreateForm.vue';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -266,7 +267,12 @@ onMounted(load);
       </div>
     </div>
 
-    <div v-if="loading && !entities.length" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton
+      v-if="loading && !entities.length"
+      variant="table"
+      :rows="6"
+      label="Loading entities"
+    />
 
     <div
       v-else-if="!filteredEntities.length && !errorMessage"

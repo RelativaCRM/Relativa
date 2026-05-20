@@ -1,5 +1,6 @@
 import { useAuthStore } from '@/stores/auth';
 import { useWorkspaceStore } from '@/stores/workspace';
+import { notifyGlobal } from '@/api/errorToast';
 
 function gatewayBase(): string {
   return (import.meta.env.VITE_GATEWAY_URL ?? 'http://localhost:8080').replace(
@@ -20,6 +21,15 @@ export class ApiError extends Error {
 }
 
 type Json = Record<string, unknown> | Array<unknown>;
+
+/**
+ * Per-request options understood by the api helpers. Extends RequestInit
+ * with a `silent` flag that suppresses the centralized error toast — use it
+ * when the caller already renders its own field-level or inline message.
+ */
+export interface ApiRequestInit extends RequestInit {
+  silent?: boolean;
+}
 
 export async function gatewayFetch(
   path: string,
@@ -48,11 +58,23 @@ function isAuthEndpoint(url: string): boolean {
   return AUTH_PATHS.some((p) => url.includes(p));
 }
 
-async function parseResponse<T>(res: Response): Promise<T> {
+// Statuses the centralized handler shows a toast for. 401 is intentionally
+// excluded so the sign-in flow can quietly redirect; 404 is excluded so
+// detail pages can render their own "not found" UI without a noisy toast.
+const TOAST_STATUSES: ReadonlySet<number> = new Set([
+  400, 403, 409, 422, 500, 502, 503, 504,
+]);
+
+async function parseResponse<T>(res: Response, silent = false): Promise<T> {
   const text = await res.text();
   const body = text ? safeJson(text) : undefined;
 
   if (!res.ok) {
+    // Some endpoints (e.g. Graph's `entity-graph/create`) return the error
+    // message as a bare JSON-encoded string, not a ProblemDetails object —
+    // capture it so the toast surfaces the real reason instead of "Bad Request".
+    const rawString =
+      typeof body === 'string' && body.trim().length > 0 ? body.trim() : '';
     const detail =
       body &&
       typeof body === 'object' &&
@@ -67,6 +89,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
       (body && typeof body === 'object' && 'message' in body
         ? String((body as { message: unknown }).message)
         : undefined) ??
+      (rawString.length > 0 ? rawString : undefined) ??
       res.statusText ??
       `Request failed (${res.status})`;
 
@@ -75,7 +98,13 @@ async function parseResponse<T>(res: Response): Promise<T> {
       auth.clearSession();
     }
 
-    throw new ApiError(res.status, message, body);
+    const apiError = new ApiError(res.status, message, body);
+
+    if (!silent && TOAST_STATUSES.has(res.status)) {
+      notifyGlobal(apiError);
+    }
+
+    throw apiError;
   }
 
   return body as T;
@@ -93,35 +122,50 @@ function jsonHeaders(extra?: HeadersInit): HeadersInit {
   return { 'Content-Type': 'application/json', ...(extra ?? {}) };
 }
 
+function splitInit(init?: ApiRequestInit): { silent: boolean; rest: RequestInit } {
+  if (!init) return { silent: false, rest: {} };
+  const { silent, ...rest } = init;
+  return { silent: silent === true, rest };
+}
+
 export const api = {
-  get<T>(path: string, init?: RequestInit): Promise<T> {
-    return gatewayFetch(path, { ...init, method: 'GET' }).then(parseResponse<T>);
+  get<T>(path: string, init?: ApiRequestInit): Promise<T> {
+    const { silent, rest } = splitInit(init);
+    return gatewayFetch(path, { ...rest, method: 'GET' }).then((r) =>
+      parseResponse<T>(r, silent),
+    );
   },
-  post<T>(path: string, body?: Json | undefined, init?: RequestInit): Promise<T> {
+  post<T>(path: string, body?: Json | undefined, init?: ApiRequestInit): Promise<T> {
+    const { silent, rest } = splitInit(init);
     return gatewayFetch(path, {
-      ...init,
+      ...rest,
       method: 'POST',
-      headers: jsonHeaders(init?.headers),
+      headers: jsonHeaders(rest.headers),
       body: body === undefined ? undefined : JSON.stringify(body),
-    }).then(parseResponse<T>);
+    }).then((r) => parseResponse<T>(r, silent));
   },
-  put<T>(path: string, body?: Json | undefined, init?: RequestInit): Promise<T> {
+  put<T>(path: string, body?: Json | undefined, init?: ApiRequestInit): Promise<T> {
+    const { silent, rest } = splitInit(init);
     return gatewayFetch(path, {
-      ...init,
+      ...rest,
       method: 'PUT',
-      headers: jsonHeaders(init?.headers),
+      headers: jsonHeaders(rest.headers),
       body: body === undefined ? undefined : JSON.stringify(body),
-    }).then(parseResponse<T>);
+    }).then((r) => parseResponse<T>(r, silent));
   },
-  patch<T>(path: string, body?: Json | undefined, init?: RequestInit): Promise<T> {
+  patch<T>(path: string, body?: Json | undefined, init?: ApiRequestInit): Promise<T> {
+    const { silent, rest } = splitInit(init);
     return gatewayFetch(path, {
-      ...init,
+      ...rest,
       method: 'PATCH',
-      headers: jsonHeaders(init?.headers),
+      headers: jsonHeaders(rest.headers),
       body: body === undefined ? undefined : JSON.stringify(body),
-    }).then(parseResponse<T>);
+    }).then((r) => parseResponse<T>(r, silent));
   },
-  del<T>(path: string, init?: RequestInit): Promise<T> {
-    return gatewayFetch(path, { ...init, method: 'DELETE' }).then(parseResponse<T>);
+  del<T>(path: string, init?: ApiRequestInit): Promise<T> {
+    const { silent, rest } = splitInit(init);
+    return gatewayFetch(path, { ...rest, method: 'DELETE' }).then((r) =>
+      parseResponse<T>(r, silent),
+    );
   },
 };
