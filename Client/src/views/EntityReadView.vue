@@ -10,6 +10,7 @@ import DatePicker from 'primevue/datepicker';
 import ToggleSwitch from 'primevue/toggleswitch';
 import ConfirmDialog from 'primevue/confirmdialog';
 import Dialog from 'primevue/dialog';
+import Skeleton from 'primevue/skeleton';
 import { useConfirm } from 'primevue/useconfirm';
 import { useToast } from 'primevue/usetoast';
 import { normalizeError, firstFieldError, type FieldErrors } from '@/api/errors';
@@ -23,6 +24,7 @@ import type {
 } from '@/api/entities';
 import { entityApi } from '@/api/entities';
 import { mlApi, type DealScoreDto } from '@/api/ml';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const props = defineProps<{
   workspaceId: number;
@@ -659,7 +661,7 @@ watch(
       {{ errorMessage }}
     </Message>
 
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="detail" :rows="6" label="Loading entity" />
 
     <template v-else-if="detail">
       <div
@@ -687,9 +689,20 @@ watch(
           />
         </div>
 
-        <div v-if="scoreLoading && !score" class="flex items-center gap-2 text-sm text-ink-500">
-          <i class="pi pi-spin pi-spinner" />
-          <span>Loading scores…</span>
+        <div
+          v-if="scoreLoading && !score"
+          class="grid gap-4 sm:grid-cols-2"
+          role="status"
+          aria-label="Loading scores"
+        >
+          <div
+            v-for="i in 2"
+            :key="i"
+            class="rounded-lg border border-line bg-surface/40 p-4 flex flex-col gap-2"
+          >
+            <Skeleton width="6rem" height="0.75rem" />
+            <Skeleton width="4rem" height="1.75rem" />
+          </div>
         </div>
 
         <Message

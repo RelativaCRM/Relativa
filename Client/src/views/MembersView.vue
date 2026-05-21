@@ -12,6 +12,7 @@ import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
 import { useApiErrorHandler } from '@/api/errorToast';
 import { orgApi, type JoinRequestDto } from '@/api/organizations';
 import { useOrganizationStore } from '@/stores/organization';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const router = useRouter();
 const toast = useToast();
@@ -277,7 +278,7 @@ onMounted(async () => {
     </div>
 
     <!-- Loading -->
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="table" :rows="6" label="Loading members" />
 
     <!-- Members table -->
     <div v-else class="rounded-xl border border-line bg-white overflow-hidden">

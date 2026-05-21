@@ -16,6 +16,7 @@ import {
 import { useApiErrorHandler } from '@/api/errorToast';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -339,7 +340,7 @@ onMounted(async () => {
       </span>
     </div>
 
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="detail" :rows="5" label="Loading member" />
 
     <div v-else-if="!member" class="rounded-xl border border-line bg-white p-6 text-ink-600">
       Member not found.
@@ -418,7 +419,12 @@ onMounted(async () => {
         <div v-if="!canManageWorkspaceAccess" class="text-sm text-ink-500">
           You need <code>manage_org_workspace_members</code> to manage workspace access.
         </div>
-        <div v-else-if="workspaceLoading" class="text-sm text-ink-500">Loading workspaces...</div>
+        <LoadingSkeleton
+          v-else-if="workspaceLoading"
+          variant="list"
+          :rows="3"
+          label="Loading workspaces"
+        />
         <div v-else class="space-y-3">
           <div
             v-for="ws in workspaces"

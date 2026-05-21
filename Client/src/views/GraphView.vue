@@ -11,6 +11,7 @@ import { useGraphStore } from '@/stores/graph';
 import { useEntityStore } from '@/stores/entity';
 import { useOrganizationStore } from '@/stores/organization';
 import type { GraphNodeDto, GraphHighlightTag } from '@/api/graph';
+import GraphSkeleton from '@/components/feedback/GraphSkeleton.vue';
 
 const router = useRouter();
 const graphStore = useGraphStore();
@@ -287,15 +288,35 @@ const hasGraph = computed(() => graphStore.nodes.length > 0);
       Select an organization to see your graph.
     </Message>
 
-    <!-- Error -->
-    <Message v-else-if="graphStore.error" severity="error" :closable="false" class="!my-0">
-      {{ graphStore.error }}
-    </Message>
+    <!-- Error: graph data could not be loaded. Show retry so the user can recover
+         without reloading the whole page. -->
+    <div
+      v-else-if="graphStore.error"
+      class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
+    >
+      <i class="pi pi-exclamation-triangle text-3xl text-ink-300" />
+      <p class="mt-3 text-sm font-medium text-ink-700">Graph data is unavailable</p>
+      <p class="mt-1 text-xs text-ink-500 max-w-md">
+        {{ graphStore.error }}
+      </p>
+      <Button
+        label="Try again"
+        icon="pi pi-refresh"
+        severity="secondary"
+        size="small"
+        class="mt-4"
+        :loading="graphStore.isLoading"
+        @click="load"
+      />
+    </div>
 
     <!-- Loading -->
-    <div v-else-if="graphStore.isLoading && !hasGraph" class="flex-1 flex items-center justify-center text-ink-400">
-      <i class="pi pi-spin pi-spinner text-2xl mr-3" />Loading graph…
-    </div>
+    <GraphSkeleton
+      v-else-if="graphStore.isLoading && !hasGraph"
+      class="flex-1"
+      fill
+      label="Loading graph…"
+    />
 
     <!-- Empty -->
     <div

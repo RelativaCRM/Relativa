@@ -10,6 +10,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
 import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const router = useRouter();
 const orgStore = useOrganizationStore();
@@ -101,7 +102,7 @@ onMounted(async () => {
       />
     </div>
 
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="cards" :rows="4" label="Loading workspaces" />
 
     <div
       v-else-if="!wsStore.workspaces.length"
