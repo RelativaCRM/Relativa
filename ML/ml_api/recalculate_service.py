@@ -1,8 +1,11 @@
 import json
+import logging
 import os
 import time
 import uuid
 from datetime import date, datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 import pika
 from django.conf import settings
@@ -198,6 +201,10 @@ def process_recalc_payload(payload):
         failed = total_count - processed
         _emit_completed(job_id, workspace_id, "timeout", processed, processed, failed, started_at, "deadline exceeded")
         raise
+    except Exception:
+        failed = total_count - processed
+        _emit_completed(job_id, workspace_id, "failed", processed, processed, failed, started_at, "unexpected error")
+        raise
 
 
 def _emit_progress(job_id, workspace_id, processed_count, total_count, status, message):
@@ -339,9 +346,12 @@ def _load_schema_config():
 
 def _ensure_deal_analysis_entities(deal_ids, config, deadline):
     _check_deadline(deadline)
-    deal_type_id = config["type_ids"][DEAL_TYPE_NAME]
-    analysis_type_id = config["type_ids"][DEAL_ANALYSIS_TYPE_NAME]
-    rel_type_id = config["rel_ids"][REL_DEAL_ANALYSIS]
+    deal_type_id = config["type_ids"].get(DEAL_TYPE_NAME)
+    analysis_type_id = config["type_ids"].get(DEAL_ANALYSIS_TYPE_NAME)
+    rel_type_id = config["rel_ids"].get(REL_DEAL_ANALYSIS)
+    if not deal_type_id or not analysis_type_id or not rel_type_id:
+        logger.warning("Schema config missing deal/deal_analysis type or relationship — skipping entity creation")
+        return
     with transaction.atomic():
         with connection.cursor() as cursor:
             cursor.execute(
@@ -597,15 +607,30 @@ def _recompute_analysis(deal_ids, analysis_rows, deal_rows, contracts_by_deal, c
                 else:
                     hist_close_rate = None
 
+                required_prop_ids = {
+                    ANALYSIS_PROP_DAYS_SINCE_CREATED:      prop_ids.get(ANALYSIS_PROP_DAYS_SINCE_CREATED),
+                    ANALYSIS_PROP_STAGE_ENCODED:           prop_ids.get(ANALYSIS_PROP_STAGE_ENCODED),
+                    ANALYSIS_PROP_NUM_INTERACTIONS:        prop_ids.get(ANALYSIS_PROP_NUM_INTERACTIONS),
+                    ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT: prop_ids.get(ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT),
+                    ANALYSIS_PROP_NUM_OPEN_DEALS:          prop_ids.get(ANALYSIS_PROP_NUM_OPEN_DEALS),
+                    ANALYSIS_PROP_AVG_DEAL_VALUE:          prop_ids.get(ANALYSIS_PROP_AVG_DEAL_VALUE),
+                    ANALYSIS_PROP_SOURCE_UPDATED_AT:       prop_ids.get(ANALYSIS_PROP_SOURCE_UPDATED_AT),
+                    ANALYSIS_PROP_CALCULATED_AT:           prop_ids.get(ANALYSIS_PROP_CALCULATED_AT),
+                }
+                if None in required_prop_ids.values():
+                    logger.warning(
+                        "Schema config is missing one or more analysis property IDs — skipping deal %s", deal_id
+                    )
+                    continue
                 updates = [
-                    (prop_ids[ANALYSIS_PROP_DAYS_SINCE_CREATED], {"value_int": days_since_created}),
-                    (prop_ids[ANALYSIS_PROP_STAGE_ENCODED], {"value_int": stage_encoded}),
-                    (prop_ids[ANALYSIS_PROP_NUM_INTERACTIONS], {"value_int": num_interactions}),
-                    (prop_ids[ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT], {"value_int": days_since_last_contact}),
-                    (prop_ids[ANALYSIS_PROP_NUM_OPEN_DEALS], {"value_int": num_open_deals}),
-                    (prop_ids[ANALYSIS_PROP_AVG_DEAL_VALUE], {"value_decimal": avg_deal_value}),
-                    (prop_ids[ANALYSIS_PROP_SOURCE_UPDATED_AT], {"value_date": today}),
-                    (prop_ids[ANALYSIS_PROP_CALCULATED_AT], {"value_date": today}),
+                    (required_prop_ids[ANALYSIS_PROP_DAYS_SINCE_CREATED], {"value_int": days_since_created}),
+                    (required_prop_ids[ANALYSIS_PROP_STAGE_ENCODED], {"value_int": stage_encoded}),
+                    (required_prop_ids[ANALYSIS_PROP_NUM_INTERACTIONS], {"value_int": num_interactions}),
+                    (required_prop_ids[ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT], {"value_int": days_since_last_contact}),
+                    (required_prop_ids[ANALYSIS_PROP_NUM_OPEN_DEALS], {"value_int": num_open_deals}),
+                    (required_prop_ids[ANALYSIS_PROP_AVG_DEAL_VALUE], {"value_decimal": avg_deal_value}),
+                    (required_prop_ids[ANALYSIS_PROP_SOURCE_UPDATED_AT], {"value_date": today}),
+                    (required_prop_ids[ANALYSIS_PROP_CALCULATED_AT], {"value_date": today}),
                 ]
                 if prop_ids.get(ANALYSIS_PROP_DAYS_UNTIL_CLOSE):
                     updates.append((prop_ids[ANALYSIS_PROP_DAYS_UNTIL_CLOSE], {"value_int": days_until_close}))
