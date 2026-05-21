@@ -350,7 +350,7 @@ function outboundLinksForTab(tab: EdgeRelTab) {
 }
 
 function humanize(name: string): string {
-  return name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function pad(n: number): string {
@@ -606,7 +606,7 @@ watch(
         />
         <h1 class="text-2xl font-bold text-ink-900">
           <template v-if="detail">
-            {{ detail.entityTypeName.replace(/_/g, ' ') }} · #{{ detail.id }}
+            {{ humanize(detail.entityTypeName) }} · #{{ detail.id }}
           </template>
           <template v-else>Entity</template>
         </h1>
@@ -819,10 +819,7 @@ watch(
       >
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
-            {{ humanize(tab.name) }}
-            <span class="text-ink-400 font-normal normal-case ml-1">
-              {{ tab.direction === 'out' ? '→' : '←' }} {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
-            </span>
+            {{ humanize(tab.otherEntityTypeName) }}
           </span>
           <Button
             v-if="canEditCurrentEntity"
@@ -852,7 +849,7 @@ watch(
                     class="pi text-xs text-ink-400"
                     :class="isExpanded(relTabKey(tab), r.relatedEntityId) ? 'pi-chevron-down' : 'pi-chevron-right'"
                   />
-                  <span class="text-brand-700 font-medium">{{ r.relatedEntityTypeName.replace(/_/g, ' ') }}</span>
+                  <span class="text-brand-700 font-medium">{{ humanize(r.relatedEntityTypeName) }}</span>
                   <span class="font-mono text-xs text-ink-500">#{{ r.relatedEntityId }}</span>
                 </span>
                 <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-0.5 pl-5">
@@ -908,7 +905,7 @@ watch(
           v-if="(tab.direction === 'out' ? outboundLinksForTab(tab) : inboundLinksFor(tab.relationshipTypeId)).length === 0"
           class="text-xs text-ink-500 mt-1"
         >
-          No links yet.
+          No {{ humanize(tab.otherEntityTypeName) }} for this {{ humanize(detail.entityTypeName) }}
         </p>
       </div>
     </aside>
@@ -916,7 +913,7 @@ watch(
 
   <Dialog
     v-model:visible="linkModalOpen"
-    :header="linkModalTab ? `Link ${linkModalTab.otherEntityTypeName.replace(/_/g, ' ')}` : 'Link'"
+    :header="linkModalTab ? `Link ${humanize(linkModalTab.otherEntityTypeName)}` : 'Link'"
     modal
     class="w-full max-w-lg"
   >
@@ -937,7 +934,7 @@ watch(
           class="w-full text-left rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
           @click="confirmLink(item)"
         >
-          <span class="text-brand-700">{{ item.entityTypeName.replace(/_/g, ' ') }}</span>
+          <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
           <span class="font-mono text-xs text-ink-600"> #{{ item.id }}</span>
           <span class="block text-xs text-ink-500 mt-0.5">{{ previewLinkLabel(item) }}</span>
         </button>
