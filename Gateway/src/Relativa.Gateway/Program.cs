@@ -44,6 +44,21 @@ try
                     Encoding.UTF8.GetBytes(config["Jwt:SecretKey"]!)),
                 ValidateLifetime = true
             };
+            // SignalR sends the JWT as ?access_token= because WebSocket doesn't support
+            // custom headers. Read the token from the query string for hub routes.
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var accessToken = context.Request.Query["access_token"];
+                    var path = context.HttpContext.Request.Path;
+                    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/graph/hubs"))
+                    {
+                        context.Token = accessToken;
+                    }
+                    return Task.CompletedTask;
+                }
+            };
         });
 
     builder.Services.AddCors(options =>
