@@ -22,6 +22,7 @@ const WorkspaceMembersView = () =>
 const UserListView = () => import('@/views/UserListView.vue');
 const UserProfileView = () => import('@/views/UserProfileView.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
+const WorkspaceDashboardView = () => import('@/views/WorkspaceDashboardView.vue');
 const AuditLogView = () => import('@/views/AuditLogView.vue');
 const AccountSettingsView = () => import('@/views/AccountSettingsView.vue');
 const InvitationsView = () => import('@/views/InvitationsView.vue');
@@ -104,6 +105,10 @@ const router = createRouter({
           meta: orgMeta,
         },
         {
+          path: 'dashboard',
+          redirect: '/',
+        },
+        {
           path: 'graph',
           name: 'graph',
           component: GraphView,
@@ -127,10 +132,21 @@ const router = createRouter({
           meta: workspaceMeta,
           children: [
             {
+              path: '',
+              name: 'workspace-dashboard',
+              component: WorkspaceDashboardView,
+              meta: workspaceMeta,
+            },
+            {
               path: 'entities',
               name: 'workspace-entities',
               component: EntitiesView,
               meta: workspaceMeta,
+              beforeEnter: (to) => {
+                if (!to.query.entityType) {
+                  return { name: 'workspace-dashboard', params: to.params };
+                }
+              },
             },
             {
               path: 'entities/new',
@@ -215,9 +231,28 @@ router.beforeEach(async (to) => {
   }
 
   const required = (to.meta.roles as string[] | undefined) ?? [];
-  if (required.length === 0) return true;
-  const allowed = required.some((r) => auth.roles.includes(r));
-  if (!allowed) return { name: 'home' };
+  if (required.length > 0) {
+    const allowed = required.some((r) => auth.roles.includes(r));
+    if (!allowed) return { name: 'home' };
+  }
+
+  const requiredPerm = to.meta.requiresPermission as string | undefined;
+  if (requiredPerm) {
+    const wsStore2 = useWorkspaceStore();
+    if (!wsStore2.workspaces.length && orgStore.currentOrgId) {
+      try {
+        await wsStore2.fetchWorkspaces(orgStore.currentOrgId);
+      } catch {
+        // continue — permission check below will deny if still no workspaces
+      }
+    }
+    const hasInWorkspace = wsStore2.workspaces.some(
+      (w) => w.myPermissions?.includes(requiredPerm),
+    );
+    const hasOrgOwner = orgStore.currentOrg?.myPermissions?.includes('manage_org_settings') ?? false;
+    if (!hasInWorkspace && !hasOrgOwner) return { name: 'home' };
+  }
+
   return true;
 });
 
