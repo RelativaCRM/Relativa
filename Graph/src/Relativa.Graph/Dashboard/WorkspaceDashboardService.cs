@@ -303,7 +303,10 @@ public sealed class WorkspaceDashboardService(
             .Where(id => !mlScores.TryGetValue(id, out var s) || s.ClosureScore is null)
             .ToList();
         if (unscoredIds.Count > 0)
+        {
+            await EnsureDealAnalysisEntitiesAsync(unscoredIds, workspaceId, userId, ct);
             _ = mlRecalc.EnqueueAsync(unscoredIds, userId, workspaceId);
+        }
 
         var dealClientRels = await db.EntityRelationships
             .Where(er => dealIds.Contains(er.SourceEntityId) && er.RelationshipType.Name == "deal_client")
@@ -564,5 +567,54 @@ public sealed class WorkspaceDashboardService(
                     tasksDoneByUser.GetValueOrDefault(uid));
             })
             .ToList();
+    }
+
+    private async Task EnsureDealAnalysisEntitiesAsync(
+        IReadOnlyList<int> dealIds, int workspaceId, int userId, CancellationToken ct)
+    {
+        var analysisType = await db.EntityTypes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Name == "deal_analysis", ct);
+        if (analysisType is null) return;
+
+        var relType = await db.EntityRelationshipTypes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(rt => rt.Name == "deal_analysis", ct);
+        if (relType is null) return;
+
+        var linkedDealIds = await db.EntityRelationships
+            .Where(er => dealIds.Contains(er.SourceEntityId) && er.RelationshipTypeId == relType.Id)
+            .Select(er => er.SourceEntityId)
+            .ToHashSetAsync(ct);
+
+        var missing = dealIds.Where(id => !linkedDealIds.Contains(id)).ToList();
+        if (missing.Count == 0) return;
+
+        foreach (var dealId in missing)
+        {
+            var analysisEntity = new Relativa.Persistence.Entities.Entity
+            {
+                EntityTypeId    = analysisType.Id,
+                CreatedByUserId = userId,
+                IsArchived      = false,
+            };
+            db.Entities.Add(analysisEntity);
+            await db.SaveChangesAsync(ct);
+
+            db.EntityWorkspaces.Add(new Relativa.Persistence.Entities.EntityWorkspace
+            {
+                EntityId    = analysisEntity.Id,
+                WorkspaceId = workspaceId,
+            });
+
+            db.EntityRelationships.Add(new Relativa.Persistence.Entities.EntityRelationship
+            {
+                SourceEntityId     = dealId,
+                TargetEntityId     = analysisEntity.Id,
+                RelationshipTypeId = relType.Id,
+            });
+
+            await db.SaveChangesAsync(ct);
+        }
     }
 }

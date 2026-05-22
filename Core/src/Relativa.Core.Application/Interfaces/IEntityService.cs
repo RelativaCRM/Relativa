@@ -10,6 +10,8 @@ public interface IEntityService
         int? entityTypeId,
         string? searchQuery,
         int take,
+        int? excludeLinkedSourceRelTypeId = null,
+        int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default);
     Task<EntityDetailDto> GetByIdAsync(int entityId, int workspaceId, int userId, CancellationToken ct = default);
     Task<EntityDetailDto> CreateAsync(int workspaceId, int userId, CreateEntityRequest request, CancellationToken ct = default);

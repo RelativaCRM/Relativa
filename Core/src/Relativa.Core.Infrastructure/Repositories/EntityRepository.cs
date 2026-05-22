@@ -35,6 +35,8 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
         int? entityTypeId,
         string? searchQuery,
         int take,
+        int? excludeLinkedSourceRelTypeId = null,
+        int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default)
     {
         take = Math.Clamp(take, 1, 500);
@@ -58,6 +60,14 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
             query = query.Where(e => e.EntityPropertyValues.Any(epv =>
                 epv.ValueString != null && epv.ValueString.Contains(pattern)));
         }
+
+        if (excludeLinkedSourceRelTypeId is > 0)
+            query = query.Where(e => !db.EntityRelationships
+                .Any(r => r.SourceEntityId == e.Id && r.RelationshipTypeId == excludeLinkedSourceRelTypeId.Value));
+
+        if (excludeLinkedTargetRelTypeId is > 0)
+            query = query.Where(e => !db.EntityRelationships
+                .Any(r => r.TargetEntityId == e.Id && r.RelationshipTypeId == excludeLinkedTargetRelTypeId.Value));
 
         return await query
             .Include(e => e.EntityType)
@@ -187,6 +197,7 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
             .Include(r => r.RelationshipType)
             .Include(r => r.SourceEntity)
                 .ThenInclude(e => e.EntityWorkspaces)
+            .Include(r => r.TargetEntity)
             .FirstOrDefaultAsync(r => r.Id == relationshipId, ct);
 
     public async Task<EntityRelationship> AddRelationshipAsync(EntityRelationship relationship, CancellationToken ct = default)

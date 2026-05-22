@@ -162,6 +162,7 @@ def process_recalc_payload(payload):
     workspace_id = payload.get("WorkspaceId") or payload.get("workspaceId")
     job_id_raw = payload.get("JobId") or payload.get("jobId")
     job_id = str(job_id_raw) if job_id_raw else str(uuid.uuid4())
+    requested_by_user_id = int(payload.get("RequestedByUserId") or payload.get("requestedByUserId") or 0)
     started_at = datetime.now(timezone.utc)
     today = date.today()
 
@@ -183,7 +184,7 @@ def process_recalc_payload(payload):
     try:
         for chunk_start in range(0, total_count, PROGRESS_CHUNK_SIZE):
             chunk = entity_ids[chunk_start:chunk_start + PROGRESS_CHUNK_SIZE]
-            _ensure_deal_analysis_entities(chunk, config, deadline)
+            _ensure_deal_analysis_entities(chunk, config, deadline, created_by_user_id=requested_by_user_id)
             analysis_rows = _load_analysis_state(chunk, config)
             deal_rows = _load_deal_inputs(chunk, config)
             contracts = _load_contract_inputs(chunk, config)
@@ -344,7 +345,7 @@ def _load_schema_config():
     return {"type_ids": type_ids, "rel_ids": rel_ids, "prop_ids": prop_ids}
 
 
-def _ensure_deal_analysis_entities(deal_ids, config, deadline):
+def _ensure_deal_analysis_entities(deal_ids, config, deadline, created_by_user_id=0):
     _check_deadline(deadline)
     deal_type_id = config["type_ids"].get(DEAL_TYPE_NAME)
     analysis_type_id = config["type_ids"].get(DEAL_ANALYSIS_TYPE_NAME)
@@ -381,8 +382,8 @@ def _ensure_deal_analysis_entities(deal_ids, config, deadline):
             for deal_id in missing_deals:
                 _check_deadline(deadline)
                 cursor.execute(
-                    "INSERT INTO entity (entity_type_id, is_archived) VALUES (%s, FALSE) RETURNING id",
-                    [analysis_type_id],
+                    "INSERT INTO entity (entity_type_id, created_by_user_id, is_archived) VALUES (%s, %s, FALSE) RETURNING id",
+                    [analysis_type_id, created_by_user_id],
                 )
                 analysis_id = cursor.fetchone()[0]
                 cursor.execute(
