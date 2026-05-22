@@ -23,6 +23,8 @@ public sealed class EntityService(
         int? entityTypeId,
         string? searchQuery,
         int take,
+        int? excludeLinkedSourceRelTypeId = null,
+        int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default)
     {
         await RequirePermission(userId, workspaceId, "view_entities", ct);
@@ -35,6 +37,8 @@ public sealed class EntityService(
             entityTypeId,
             searchQuery,
             take,
+            excludeLinkedSourceRelTypeId,
+            excludeLinkedTargetRelTypeId,
             ct);
         return entities.Select(MapToListItem).ToList();
     }
@@ -61,12 +65,6 @@ public sealed class EntityService(
 
         if (typeProperties.All(tp => tp.Property.IsReadonly))
             throw new ArgumentException($"Entity type {request.EntityTypeId} cannot be created: all properties are read-only.");
-
-        var entityTypeInfo = await entityRepository.GetEntityTypeByIdAsync(request.EntityTypeId, ct)
-            ?? throw new KeyNotFoundException($"Entity type {request.EntityTypeId} was not found.");
-
-        if (!entityTypeInfo.IsStandalone)
-            throw new ArgumentException("This entity type cannot be created directly. Use the entity graph endpoint.");
 
         ValidatePropertyPayload(request.Properties, typeProperties);
 

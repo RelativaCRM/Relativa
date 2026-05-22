@@ -15,12 +15,14 @@ public static class EntityEndpoints
             int? entityTypeId,
             string? q,
             int? take,
+            int? excludeLinkedSourceRelTypeId,
+            int? excludeLinkedTargetRelTypeId,
             IEntityService service,
             HttpContext httpContext,
             CancellationToken ct) =>
         {
             var userId = WorkspaceEndpoints.GetUserId(httpContext);
-            var result = await service.GetByWorkspaceAsync(workspaceId, userId, entityTypeId, q, take ?? 500, ct);
+            var result = await service.GetByWorkspaceAsync(workspaceId, userId, entityTypeId, q, take ?? 500, excludeLinkedSourceRelTypeId, excludeLinkedTargetRelTypeId, ct);
             return Results.Ok(result);
         })
         .WithName("ListEntities")
