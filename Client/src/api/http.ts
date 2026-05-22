@@ -2,6 +2,20 @@ import { useAuthStore } from '@/stores/auth';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { notifyGlobal } from '@/api/errorToast';
 
+export const HttpStatus = {
+  BadRequest: 400,
+  Unauthorized: 401,
+  Forbidden: 403,
+  NotFound: 404,
+  Conflict: 409,
+  UnprocessableEntity: 422,
+  TooManyRequests: 429,
+  InternalServerError: 500,
+  BadGateway: 502,
+  ServiceUnavailable: 503,
+  GatewayTimeout: 504,
+} as const;
+
 function gatewayBase(): string {
   return (import.meta.env.VITE_GATEWAY_URL ?? 'http://localhost:8080').replace(
     /\/$/,
@@ -52,17 +66,15 @@ export async function gatewayFetch(
   );
 }
 
-const AUTH_PATHS = ['/auth/me', '/auth/refresh'];
-
-function isAuthEndpoint(url: string): boolean {
-  return AUTH_PATHS.some((p) => url.includes(p));
-}
-
-// Statuses the centralized handler shows a toast for. 401 is intentionally
-// excluded so the sign-in flow can quietly redirect; 404 is excluded so
-// detail pages can render their own "not found" UI without a noisy toast.
 const TOAST_STATUSES: ReadonlySet<number> = new Set([
-  400, 403, 409, 422, 500, 502, 503, 504,
+  HttpStatus.BadRequest,
+  HttpStatus.Forbidden,
+  HttpStatus.Conflict,
+  HttpStatus.UnprocessableEntity,
+  HttpStatus.InternalServerError,
+  HttpStatus.BadGateway,
+  HttpStatus.ServiceUnavailable,
+  HttpStatus.GatewayTimeout,
 ]);
 
 async function parseResponse<T>(res: Response, silent = false): Promise<T> {
@@ -93,9 +105,10 @@ async function parseResponse<T>(res: Response, silent = false): Promise<T> {
       res.statusText ??
       `Request failed (${res.status})`;
 
-    if (res.status === 401 && isAuthEndpoint(res.url)) {
+    if (res.status === HttpStatus.Unauthorized) {
       const auth = useAuthStore();
       auth.clearSession();
+      import('@/router').then(({ default: r }) => r.push({ name: 'login' }));
     }
 
     const apiError = new ApiError(res.status, message, body);

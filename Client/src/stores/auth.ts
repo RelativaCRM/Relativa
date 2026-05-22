@@ -7,6 +7,8 @@ import {
   type UpdateProfilePayload,
   type UserProfile,
 } from '@/api/auth';
+import { useOrganizationStore } from '@/stores/organization';
+import { useWorkspaceStore } from '@/stores/workspace';
 import {
   loadJson,
   loadString,
@@ -54,6 +56,8 @@ export const useAuthStore = defineStore('auth', () => {
     setWorkspace('');
     roles.value = ['User'];
     user.value = null;
+    useOrganizationStore().clear();
+    useWorkspaceStore().clear();
   }
 
   async function fetchProfile() {

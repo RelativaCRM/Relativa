@@ -1,4 +1,4 @@
-import { ApiError } from '@/api/http';
+import { ApiError, HttpStatus } from '@/api/http';
 
 export type FieldErrors = Record<string, string[]>;
 
@@ -18,17 +18,17 @@ export interface NormalizedError {
 }
 
 const FRIENDLY_STATUS_MESSAGES: Record<number, string> = {
-  400: 'The request is invalid. Please check the highlighted fields.',
-  401: 'Your session has expired. Please sign in again.',
-  403: 'You do not have permission to perform this action.',
-  404: 'The requested resource was not found.',
-  409: 'This conflicts with existing data.',
-  422: 'The request could not be processed.',
-  429: 'Too many requests. Please try again in a moment.',
-  500: 'The server encountered an unexpected error. Please try again later.',
-  502: 'The server is temporarily unavailable. Please try again later.',
-  503: 'The service is unavailable. Please try again later.',
-  504: 'The server took too long to respond. Please try again later.',
+  [HttpStatus.BadRequest]: 'The request is invalid. Please check the highlighted fields.',
+  [HttpStatus.Unauthorized]: 'Your session has expired. Please sign in again.',
+  [HttpStatus.Forbidden]: 'You do not have permission to perform this action.',
+  [HttpStatus.NotFound]: 'The requested resource was not found.',
+  [HttpStatus.Conflict]: 'This conflicts with existing data.',
+  [HttpStatus.UnprocessableEntity]: 'The request could not be processed.',
+  [HttpStatus.TooManyRequests]: 'Too many requests. Please try again in a moment.',
+  [HttpStatus.InternalServerError]: 'The server encountered an unexpected error. Please try again later.',
+  [HttpStatus.BadGateway]: 'The server is temporarily unavailable. Please try again later.',
+  [HttpStatus.ServiceUnavailable]: 'The service is unavailable. Please try again later.',
+  [HttpStatus.GatewayTimeout]: 'The server took too long to respond. Please try again later.',
 };
 
 function lowerFirst(value: string): string {
@@ -91,7 +91,7 @@ export function normalizeError(
     const title = payload && typeof payload.title === 'string' ? payload.title : null;
     const detail = payload && typeof payload.detail === 'string' ? payload.detail : null;
 
-    const isValidation = err.status === 400;
+    const isValidation = err.status === HttpStatus.BadRequest;
     const fieldErrors =
       pickPayloadFieldErrors(payload) ??
       (isValidation ? parseValidationDetail(detail) : {});
@@ -105,7 +105,7 @@ export function normalizeError(
       Object.keys(fieldErrors).length > 0 &&
       (!detail || message === detail)
     ) {
-      message = title ?? FRIENDLY_STATUS_MESSAGES[400] ?? fallback;
+      message = title ?? FRIENDLY_STATUS_MESSAGES[HttpStatus.BadRequest] ?? fallback;
     }
 
     return {
@@ -116,11 +116,11 @@ export function normalizeError(
       fieldErrors,
       isNetwork: false,
       isValidation,
-      isUnauthorized: err.status === 401,
-      isForbidden: err.status === 403,
-      isNotFound: err.status === 404,
-      isConflict: err.status === 409,
-      isServer: err.status >= 500,
+      isUnauthorized: err.status === HttpStatus.Unauthorized,
+      isForbidden: err.status === HttpStatus.Forbidden,
+      isNotFound: err.status === HttpStatus.NotFound,
+      isConflict: err.status === HttpStatus.Conflict,
+      isServer: err.status >= HttpStatus.InternalServerError,
     };
   }
 

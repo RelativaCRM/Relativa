@@ -3,12 +3,12 @@ import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 
+import LoginView from '@/views/LoginView.vue';
+import RegisterView from '@/views/RegisterView.vue';
+import ForgotPasswordView from '@/views/ForgotPasswordView.vue';
+import ResetPasswordView from '@/views/ResetPasswordView.vue';
 const MainLayout = () => import('@/layouts/MainLayout.vue');
 const WorkspaceLayout = () => import('@/layouts/WorkspaceLayout.vue');
-const LoginView = () => import('@/views/LoginView.vue');
-const RegisterView = () => import('@/views/RegisterView.vue');
-const ForgotPasswordView = () => import('@/views/ForgotPasswordView.vue');
-const ResetPasswordView = () => import('@/views/ResetPasswordView.vue');
 const HomeView = () => import('@/views/HomeView.vue');
 const GraphView = () => import('@/views/GraphView.vue');
 const OnboardingView = () => import('@/views/OnboardingView.vue');
@@ -191,7 +191,8 @@ router.beforeEach(async (to) => {
   }
 
   if (!to.meta.public && !auth.isAuthenticated) {
-    return { name: 'login', query: { redirect: to.fullPath } };
+    const query = to.fullPath !== '/' ? { redirect: to.fullPath } : {};
+    return { name: 'login', query };
   }
 
   if (auth.isAuthenticated && !auth.user) {
@@ -199,7 +200,8 @@ router.beforeEach(async (to) => {
       await auth.fetchProfile();
     } catch {
       auth.logout();
-      return { name: 'login', query: { redirect: to.fullPath } };
+      const query = to.fullPath !== '/' ? { redirect: to.fullPath } : {};
+      return { name: 'login', query };
     }
   }
 
