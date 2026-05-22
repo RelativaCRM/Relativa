@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -19,10 +19,13 @@ import { useEntityStore } from '@/stores/entity';
 import { hasWorkspacePermission } from '@/utils/workspacePermissions';
 import type {
   EntityDetailDto,
+  EntityTypeDto,
+  EntityTypePropertyDto,
   EntityPropertyValueDto,
   EntityListItemDto,
 } from '@/api/entities';
 import { entityApi } from '@/api/entities';
+import { isEntityTypeUiLocked } from '@/utils/entityTypes';
 import { mlApi, type DealScoreDto } from '@/api/ml';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
@@ -77,8 +80,10 @@ const writableProps = computed(() => {
   return d.propertyValues.filter((p) => !p.isReadonly);
 });
 
-/** `overview`, or `out-{relationshipTypeId}` / `in-{relationshipTypeId}` (direction distinguishes same id). */
-const activeTab = ref<string>('overview');
+const currentEntityAllReadonly = computed(() => {
+  const d = detail.value;
+  return !!d && d.propertyValues.length > 0 && writableProps.value.length === 0;
+});
 
 const typeSchema = computed(() => {
   const d = detail.value;
@@ -90,15 +95,77 @@ function allowedValuesFor(propertyId: number): string[] {
   return typeSchema.value?.properties.find((p) => p.propertyId === propertyId)?.allowedValues ?? [];
 }
 
+// ── Per-tab relationship metadata helpers ────────────────────────────────────
+
+function tabRelSchema(tab: EdgeRelTab) {
+  return tab.direction === 'out'
+    ? typeSchema.value?.outgoingRelationships.find((r) => r.relationshipTypeId === tab.relationshipTypeId)
+    : typeSchema.value?.incomingRelationships.find((r) => r.relationshipTypeId === tab.relationshipTypeId);
+}
+
+function tabIsRequired(tab: EdgeRelTab): boolean {
+  return tabRelSchema(tab)?.isRequired ?? false;
+}
+
+function relatedTypeAllReadonly(typeName: string): boolean {
+  const t = entityStore.types.find((et) => et.name === typeName);
+  return !!t && t.properties.length > 0 && t.properties.every((p) => p.isReadonly);
+}
+
+function tabCardinality(tab: EdgeRelTab): string | null {
+  return tabRelSchema(tab)?.relationshipCardinality ?? null;
+}
+
+/** Is the CURRENT entity limited to at most one link for this tab? */
+function tabCurrentEntityLimited(tab: EdgeRelTab): boolean {
+  const c = tabCardinality(tab);
+  if (!c) return false;
+  return tab.direction === 'out'
+    ? c === 'many_to_one' || c === 'one_to_one'
+    : c === 'one_to_many' || c === 'one_to_one';
+}
+
+/** Total number of existing links for this tab. */
+function tabLinkCount(tab: EdgeRelTab): number {
+  return tab.direction === 'out'
+    ? outboundLinksForTab(tab).length
+    : inboundLinksFor(tab.relationshipTypeId).length;
+}
+
+/** Should we show "Reassign" instead of "Link"? */
+function tabIsReassign(tab: EdgeRelTab): boolean {
+  return tabCurrentEntityLimited(tab) && tabLinkCount(tab) > 0;
+}
+
+/** Do CANDIDATES need to be filtered (they may already have a conflicting link)? */
+function tabCandidateLimited(tab: EdgeRelTab): boolean {
+  const c = tabCardinality(tab);
+  if (!c) return false;
+  return tab.direction === 'in'
+    ? c === 'many_to_one' || c === 'one_to_one'
+    : c === 'one_to_one';
+}
+
+/** Does this tab allow unlimited links from the current entity? → show "+" create+link button. */
+function tabAllowsMultiple(tab: EdgeRelTab): boolean {
+  const c = tabCardinality(tab);
+  if (!c) return true;
+  return tab.direction === 'out'
+    ? c === 'one_to_many' || c === 'many_to_many'
+    : c === 'many_to_one' || c === 'many_to_many';
+}
+
 // ── Link / Unlink modal state ────────────────────────────────────────────────
 const linkModalOpen = ref(false);
 const linkModalTab = ref<EdgeRelTab | null>(null);
+const linkIsReassign = ref(false);
 const linkCandidates = ref<EntityListItemDto[]>([]);
 const linkLoading = ref(false);
 const linkError = ref<string | null>(null);
 
 async function openLinkModal(tab: EdgeRelTab) {
   linkModalTab.value = tab;
+  linkIsReassign.value = tabIsReassign(tab);
   linkModalOpen.value = true;
   linkError.value = null;
   linkCandidates.value = [];
@@ -107,7 +174,13 @@ async function openLinkModal(tab: EdgeRelTab) {
     const targetTypeName = tab.otherEntityTypeName;
     const targetType = entityStore.types.find((t) => t.name === targetTypeName);
     if (!targetType) { linkCandidates.value = []; return; }
-    const all = await entityApi.list(props.workspaceId, { entityTypeId: targetType.id });
+    const all = await entityApi.list(props.workspaceId, {
+      entityTypeId: targetType.id,
+      excludeLinkedSourceRelTypeId:
+        tabCandidateLimited(tab) && tab.direction === 'in' ? tab.relationshipTypeId : undefined,
+      excludeLinkedTargetRelTypeId:
+        tabCandidateLimited(tab) && tab.direction === 'out' ? tab.relationshipTypeId : undefined,
+    });
     const d = detail.value;
     const linkedIds = new Set(
       (tab.direction === 'out' ? d?.outboundRelationships : d?.inboundRelationships)
@@ -133,6 +206,14 @@ async function confirmLink(candidate: EntityListItemDto) {
   const tab = linkModalTab.value;
   if (!tab || !detail.value) return;
   try {
+    if (linkIsReassign.value) {
+      const existing = tab.direction === 'out'
+        ? outboundLinksForTab(tab)
+        : inboundLinksFor(tab.relationshipTypeId);
+      for (const link of existing) {
+        await entityApi.deleteRelationship(props.workspaceId, link.relationshipId);
+      }
+    }
     const sourceId = tab.direction === 'out' ? detail.value.id : candidate.id;
     const targetId = tab.direction === 'out' ? candidate.id : detail.value.id;
     await entityApi.createRelationship(props.workspaceId, {
@@ -142,7 +223,7 @@ async function confirmLink(candidate: EntityListItemDto) {
     });
     linkModalOpen.value = false;
     await loadDetail();
-    toast.add({ severity: 'success', summary: 'Linked', life: 2500 });
+    toast.add({ severity: 'success', summary: linkIsReassign.value ? 'Reassigned' : 'Linked', life: 2500 });
   } catch (err) {
     linkError.value = normalizeError(err);
   }
@@ -155,6 +236,195 @@ async function unlinkRelationship(relationshipId: number) {
     toast.add({ severity: 'success', summary: 'Unlinked', life: 2500 });
   } catch (err) {
     toast.add({ severity: 'error', summary: 'Error', detail: normalizeError(err), life: 4000 });
+  }
+}
+
+// ── Create + Link dialog ─────────────────────────────────────────────────────
+const createLinkOpen = ref(false);
+const createLinkTab = ref<EdgeRelTab | null>(null);
+const createLinkTargetType = ref<EntityTypeDto | null>(null);
+const createLinkValues = ref<Record<number, FieldValue>>({});
+const createLinkOtherRelPick = reactive<Record<number, number | null>>({});
+const createLinkOtherRelCandidates = ref<Record<number, EntityListItemDto[]>>({});
+const createLinkSubmitting = ref(false);
+const createLinkError = ref<string | null>(null);
+const createLinkSubmitAttempted = ref(false);
+
+/** Required outgoing relationships of the new entity that the user must fill in (not pre-filled). */
+const createLinkOtherRequired = computed(() => {
+  const tab = createLinkTab.value;
+  const t = createLinkTargetType.value;
+  if (!t) return [];
+  return t.outgoingRelationships.filter((r) => {
+    if (!r.isRequired) return false;
+    // For inbound tabs: we pre-fill the link back to the current entity, so skip it here.
+    if (tab?.direction === 'in' && r.relationshipTypeId === tab.relationshipTypeId) return false;
+    return true;
+  });
+});
+
+function tabCanCreateLink(tab: EdgeRelTab): boolean {
+  const t = entityStore.types.find((ty) => ty.name === tab.otherEntityTypeName);
+  return !!t && !isEntityTypeUiLocked(t);
+}
+
+function createLinkRelOptions(relTypeId: number) {
+  return (createLinkOtherRelCandidates.value[relTypeId] ?? []).map((e) => ({
+    label: previewLinkLabel(e),
+    value: e.id,
+  }));
+}
+
+function isCreateLinkPropEmpty(prop: EntityTypePropertyDto): boolean {
+  if (prop.dataType === 'Bool') return false;
+  return isEmpty(createLinkValues.value[prop.propertyId] ?? null);
+}
+
+function createLinkPropError(prop: EntityTypePropertyDto): string | null {
+  if (createLinkSubmitAttempted.value && isCreateLinkPropEmpty(prop)) return 'Required.';
+  return null;
+}
+
+function serializeCreateValue(prop: EntityTypePropertyDto, raw: FieldValue): string | null {
+  if (isEmpty(raw)) return null;
+  switch (prop.dataType) {
+    case 'Date': return raw instanceof Date ? formatDate(raw) : String(raw);
+    case 'Bool': return raw ? 'true' : 'false';
+    case 'Decimal':
+    case 'Int': return Number(raw).toString();
+    default: return String(raw).trim();
+  }
+}
+
+async function openCreateLinkModal(tab: EdgeRelTab) {
+  const targetType = entityStore.types.find((t) => t.name === tab.otherEntityTypeName);
+  if (!targetType || isEntityTypeUiLocked(targetType)) return;
+
+  createLinkTab.value = tab;
+  createLinkTargetType.value = targetType;
+  createLinkSubmitAttempted.value = false;
+  createLinkError.value = null;
+  createLinkSubmitting.value = false;
+
+  const vals: Record<number, FieldValue> = {};
+  for (const p of targetType.properties.filter((p) => !p.isReadonly)) {
+    vals[p.propertyId] = p.dataType === 'Bool' ? false : null;
+  }
+  createLinkValues.value = vals;
+
+  for (const k of Object.keys(createLinkOtherRelPick)) {
+    delete createLinkOtherRelPick[Number(k)];
+  }
+  createLinkOtherRelCandidates.value = {};
+
+  const otherRequired = targetType.outgoingRelationships.filter((r) => {
+    if (!r.isRequired) return false;
+    if (tab.direction === 'in' && r.relationshipTypeId === tab.relationshipTypeId) return false;
+    return true;
+  });
+  for (const r of otherRequired) {
+    createLinkOtherRelPick[r.relationshipTypeId] = null;
+    try {
+      const items = await entityApi.list(props.workspaceId, { entityTypeId: r.targetEntityTypeId, take: 400 });
+      createLinkOtherRelCandidates.value = { ...createLinkOtherRelCandidates.value, [r.relationshipTypeId]: items };
+    } catch {
+      createLinkOtherRelCandidates.value = { ...createLinkOtherRelCandidates.value, [r.relationshipTypeId]: [] };
+    }
+  }
+
+  createLinkOpen.value = true;
+}
+
+async function submitCreateLink() {
+  const tab = createLinkTab.value;
+  const targetType = createLinkTargetType.value;
+  if (!tab || !targetType || !detail.value) return;
+
+  createLinkSubmitAttempted.value = true;
+
+  const writableProps = targetType.properties.filter((p) => !p.isReadonly);
+  const hasEmptyRequired = writableProps.some((p) => isCreateLinkPropEmpty(p));
+  const hasEmptyRel = createLinkOtherRequired.value.some(
+    (r) => createLinkOtherRelPick[r.relationshipTypeId] == null,
+  );
+  if (hasEmptyRequired || hasEmptyRel) {
+    createLinkError.value = 'Fill in all required fields.';
+    return;
+  }
+
+  createLinkSubmitting.value = true;
+  createLinkError.value = null;
+  try {
+    const properties = writableProps.map((p) => ({
+      propertyId: p.propertyId,
+      value: serializeCreateValue(p, createLinkValues.value[p.propertyId] ?? null),
+    }));
+
+    const links: { relationshipTypeId: number; targetEntityId: number }[] = [];
+    // For inbound tabs: pre-fill the link back to the current entity
+    if (tab.direction === 'in') {
+      links.push({ relationshipTypeId: tab.relationshipTypeId, targetEntityId: detail.value.id });
+    }
+    for (const r of createLinkOtherRequired.value) {
+      const picked = createLinkOtherRelPick[r.relationshipTypeId];
+      if (picked != null) links.push({ relationshipTypeId: r.relationshipTypeId, targetEntityId: picked });
+    }
+
+    const newEntity = await entityStore.createViaGraph(props.workspaceId, {
+      entityTypeId: targetType.id,
+      properties,
+      ...(links.length > 0 ? { links } : {}),
+    });
+
+    // For outbound tabs: the relationship goes current → new, so create it explicitly
+    if (tab.direction === 'out') {
+      await entityApi.createRelationship(props.workspaceId, {
+        sourceEntityId: detail.value.id,
+        targetEntityId: newEntity.id,
+        relationshipTypeId: tab.relationshipTypeId,
+      });
+    }
+
+    createLinkOpen.value = false;
+    await loadDetail();
+    toast.add({ severity: 'success', summary: `${humanize(targetType.name)} created and linked`, life: 3000 });
+  } catch (err) {
+    createLinkError.value = normalizeError(err);
+  } finally {
+    createLinkSubmitting.value = false;
+  }
+}
+
+// ── Right-panel expand state ─────────────────────────────────────────────────
+const expandedKeys = ref(new Set<string>());
+const expandedCache = ref(new Map<number, EntityDetailDto>());
+const expandedLoading = ref(new Set<number>());
+
+function expandKey(tabKey: string, entityId: number): string {
+  return `${tabKey}:${entityId}`;
+}
+
+function isExpanded(tabKey: string, entityId: number): boolean {
+  return expandedKeys.value.has(expandKey(tabKey, entityId));
+}
+
+async function toggleExpand(tabKey: string, entityId: number) {
+  const k = expandKey(tabKey, entityId);
+  if (expandedKeys.value.has(k)) {
+    expandedKeys.value.delete(k);
+    return;
+  }
+  expandedKeys.value.add(k);
+  if (!expandedCache.value.has(entityId) && !expandedLoading.value.has(entityId)) {
+    expandedLoading.value.add(entityId);
+    try {
+      const d = await entityStore.fetchDetail(props.workspaceId, entityId);
+      expandedCache.value.set(entityId, d);
+    } catch {
+      // show preview only on fetch failure
+    } finally {
+      expandedLoading.value.delete(entityId);
+    }
   }
 }
 
@@ -322,7 +592,7 @@ function outboundLinksForTab(tab: EdgeRelTab) {
 }
 
 function humanize(name: string): string {
-  return name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function pad(n: number): string {
@@ -424,7 +694,6 @@ const isDeal = computed(() => detail.value?.entityTypeName === 'deal');
 async function loadDetail() {
   loading.value = true;
   errorMessage.value = null;
-  activeTab.value = 'overview';
   score.value = null;
   scoreError.value = null;
   scoreLoading.value = false;
@@ -564,7 +833,8 @@ watch(
 
 <template>
   <ConfirmDialog />
-  <section class="max-w-3xl">
+  <section class="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+    <div class="min-w-0">
     <div class="flex items-start justify-between gap-4 mb-6">
       <div class="min-w-0">
         <Button
@@ -578,7 +848,7 @@ watch(
         />
         <h1 class="text-2xl font-bold text-ink-900">
           <template v-if="detail">
-            {{ detail.entityTypeName.replace(/_/g, ' ') }} · #{{ detail.id }}
+            {{ humanize(detail.entityTypeName) }} · #{{ detail.id }}
           </template>
           <template v-else>Entity</template>
         </h1>
@@ -612,7 +882,7 @@ watch(
           />
         </template>
         <Button
-          v-if="canDelete && !editMode && !detail?.isArchived"
+          v-if="canDelete && !editMode && !detail?.isArchived && writableProps.length > 0"
           label="Delete"
           icon="pi pi-trash"
           severity="danger"
@@ -634,62 +904,8 @@ watch(
     <LoadingSkeleton v-if="loading" variant="detail" :rows="6" label="Loading entity" />
 
     <template v-else-if="detail">
-      <nav
-        v-if="hasRelationshipTabs"
-        class="flex flex-wrap gap-2 mb-4"
-        aria-label="Record sections"
-      >
-        <button
-          type="button"
-          class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors border"
-          :class="
-            activeTab === 'overview'
-              ? 'border-brand-600 bg-brand-50 text-brand-800'
-              : 'border-line bg-white text-ink-600 hover:bg-surface/80'
-          "
-          @click="activeTab = 'overview'"
-        >
-          Overview
-        </button>
-        <button
-          v-for="tab in outboundRelTabs"
-          :key="relTabKey(tab)"
-          type="button"
-          class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors border"
-          :class="
-            activeTab === relTabKey(tab)
-              ? 'border-brand-600 bg-brand-50 text-brand-800'
-              : 'border-line bg-white text-ink-600 hover:bg-surface/80'
-          "
-          @click="activeTab = relTabKey(tab)"
-        >
-          {{ humanize(tab.name) }}
-          <span class="text-ink-400 font-normal">
-            → {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
-          </span>
-        </button>
-        <button
-          v-for="tab in inboundRelTabs"
-          :key="relTabKey(tab)"
-          type="button"
-          class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors border"
-          :class="
-            activeTab === relTabKey(tab)
-              ? 'border-brand-600 bg-brand-50 text-brand-800'
-              : 'border-line bg-white text-ink-600 hover:bg-surface/80'
-          "
-          @click="activeTab = relTabKey(tab)"
-        >
-          {{ humanize(tab.name) }}
-          <span class="text-ink-400 font-normal">
-            ← {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
-          </span>
-        </button>
-      </nav>
-
       <div
         v-if="isDeal"
-        v-show="activeTab === 'overview'"
         class="rounded-xl border border-line bg-white p-6 mb-6"
       >
         <div class="flex items-start justify-between gap-3 mb-4">
@@ -771,7 +987,7 @@ watch(
         </p>
       </div>
 
-      <div v-show="activeTab === 'overview'" class="rounded-xl border border-line bg-white p-6 mb-6">
+      <div class="rounded-xl border border-line bg-white p-6 mb-6">
         <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-4">
           Properties
         </h2>
@@ -841,124 +1057,144 @@ watch(
         </dl>
       </div>
 
-      <template v-for="tab in outboundRelTabs" :key="`panel-${relTabKey(tab)}`">
-        <div
-          v-show="activeTab === relTabKey(tab)"
-          class="rounded-xl border border-line bg-white p-6 mb-6"
-        >
-          <div class="flex items-start justify-between gap-2 mb-4">
-            <div>
-              <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-1">
-                {{ humanize(tab.name) }}
-              </h2>
-              <p class="text-xs text-ink-500">
-                Linked {{ tab.otherEntityTypeName.replace(/_/g, ' ') }} records (outgoing).
-              </p>
-            </div>
-            <Button
-              v-if="canEditCurrentEntity"
-              icon="pi pi-link"
-              label="Link existing"
-              severity="secondary"
-              outlined
-              size="small"
-              @click="openLinkModal(tab)"
-            />
-          </div>
-          <ul v-if="outboundLinksForTab(tab).length" class="space-y-2 text-sm">
-            <li
-              v-for="r in outboundLinksForTab(tab)"
-              :key="`o-${r.relationshipTypeId}-${r.relatedEntityId}`"
-              class="flex items-center gap-2"
-            >
-              <button
-                type="button"
-                class="text-left flex-1 rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
-                @click="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
-              >
-                <span class="text-brand-700">{{ r.relatedEntityTypeName.replace(/_/g, ' ') }}</span>
-                <span class="font-mono text-xs text-ink-600"> #{{ r.relatedEntityId }}</span>
-                <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-1">
-                  {{ previewLabel(r.previewPropertyValues) }}
-                </span>
-              </button>
-              <Button
-                v-if="canEditCurrentEntity"
-                icon="pi pi-times"
-                severity="danger"
-                text
-                size="small"
-                title="Unlink"
-                @click="unlinkRelationship(r.relationshipId)"
-              />
-            </li>
-          </ul>
-          <p v-else class="text-sm text-ink-500">No links of this type yet.</p>
-        </div>
-      </template>
-
-      <template v-for="tab in inboundRelTabs" :key="`panel-${relTabKey(tab)}`">
-        <div
-          v-show="activeTab === relTabKey(tab)"
-          class="rounded-xl border border-line bg-white p-6 mb-6"
-        >
-          <div class="flex items-start justify-between gap-2 mb-4">
-            <div>
-              <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-1">
-                {{ humanize(tab.name) }}
-              </h2>
-              <p class="text-xs text-ink-500">
-                {{ tab.otherEntityTypeName.replace(/_/g, ' ') }}
-                records pointing here (incoming).
-              </p>
-            </div>
-            <Button
-              v-if="canEditCurrentEntity"
-              icon="pi pi-link"
-              label="Link existing"
-              severity="secondary"
-              outlined
-              size="small"
-              @click="openLinkModal(tab)"
-            />
-          </div>
-          <ul v-if="inboundLinksFor(tab.relationshipTypeId).length" class="space-y-2 text-sm">
-            <li
-              v-for="r in inboundLinksFor(tab.relationshipTypeId)"
-              :key="`i-${r.relationshipTypeId}-${r.relatedEntityId}`"
-              class="flex items-center gap-2"
-            >
-              <button
-                type="button"
-                class="text-left flex-1 rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
-                @click="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
-              >
-                <span class="text-brand-700">{{ r.relatedEntityTypeName.replace(/_/g, ' ') }}</span>
-                <span class="font-mono text-xs text-ink-600"> #{{ r.relatedEntityId }}</span>
-                <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-1">
-                  {{ previewLabel(r.previewPropertyValues) }}
-                </span>
-              </button>
-              <Button
-                v-if="canEditCurrentEntity"
-                icon="pi pi-times"
-                severity="danger"
-                text
-                size="small"
-                title="Unlink"
-                @click="unlinkRelationship(r.relationshipId)"
-              />
-            </li>
-          </ul>
-          <p v-else class="text-sm text-ink-500">No links of this type yet.</p>
-        </div>
-      </template>
     </template>
+    </div>
+
+    <aside v-if="detail && !loading" class="rounded-xl border border-line bg-white p-5 lg:sticky lg:top-6">
+      <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-4">Connections</h2>
+
+      <p v-if="!hasRelationshipTabs" class="text-sm text-ink-500">No connections defined.</p>
+
+      <div
+        v-for="tab in [...outboundRelTabs, ...inboundRelTabs]"
+        :key="relTabKey(tab)"
+        class="mb-5 last:mb-0"
+      >
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
+            {{ humanize(tab.otherEntityTypeName) }}
+          </span>
+          <div v-if="canEditCurrentEntity && !currentEntityAllReadonly && !relatedTypeAllReadonly(tab.otherEntityTypeName)" class="flex items-center gap-0.5">
+            <Button
+              v-if="tabIsReassign(tab)"
+              icon="pi pi-sync"
+              severity="secondary"
+              text
+              size="small"
+              title="Reassign"
+              @click="openLinkModal(tab)"
+            />
+            <Button
+              v-else
+              icon="pi pi-link"
+              severity="secondary"
+              text
+              size="small"
+              title="Link existing"
+              @click="openLinkModal(tab)"
+            />
+            <Button
+              v-if="tabAllowsMultiple(tab) && tabCanCreateLink(tab)"
+              icon="pi pi-plus"
+              severity="secondary"
+              text
+              size="small"
+              title="Create and link new"
+              @click="openCreateLinkModal(tab)"
+            />
+          </div>
+        </div>
+
+        <ul class="space-y-1.5 text-sm">
+          <li
+            v-for="r in (tab.direction === 'out' ? outboundLinksForTab(tab) : inboundLinksFor(tab.relationshipTypeId))"
+            :key="`${relTabKey(tab)}-${r.relatedEntityId}`"
+            class="rounded-lg border border-line overflow-hidden"
+          >
+            <div class="flex items-center gap-1">
+              <button
+                type="button"
+                class="flex-1 text-left px-3 py-2 hover:bg-surface/60 transition-colors"
+                @click="toggleExpand(relTabKey(tab), r.relatedEntityId)"
+              >
+                <span class="flex items-center gap-1.5">
+                  <i
+                    class="pi text-xs text-ink-400"
+                    :class="isExpanded(relTabKey(tab), r.relatedEntityId) ? 'pi-chevron-down' : 'pi-chevron-right'"
+                  />
+                  <span class="text-brand-700 font-medium">{{ humanize(r.relatedEntityTypeName) }}</span>
+                  <span class="font-mono text-xs text-ink-500">#{{ r.relatedEntityId }}</span>
+                </span>
+                <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-0.5 pl-5">
+                  {{ previewLabel(r.previewPropertyValues) }}
+                </span>
+              </button>
+              <Button
+                icon="pi pi-arrow-right"
+                severity="secondary"
+                text
+                size="small"
+                title="Go to entity"
+                @click.stop="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
+              />
+              <Button
+                v-if="canEditCurrentEntity && !currentEntityAllReadonly && !(tabIsRequired(tab) && tabLinkCount(tab) <= 1) && !relatedTypeAllReadonly(r.relatedEntityTypeName)"
+                icon="pi pi-times"
+                severity="danger"
+                text
+                size="small"
+                title="Unlink"
+                @click.stop="unlinkRelationship(r.relationshipId)"
+              />
+            </div>
+
+            <div
+              v-if="isExpanded(relTabKey(tab), r.relatedEntityId)"
+              class="border-t border-line px-3 py-2 bg-surface/30"
+            >
+              <div
+                v-if="expandedLoading.has(r.relatedEntityId)"
+                class="flex items-center gap-2 text-xs text-ink-500 py-1"
+              >
+                <i class="pi pi-spin pi-spinner text-xs" />
+                <span>Loading…</span>
+              </div>
+              <dl v-else-if="expandedCache.get(r.relatedEntityId)" class="space-y-1.5">
+                <div
+                  v-for="p in expandedCache.get(r.relatedEntityId)!.propertyValues"
+                  :key="p.propertyId"
+                  class="flex gap-2 text-xs"
+                >
+                  <dt class="text-ink-500 min-w-[80px] shrink-0">{{ humanize(p.propertyName) }}</dt>
+                  <dd class="text-ink-800 break-all">{{ formatDisplayValue(p) }}</dd>
+                </div>
+              </dl>
+              <p v-else class="text-xs text-ink-500 py-1">Could not load properties.</p>
+            </div>
+          </li>
+        </ul>
+
+        <template v-if="(tab.direction === 'out' ? outboundLinksForTab(tab) : inboundLinksFor(tab.relationshipTypeId)).length === 0">
+          <button
+            v-if="canEditCurrentEntity && !currentEntityAllReadonly && tabAllowsMultiple(tab) && tabCanCreateLink(tab) && !relatedTypeAllReadonly(tab.otherEntityTypeName)"
+            type="button"
+            class="mt-1 flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-800 transition-colors"
+            @click="openCreateLinkModal(tab)"
+          >
+            <i class="pi pi-plus text-xs" />
+            <span>Add {{ humanize(tab.otherEntityTypeName) }}</span>
+          </button>
+          <p v-else class="text-xs text-ink-500 mt-1">
+            No {{ humanize(tab.otherEntityTypeName) }} for this {{ humanize(detail.entityTypeName) }}
+          </p>
+        </template>
+      </div>
+    </aside>
   </section>
 
   <Dialog
     v-model:visible="linkModalOpen"
-    :header="linkModalTab ? `Link ${linkModalTab.otherEntityTypeName.replace(/_/g, ' ')}` : 'Link'"
+    :header="linkModalTab ? `${linkIsReassign ? 'Reassign' : 'Link'} ${humanize(linkModalTab.otherEntityTypeName)}` : 'Link'"
     modal
     class="w-full max-w-lg"
   >
@@ -979,11 +1215,109 @@ watch(
           class="w-full text-left rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
           @click="confirmLink(item)"
         >
-          <span class="text-brand-700">{{ item.entityTypeName.replace(/_/g, ' ') }}</span>
+          <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
           <span class="font-mono text-xs text-ink-600"> #{{ item.id }}</span>
           <span class="block text-xs text-ink-500 mt-0.5">{{ previewLinkLabel(item) }}</span>
         </button>
       </li>
     </ul>
+  </Dialog>
+
+  <Dialog
+    v-model:visible="createLinkOpen"
+    :header="createLinkTargetType ? `New ${humanize(createLinkTargetType.name)}` : 'Create & link'"
+    modal
+    class="w-full max-w-lg"
+  >
+    <div v-if="createLinkTargetType" class="flex flex-col gap-4 py-2">
+      <template v-for="r in createLinkOtherRequired" :key="r.relationshipTypeId">
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-medium text-ink-600">
+            {{ humanize(r.name) }} <span class="text-danger">*</span>
+          </label>
+          <Select
+            v-model="createLinkOtherRelPick[r.relationshipTypeId]"
+            :options="createLinkRelOptions(r.relationshipTypeId)"
+            option-label="label"
+            option-value="value"
+            :placeholder="`Choose ${humanize(r.targetEntityTypeName)}`"
+            class="w-full"
+            filter
+          />
+        </div>
+      </template>
+
+      <template v-for="p in createLinkTargetType.properties.filter(p => !p.isReadonly)" :key="p.propertyId">
+        <div class="flex flex-col gap-1.5">
+          <label :for="`cl-${p.propertyId}`" class="text-xs font-medium text-ink-600">
+            {{ humanize(p.name) }}
+            <span v-if="p.dataType !== 'Bool'" class="text-danger">*</span>
+          </label>
+          <Select
+            v-if="p.dataType === 'String' && p.allowedValues?.length > 0"
+            :id="`cl-${p.propertyId}`"
+            v-model="createLinkValues[p.propertyId] as string"
+            :options="p.allowedValues"
+            placeholder="Select..."
+            class="w-full"
+            :invalid="!!createLinkPropError(p)"
+          />
+          <InputText
+            v-else-if="p.dataType === 'String'"
+            :id="`cl-${p.propertyId}`"
+            v-model="createLinkValues[p.propertyId] as string"
+            class="w-full !h-10"
+            :invalid="!!createLinkPropError(p)"
+          />
+          <InputNumber
+            v-else-if="p.dataType === 'Int'"
+            :input-id="`cl-${p.propertyId}`"
+            v-model="createLinkValues[p.propertyId] as number"
+            :max-fraction-digits="0"
+            class="w-full"
+            :invalid="!!createLinkPropError(p)"
+          />
+          <InputNumber
+            v-else-if="p.dataType === 'Decimal'"
+            :input-id="`cl-${p.propertyId}`"
+            v-model="createLinkValues[p.propertyId] as number"
+            :min-fraction-digits="0"
+            :max-fraction-digits="4"
+            class="w-full"
+            :invalid="!!createLinkPropError(p)"
+          />
+          <DatePicker
+            v-else-if="p.dataType === 'Date'"
+            :input-id="`cl-${p.propertyId}`"
+            v-model="createLinkValues[p.propertyId] as Date | null"
+            date-format="yy-mm-dd"
+            show-icon
+            class="w-full"
+            :invalid="!!createLinkPropError(p)"
+          />
+          <ToggleSwitch
+            v-else-if="p.dataType === 'Bool'"
+            :input-id="`cl-${p.propertyId}`"
+            v-model="createLinkValues[p.propertyId] as boolean"
+          />
+          <small v-if="createLinkPropError(p)" class="text-xs text-danger">{{ createLinkPropError(p) }}</small>
+        </div>
+      </template>
+
+      <Message v-if="createLinkError" severity="error" :closable="false" class="!my-0">
+        {{ createLinkError }}
+      </Message>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <Button label="Cancel" severity="secondary" text type="button" @click="createLinkOpen = false" />
+        <Button
+          label="Create & link"
+          icon="pi pi-check"
+          :loading="createLinkSubmitting"
+          :disabled="createLinkSubmitting"
+          @click="submitCreateLink"
+        />
+      </div>
+    </div>
   </Dialog>
 </template>

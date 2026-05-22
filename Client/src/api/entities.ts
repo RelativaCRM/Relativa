@@ -105,6 +105,8 @@ export interface ListEntitiesQuery {
   entityTypeId?: number;
   q?: string;
   take?: number;
+  excludeLinkedSourceRelTypeId?: number;
+  excludeLinkedTargetRelTypeId?: number;
 }
 
 const CORE = '/core/api/v1';
@@ -115,6 +117,8 @@ function buildEntityListQuery(q?: ListEntitiesQuery): string {
   if (q.entityTypeId != null) params.set('entityTypeId', String(q.entityTypeId));
   if (q.q != null && q.q.trim()) params.set('q', q.q.trim());
   if (q.take != null) params.set('take', String(q.take));
+  if (q.excludeLinkedSourceRelTypeId != null) params.set('excludeLinkedSourceRelTypeId', String(q.excludeLinkedSourceRelTypeId));
+  if (q.excludeLinkedTargetRelTypeId != null) params.set('excludeLinkedTargetRelTypeId', String(q.excludeLinkedTargetRelTypeId));
   const s = params.toString();
   return s ? `?${s}` : '';
 }

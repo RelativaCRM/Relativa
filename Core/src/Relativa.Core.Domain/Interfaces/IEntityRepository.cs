@@ -14,6 +14,8 @@ public interface IEntityRepository
         int? entityTypeId,
         string? searchQuery,
         int take,
+        int? excludeLinkedSourceRelTypeId = null,
+        int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default);
     Task<Entity?> GetByIdInWorkspaceAsync(int entityId, int workspaceId, CancellationToken ct = default);
     Task<Entity> CreateAsync(

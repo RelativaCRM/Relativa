@@ -109,7 +109,7 @@ def score_batch(request):
     try:
         config = _load_schema_config()
         _check_deadline(deadline)
-        _ensure_deal_analysis_entities(normalized, config, deadline)
+        _ensure_deal_analysis_entities(normalized, config, deadline, created_by_user_id=_extract_user_id(request))
         _check_deadline(deadline)
 
         analysis_rows = _load_analysis_state(normalized, config)

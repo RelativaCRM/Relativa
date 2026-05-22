@@ -41,9 +41,9 @@ const entityStore = useEntityStore();
 const workspaceId = computed(() => Number(route.params.workspaceId));
 
 const types = computed<EntityTypeDto[]>(() => entityStore.types);
-/** Types the user is allowed to create manually (excludes e.g. deal_analysis with all-readonly fields). */
+/** Types the user is allowed to create manually (standalone + non-UI-locked). Non-standalone types like notes are only creatable via the entity page "+" button. */
 const creatableTypes = computed(() =>
-  types.value.filter((t) => !isEntityTypeUiLocked(t)),
+  types.value.filter((t) => t.isStandalone && !isEntityTypeUiLocked(t)),
 );
 const selectedTypeId = ref<number | null>(null);
 const values = ref<Record<number, FieldValue>>({});

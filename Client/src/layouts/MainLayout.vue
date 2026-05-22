@@ -26,7 +26,7 @@ const showCreateWs = ref(false);
 const orgExpanded = ref(true);
 const wsExpanded = ref(true);
 const wsListExpanded = ref(false);
-const entitiesExpanded = ref(true);
+
 
 const newWsName = ref('');
 const creatingWs = ref(false);
@@ -107,13 +107,6 @@ async function handleOrgChange(orgId: number | null) {
   }
 }
 
-const workspaceRouteNames = new Set([
-  'workspace-entities',
-  'workspace-members',
-  'workspace-users',
-  'workspace-user',
-]);
-
 function formatTypeName(name: string): string {
   return name
     .split('_')
@@ -125,18 +118,10 @@ function formatTypeName(name: string): string {
 async function handleWorkspaceChange(wsId: number | null) {
   if (wsId == null) return;
   wsStore.setCurrentWorkspace(wsId);
-  const name = route.name;
-  if (name && workspaceRouteNames.has(String(name))) {
-    await router.push({
-      name,
-      params: { ...route.params, workspaceId: String(wsId) },
-    });
-  } else {
-    await router.push({
-      name: 'workspace-entities',
-      params: { workspaceId: String(wsId) },
-    });
-  }
+  await router.push({
+    name: 'workspace-dashboard',
+    params: { workspaceId: String(wsId) },
+  });
 }
 
 function handleLogout() {
@@ -286,6 +271,26 @@ onMounted(async () => {
       <RouterLink :to="{ name: 'home' }" class="flex items-center" aria-label="Relativa home">
         <BrandMark size="sm" />
       </RouterLink>
+
+      <Transition name="entity-nav">
+        <div v-if="inWorkspaceShell && entityStore.standaloneTypes.length" class="flex items-center gap-2">
+          <div class="w-px h-6 bg-line shrink-0" />
+          <RouterLink
+            v-for="type in entityStore.standaloneTypes"
+            :key="type.id"
+            :to="{ name: 'workspace-entities', params: { workspaceId: workspaceIdStr }, query: { entityType: type.name } }"
+            :class="[
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
+              route.query.entityType === type.name
+                ? 'bg-brand-50 text-brand-700 font-medium'
+                : 'text-ink-600 hover:bg-brand-50 hover:text-brand-700',
+            ]"
+          >
+            <span :class="['w-1.5 h-1.5 rounded-full shrink-0', route.query.entityType === type.name ? 'bg-brand-500' : 'bg-slate-300']" />
+            {{ formatTypeName(type.name) }}
+          </RouterLink>
+        </div>
+      </Transition>
     </header>
 
     <div class="flex-1 flex">
@@ -418,39 +423,13 @@ onMounted(async () => {
 
             <div v-if="wsExpanded" class="ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
 
-              <!-- Entities (collapsible) -->
-              <div class="relative flex items-stretch nav-entry">
-                <button
-                  type="button"
-                  class="group flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
-                  @click="entitiesExpanded = !entitiesExpanded"
-                >
-                  <span class="relative flex items-center justify-center w-4 h-4 shrink-0">
-                    <i class="pi pi-database text-[13px] absolute group-hover:opacity-0 transition-opacity" />
-                    <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', entitiesExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
-                  </span>
-                  <span class="truncate">Entities</span>
-                </button>
-              </div>
-
-              <!-- Entity type sub-entries -->
-              <div
-                v-if="entitiesExpanded && entityStore.standaloneTypes.length"
-                class="ml-4 flex flex-col border-l border-slate-200 pl-2 mb-1"
+              <RouterLink
+                :to="{ name: 'workspace-dashboard', params: { workspaceId: workspaceIdStr } }"
+                class="nav-link"
+                active-class="nav-link--active"
               >
-                <RouterLink
-                  v-for="type in entityStore.standaloneTypes"
-                  :key="type.id"
-                  :to="{ name: 'workspace-entities', params: { workspaceId: workspaceIdStr }, query: { entityType: type.name } }"
-                  :class="[
-                    'flex items-center gap-2.5 px-2 py-1.5 text-xs transition-colors hover:bg-brand-50 hover:text-brand-700',
-                    route.query.entityType === type.name ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink-500',
-                  ]"
-                >
-                  <span :class="['w-1.5 h-1.5 rounded-full shrink-0', route.query.entityType === type.name ? 'bg-brand-500' : 'bg-slate-300']" />
-                  {{ formatTypeName(type.name) }}
-                </RouterLink>
-              </div>
+                <i class="pi pi-th-large" />Dashboard
+              </RouterLink>
 
               <hr class="border-t border-slate-200 mx-1 my-1" />
               <RouterLink
@@ -598,5 +577,15 @@ onMounted(async () => {
 }
 .nav-link--logout:hover i {
   color: rgb(220 38 38);
+}
+
+.entity-nav-enter-active,
+.entity-nav-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.entity-nav-enter-from,
+.entity-nav-leave-to {
+  opacity: 0;
+  transform: translateX(-8px);
 }
 </style>

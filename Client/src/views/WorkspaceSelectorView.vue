@@ -39,7 +39,7 @@ const displayRole = roleDisplayName;
 function chooseWorkspace(ws: WorkspaceDto) {
   wsStore.setCurrentWorkspace(ws.id);
   router.push({
-    name: 'workspace-entities',
+    name: 'workspace-dashboard',
     params: { workspaceId: String(ws.id) },
   });
 }
@@ -54,7 +54,7 @@ async function handleCreate() {
       orgStore.currentOrgId,
     );
     router.push({
-      name: 'workspace-entities',
+      name: 'workspace-dashboard',
       params: { workspaceId: String(ws.id) },
     });
   } catch (err) {
@@ -79,7 +79,7 @@ onMounted(async () => {
     if (only) {
       wsStore.setCurrentWorkspace(only.id);
       router.replace({
-        name: 'workspace-entities',
+        name: 'workspace-dashboard',
         params: { workspaceId: String(only.id) },
       });
       return;
