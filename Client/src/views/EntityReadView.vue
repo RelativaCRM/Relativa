@@ -80,6 +80,11 @@ const writableProps = computed(() => {
   return d.propertyValues.filter((p) => !p.isReadonly);
 });
 
+const currentEntityAllReadonly = computed(() => {
+  const d = detail.value;
+  return !!d && d.propertyValues.length > 0 && writableProps.value.length === 0;
+});
+
 const typeSchema = computed(() => {
   const d = detail.value;
   if (!d) return null;
@@ -100,6 +105,11 @@ function tabRelSchema(tab: EdgeRelTab) {
 
 function tabIsRequired(tab: EdgeRelTab): boolean {
   return tabRelSchema(tab)?.isRequired ?? false;
+}
+
+function relatedTypeAllReadonly(typeName: string): boolean {
+  const t = entityStore.types.find((et) => et.name === typeName);
+  return !!t && t.properties.length > 0 && t.properties.every((p) => p.isReadonly);
 }
 
 function tabCardinality(tab: EdgeRelTab): string | null {
@@ -872,7 +882,7 @@ watch(
           />
         </template>
         <Button
-          v-if="canDelete && !editMode && !detail?.isArchived"
+          v-if="canDelete && !editMode && !detail?.isArchived && writableProps.length > 0"
           label="Delete"
           icon="pi pi-trash"
           severity="danger"
@@ -1064,7 +1074,7 @@ watch(
           <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
             {{ humanize(tab.otherEntityTypeName) }}
           </span>
-          <div v-if="canEditCurrentEntity" class="flex items-center gap-0.5">
+          <div v-if="canEditCurrentEntity && !currentEntityAllReadonly && !relatedTypeAllReadonly(tab.otherEntityTypeName)" class="flex items-center gap-0.5">
             <Button
               v-if="tabIsReassign(tab)"
               icon="pi pi-sync"
@@ -1128,7 +1138,7 @@ watch(
                 @click.stop="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
               />
               <Button
-                v-if="canEditCurrentEntity && !(tabIsRequired(tab) && tabLinkCount(tab) <= 1)"
+                v-if="canEditCurrentEntity && !currentEntityAllReadonly && !(tabIsRequired(tab) && tabLinkCount(tab) <= 1) && !relatedTypeAllReadonly(r.relatedEntityTypeName)"
                 icon="pi pi-times"
                 severity="danger"
                 text
@@ -1166,7 +1176,7 @@ watch(
 
         <template v-if="(tab.direction === 'out' ? outboundLinksForTab(tab) : inboundLinksFor(tab.relationshipTypeId)).length === 0">
           <button
-            v-if="canEditCurrentEntity && tabAllowsMultiple(tab) && tabCanCreateLink(tab)"
+            v-if="canEditCurrentEntity && !currentEntityAllReadonly && tabAllowsMultiple(tab) && tabCanCreateLink(tab) && !relatedTypeAllReadonly(tab.otherEntityTypeName)"
             type="button"
             class="mt-1 flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-800 transition-colors"
             @click="openCreateLinkModal(tab)"

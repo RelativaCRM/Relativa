@@ -204,6 +204,10 @@ public sealed class EntityService(
             ?? throw new KeyNotFoundException($"Entity {entityId} not found in workspace {workspaceId}.");
         await EnsureCanAccessEntityAsync(userId, workspaceId, entity, ct);
 
+        var typeProps = await entityRepository.GetTypePropertiesAsync(entity.EntityTypeId, ct);
+        if (typeProps.Count > 0 && typeProps.All(tp => tp.Property.IsReadonly))
+            throw new ArgumentException("Cannot delete an entity whose properties are all read-only.");
+
         await entityRepository.ArchiveAsync(entity.Id, ct);
 
         if (auditOutboxWriter is not null)
@@ -540,6 +544,10 @@ public sealed class EntityService(
         if (source.IsArchived || target.IsArchived)
             throw new ArgumentException("Cannot create a relationship involving an archived entity.");
 
+        var targetTypeProps = await entityRepository.GetTypePropertiesAsync(target.EntityTypeId, ct);
+        if (targetTypeProps.Count > 0 && targetTypeProps.All(tp => tp.Property.IsReadonly))
+            throw new ArgumentException("Cannot link an entity whose properties are all read-only.");
+
         if (source.EntityTypeId != relType.SourceEntityTypeId)
             throw new ArgumentException($"Source entity type does not match relationship type '{relType.Name}'.");
 
@@ -588,6 +596,10 @@ public sealed class EntityService(
 
         if (rel.RelationshipType.IsRequired)
             throw new ArgumentException($"Cannot delete required relationship '{rel.RelationshipType.Name}'.");
+
+        var targetTypeProps = await entityRepository.GetTypePropertiesAsync(rel.TargetEntity.EntityTypeId, ct);
+        if (targetTypeProps.Count > 0 && targetTypeProps.All(tp => tp.Property.IsReadonly))
+            throw new ArgumentException("Cannot unlink an entity whose properties are all read-only.");
 
         await entityRepository.RemoveRelationshipAsync(relationshipId, ct);
     }
