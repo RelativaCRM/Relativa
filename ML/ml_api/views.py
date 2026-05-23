@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 
 from rest_framework.decorators import api_view
@@ -19,6 +20,8 @@ from .recalculate_service import (
     ANALYSIS_PROP_SOURCE_UPDATED_AT,
     ANALYSIS_PROP_STAGE_ENCODED,
     BATCH_TIMEOUT_SECONDS,
+    CLIENT_PROP_LIFETIME_VALUE,
+    CLIENT_PROP_TENURE_DAYS,
     CONTRACT_PROP_AMOUNT,
     DAYS_UNTIL_CLOSE_MEDIAN,
     DEAL_PROP_CLOSURE_SCORE,
@@ -34,6 +37,7 @@ from .recalculate_service import (
     _check_deadline,
     _ensure_deal_analysis_entities,
     _load_analysis_state,
+    _load_client_inputs,
     _load_contract_inputs,
     _load_deal_inputs,
     _load_schema_config,
@@ -115,6 +119,7 @@ def score_batch(request):
         analysis_rows = _load_analysis_state(normalized, config)
         deal_rows = _load_deal_inputs(normalized, config)
         contract_rows = _load_contract_inputs(normalized, config)
+        client_rows = _load_client_inputs(normalized, config)
         contracts_by_deal = {}
         for row in contract_rows:
             contracts_by_deal.setdefault(row["deal_id"], []).append(row)
@@ -129,6 +134,7 @@ def score_batch(request):
                     None,
                     deal_rows.get(deal_id, {}),
                     contracts_by_deal.get(deal_id, []),
+                    client_rows.get(deal_id, {}),
                 )
                 continue
 
@@ -138,20 +144,31 @@ def score_batch(request):
                 stale_analysis_ids.append(deal_id)
                 continue
 
+            if _needs_analysis_refresh(
+                analysis,
+                deal_rows.get(deal_id, {}),
+                contracts_by_deal.get(deal_id, []),
+            ):
+                stale_analysis_ids.append(deal_id)
+                continue
+
             results_by_id[deal_id] = _score_or_diagnose(
                 analysis,
                 deal_rows.get(deal_id, {}),
                 contracts_by_deal.get(deal_id, []),
+                client_rows.get(deal_id, {}),
             )
 
         if stale_analysis_ids:
             recompute_deal_analysis(stale_analysis_ids, deadline=deadline)
             refreshed = _load_analysis_state(stale_analysis_ids, config)
+            refreshed_clients = _load_client_inputs(stale_analysis_ids, config)
             for deal_id in stale_analysis_ids:
                 results_by_id[deal_id] = _score_or_diagnose(
                     refreshed.get(deal_id),
                     deal_rows.get(deal_id, {}),
                     contracts_by_deal.get(deal_id, []),
+                    refreshed_clients.get(deal_id, {}),
                 )
 
         _check_deadline(deadline)
@@ -206,8 +223,71 @@ def _persist_scores(scored_items, config):
 
 _ALLOWED_STATUSES_HUMAN = "opened, pending, closed, or revoked"
 
+CLOSURE_FEATURE_ORDER = (
+    "avg_deal_value_log",
+    "deal_value_log",
+    "days_since_created",
+    "stage_encoded",
+    "num_interactions",
+    "days_until_expected_close",
+    "historical_close_rate",
+    "client_lifetime_value_log",
+    "client_tenure_days",
+)
 
-def _score_or_diagnose(analysis, deal_row, contracts):
+CHURN_FEATURE_ORDER = (
+    "days_since_last_contact",
+    "num_open_deals",
+    "avg_deal_value_log",
+    "historical_close_rate",
+    "client_lifetime_value_log",
+    "client_tenure_days",
+    "days_until_expected_close",
+)
+
+
+def _log1p(value):
+    if value is None:
+        return 0.0
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return math.log1p(max(0.0, numeric))
+
+
+def _needs_analysis_refresh(analysis, deal_row, contracts, tolerance=0.01):
+    if analysis is None:
+        return False
+    current_avg = _current_avg_deal_value(deal_row, contracts)
+    if current_avg is None:
+        return False
+    stored_avg = analysis.get(ANALYSIS_PROP_AVG_DEAL_VALUE)
+    if stored_avg is None:
+        return True
+    try:
+        return abs(float(stored_avg) - float(current_avg)) > tolerance
+    except (TypeError, ValueError):
+        return True
+
+
+def _current_avg_deal_value(deal_row, contracts):
+    if contracts:
+        amounts = [
+            float(c.get(CONTRACT_PROP_AMOUNT) or 0.0)
+            for c in contracts
+            if c.get(CONTRACT_PROP_AMOUNT) is not None
+        ]
+        if amounts:
+            return float(sum(amounts) / len(amounts))
+
+    deal_value = deal_row.get("deal_value")
+    if deal_value is None:
+        return None
+    return float(deal_value)
+
+
+def _score_or_diagnose(analysis, deal_row, contracts, client_row):
     """Return the score dict for a single deal, or a structured 'why missing' reason."""
     reason = _diagnose_missing_inputs(analysis, deal_row, contracts)
     if reason is not None:
@@ -218,19 +298,47 @@ def _score_or_diagnose(analysis, deal_row, contracts):
     hist_close_rate = analysis.get(ANALYSIS_PROP_HIST_CLOSE_RATE)
     hist_close_rate = float(hist_close_rate) if hist_close_rate is not None else float(HIST_CLOSE_RATE_MEDIAN)
 
-    closure_input = [[
-        float(analysis[ANALYSIS_PROP_AVG_DEAL_VALUE]),
-        int(analysis[ANALYSIS_PROP_DAYS_SINCE_CREATED]),
-        int(analysis[ANALYSIS_PROP_STAGE_ENCODED]),
-        int(analysis[ANALYSIS_PROP_NUM_INTERACTIONS]),
-        days_until_close,
-    ]]
-    churn_input = [[
-        int(analysis[ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT]),
-        int(analysis[ANALYSIS_PROP_NUM_OPEN_DEALS]),
-        float(analysis[ANALYSIS_PROP_AVG_DEAL_VALUE]),
-        hist_close_rate,
-    ]]
+    avg_deal_value = float(analysis[ANALYSIS_PROP_AVG_DEAL_VALUE])
+    deal_value = deal_row.get("deal_value")
+    if deal_value in (None, 0):
+        deal_value = avg_deal_value
+
+    num_open_deals = int(analysis[ANALYSIS_PROP_NUM_OPEN_DEALS])
+    client_lifetime_value = client_row.get(CLIENT_PROP_LIFETIME_VALUE)
+    if client_lifetime_value is None:
+        client_lifetime_value = avg_deal_value * max(1, num_open_deals)
+
+    client_tenure_days = client_row.get(CLIENT_PROP_TENURE_DAYS)
+    if client_tenure_days is None:
+        client_tenure_days = int(analysis[ANALYSIS_PROP_DAYS_SINCE_CREATED])
+
+    avg_deal_value_log = _log1p(avg_deal_value)
+    deal_value_log = _log1p(deal_value)
+    client_lifetime_value_log = _log1p(client_lifetime_value)
+
+    closure_features = {
+        "avg_deal_value_log": avg_deal_value_log,
+        "deal_value_log": deal_value_log,
+        "days_since_created": int(analysis[ANALYSIS_PROP_DAYS_SINCE_CREATED]),
+        "stage_encoded": int(analysis[ANALYSIS_PROP_STAGE_ENCODED]),
+        "num_interactions": int(analysis[ANALYSIS_PROP_NUM_INTERACTIONS]),
+        "days_until_expected_close": float(days_until_close),
+        "historical_close_rate": float(hist_close_rate),
+        "client_lifetime_value_log": client_lifetime_value_log,
+        "client_tenure_days": int(client_tenure_days),
+    }
+    churn_features = {
+        "days_since_last_contact": int(analysis[ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT]),
+        "num_open_deals": num_open_deals,
+        "avg_deal_value_log": avg_deal_value_log,
+        "historical_close_rate": float(hist_close_rate),
+        "client_lifetime_value_log": client_lifetime_value_log,
+        "client_tenure_days": int(client_tenure_days),
+        "days_until_expected_close": float(days_until_close),
+    }
+
+    closure_input = [[closure_features[key] for key in CLOSURE_FEATURE_ORDER]]
+    churn_input = [[churn_features[key] for key in CHURN_FEATURE_ORDER]]
     closure_score = float(MlApiConfig.closure_model.predict_proba(closure_input)[0][1]) * 100.0
     churn_score = float(MlApiConfig.churn_model.predict_proba(churn_input)[0][1]) * 100.0
     return {

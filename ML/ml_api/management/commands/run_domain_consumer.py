@@ -176,18 +176,28 @@ def _touch_deal_analysis_source_updated_at(payload_js: str | None, extra: dict) 
               AND er.source_entity_id = %s
             LIMIT 1
         ),
-        prop AS (
-            SELECT id AS property_id
-            FROM property
-            WHERE name = 'source_updated_at'
-              AND organization_id IS NULL
-            LIMIT 1
-        )
+                prop_source AS (
+                        SELECT id AS property_id
+                        FROM property
+                        WHERE name = 'source_updated_at'
+                            AND organization_id IS NULL
+                        LIMIT 1
+                ),
+                prop_calc AS (
+                        SELECT id AS property_id
+                        FROM property
+                        WHERE name = 'calculated_at'
+                            AND organization_id IS NULL
+                        LIMIT 1
+                )
         INSERT INTO entity_property_value (
             entity_id, property_id, value_string, value_int, value_decimal, value_bool, value_date
         )
-        SELECT rel.analysis_entity_id, prop.property_id, NULL, NULL, NULL, NULL, %s
-        FROM rel, prop
+                SELECT rel.analysis_entity_id, prop_source.property_id, NULL, NULL, NULL, NULL, %s
+                FROM rel, prop_source
+                UNION ALL
+                SELECT rel.analysis_entity_id, prop_calc.property_id, NULL, NULL, NULL, NULL, NULL
+                FROM rel, prop_calc
         ON CONFLICT (entity_id, property_id)
         DO UPDATE SET value_date = EXCLUDED.value_date
         '''
