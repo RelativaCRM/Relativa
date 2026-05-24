@@ -7,13 +7,16 @@ public interface IEntityRepository
     Task<EntityType?> GetEntityTypeByIdAsync(int entityTypeId, CancellationToken ct = default);
     Task<List<EntityRelationshipType>> GetOutgoingRelationshipTypesAsync(int entityTypeId, CancellationToken ct = default);
     Task<List<EntityTypeProperty>> GetTypePropertiesAsync(int entityTypeId, CancellationToken ct = default);
-    Task<List<Entity>> GetByWorkspaceAsync(
+    Task<(List<Entity> Items, int Total)> GetByWorkspaceAsync(
         int workspaceId,
         int requesterUserId,
         int requesterRolePriority,
         int? entityTypeId,
         string? searchQuery,
+        int skip,
         int take,
+        IReadOnlyList<ResolvedFilterCondition> filters,
+        IReadOnlyList<EntitySortField> sort,
         int? excludeLinkedSourceRelTypeId = null,
         int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default);

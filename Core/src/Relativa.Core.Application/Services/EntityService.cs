@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using FluentValidation;
+using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Entity;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
@@ -17,30 +18,150 @@ public sealed class EntityService(
     IValidator<UpdateEntityRequest> updateValidator,
     IOutboxWriter? auditOutboxWriter = null) : IEntityService
 {
-    public async Task<List<EntityListItemDto>> GetByWorkspaceAsync(
+    public async Task<EntityPagedResult> GetByWorkspaceAsync(
         int workspaceId,
         int userId,
         int? entityTypeId,
         string? searchQuery,
+        int skip,
         int take,
+        IReadOnlyList<EntityFilterCondition>? filters = null,
+        IReadOnlyList<EntitySortField>? sort = null,
         int? excludeLinkedSourceRelTypeId = null,
         int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default)
     {
-        await RequirePermission(userId, workspaceId, "view_entities", ct);
-        var callerMembership = await GetMembershipOrThrowAsync(userId, workspaceId, ct);
+        await RequirePermission(userId, workspaceId, WorkspacePermissions.ViewEntities, ct);
 
-        var entities = await entityRepository.GetByWorkspaceAsync(
+        // Org owners bypass workspace role lookup — give them max priority (sees all entities)
+        int callerPriority;
+        if (await workspaceAccess.IsOrgOwnerOfWorkspaceAsync(userId, workspaceId, ct))
+            callerPriority = int.MinValue;
+        else
+        {
+            var membership = await GetMembershipOrThrowAsync(userId, workspaceId, ct);
+            callerPriority = membership.Role.Priority;
+        }
+
+        // Resolve and validate filter conditions
+        var resolvedFilters = new List<ResolvedFilterCondition>();
+        var resolvedSort = new List<EntitySortField>();
+
+        if (filters is { Count: > 0 })
+        {
+            if (entityTypeId is null or <= 0)
+                throw new ArgumentException("entityTypeId is required when filters are specified.");
+
+            var typeProperties = await entityRepository.GetTypePropertiesAsync(entityTypeId.Value, ct);
+            if (typeProperties.Count == 0)
+                throw new KeyNotFoundException($"Entity type {entityTypeId} not found.");
+
+            var propertyMap = typeProperties.ToDictionary(tp => tp.PropertyId, tp => tp.Property);
+            var canFilterReadonly = await workspaceAccess.HasWorkspacePermissionAsync(
+                userId, workspaceId, WorkspacePermissions.ViewAnalytics, ct);
+
+            foreach (var f in filters)
+            {
+                if (!propertyMap.TryGetValue(f.PropertyId, out var prop))
+                    throw new ArgumentException($"Property {f.PropertyId} does not belong to entity type {entityTypeId}.");
+
+                // RBAC: readonly-property filters silently dropped for users without view_analytics
+                if (prop.IsReadonly && !canFilterReadonly)
+                    continue;
+
+                resolvedFilters.Add(ResolveFilter(f, prop));
+            }
+        }
+
+        if (sort is { Count: > 0 })
+        {
+            if (entityTypeId is null or <= 0)
+                throw new ArgumentException("entityTypeId is required when sort is specified.");
+
+            var typeProperties = await entityRepository.GetTypePropertiesAsync(entityTypeId.Value, ct);
+            var propertyMap = typeProperties.ToDictionary(tp => tp.PropertyId, tp => tp.Property);
+            var canFilterReadonly = await workspaceAccess.HasWorkspacePermissionAsync(
+                userId, workspaceId, WorkspacePermissions.ViewAnalytics, ct);
+
+            foreach (var s in sort)
+            {
+                if (!propertyMap.ContainsKey(s.PropertyId))
+                    throw new ArgumentException($"Sort property {s.PropertyId} does not belong to entity type {entityTypeId}.");
+
+                var prop = propertyMap[s.PropertyId];
+                if (prop.IsReadonly && !canFilterReadonly)
+                    continue;
+
+                if (!s.Direction.Equals("asc", StringComparison.OrdinalIgnoreCase)
+                    && !s.Direction.Equals("desc", StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException($"Invalid sort direction '{s.Direction}'. Use 'asc' or 'desc'.");
+
+                resolvedSort.Add(new EntitySortField(s.PropertyId, s.Direction.ToLowerInvariant()));
+            }
+        }
+
+        var (items, total) = await entityRepository.GetByWorkspaceAsync(
             workspaceId,
             userId,
-            callerMembership.Role.Priority,
+            callerPriority,
             entityTypeId,
             searchQuery,
+            skip,
             take,
+            resolvedFilters,
+            resolvedSort,
             excludeLinkedSourceRelTypeId,
             excludeLinkedTargetRelTypeId,
             ct);
-        return entities.Select(MapToListItem).ToList();
+
+        return new EntityPagedResult(items.Select(MapToListItem).ToList(), total, skip, take);
+    }
+
+    private static ResolvedFilterCondition ResolveFilter(EntityFilterCondition f, Property prop)
+    {
+        var op = f.Op.ToLowerInvariant();
+
+        // Validate operator against data type
+        var validOps = prop.DataType switch
+        {
+            PropertyDataType.String  => new[] { "eq", "neq", "contains", "startswith" },
+            PropertyDataType.Int     => new[] { "eq", "neq", "gt", "lt", "gte", "lte" },
+            PropertyDataType.Decimal => new[] { "eq", "neq", "gt", "lt", "gte", "lte" },
+            PropertyDataType.Bool    => new[] { "eq", "neq" },
+            PropertyDataType.Date    => new[] { "eq", "neq", "gt", "lt", "gte", "lte" },
+            _                        => Array.Empty<string>()
+        };
+
+        if (!validOps.Contains(op))
+            throw new ArgumentException(
+                $"Operator '{f.Op}' is not valid for property '{prop.Name}' of type {prop.DataType}. " +
+                $"Allowed: {string.Join(", ", validOps)}.");
+
+        return prop.DataType switch
+        {
+            PropertyDataType.String => new ResolvedFilterCondition(
+                f.PropertyId, prop.DataType, op, f.Value, null, null, null, null),
+
+            PropertyDataType.Int => int.TryParse(f.Value, out var iv)
+                ? new ResolvedFilterCondition(f.PropertyId, prop.DataType, op, null, iv, null, null, null)
+                : throw new ArgumentException($"Property '{prop.Name}' expects an integer value, got '{f.Value}'."),
+
+            PropertyDataType.Decimal => decimal.TryParse(
+                    f.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var dv)
+                ? new ResolvedFilterCondition(f.PropertyId, prop.DataType, op, null, null, dv, null, null)
+                : throw new ArgumentException($"Property '{prop.Name}' expects a decimal value, got '{f.Value}'."),
+
+            PropertyDataType.Bool => bool.TryParse(f.Value, out var bv)
+                ? new ResolvedFilterCondition(f.PropertyId, prop.DataType, op, null, null, null, bv, null)
+                : throw new ArgumentException($"Property '{prop.Name}' expects true or false, got '{f.Value}'."),
+
+            PropertyDataType.Date => DateOnly.TryParseExact(
+                    f.Value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dtv)
+                ? new ResolvedFilterCondition(f.PropertyId, prop.DataType, op, null, null, null, null, dtv)
+                : throw new ArgumentException($"Property '{prop.Name}' expects a date in yyyy-MM-dd format, got '{f.Value}'."),
+
+            _ => throw new ArgumentException($"Unsupported data type {prop.DataType} for property '{prop.Name}'.")
+        };
     }
 
     public async Task<EntityDetailDto> GetByIdAsync(int entityId, int workspaceId, int userId, CancellationToken ct = default)
