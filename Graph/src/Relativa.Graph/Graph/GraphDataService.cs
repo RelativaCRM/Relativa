@@ -12,7 +12,7 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
     private static readonly HashSet<string> SystemEntityTypes =
         new(StringComparer.OrdinalIgnoreCase) { "deal_analysis" };
 
-    public async Task<GraphResponseDto> BuildGraphAsync(int userId, int organizationId, CancellationToken ct)
+    public async Task<GraphResponseDto> BuildGraphAsync(int userId, int organizationId, string? riskLevel, CancellationToken ct)
     {
         var nodes = new List<GraphNodeDto>();
         var edges = new List<GraphEdgeDto>();
@@ -205,6 +205,26 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
 
         var mlScores = await mlClient.ScoreBatchAsync(dealEntityIds, ct);
 
+        if (riskLevel is not null)
+        {
+            var matchingDealIds = mlScores.Values
+                .Where(s => s.ClosureScore.HasValue && MatchesRiskLevel(s.ClosureScore.Value, riskLevel))
+                .Select(s => s.EntityId)
+                .ToHashSet();
+
+            var idsToRemove = entityWorkspaceMap.Keys
+                .Where(id => string.Equals(entityTypeNameMap.GetValueOrDefault(id), "deal",
+                                 StringComparison.OrdinalIgnoreCase)
+                             && !matchingDealIds.Contains(id))
+                .ToList();
+
+            foreach (var id in idsToRemove)
+            {
+                entityWorkspaceMap.Remove(id);
+                entityTypeNameMap.Remove(id);
+            }
+        }
+
         // deal→client relationship for client composite scoring
         var dealClientMap = new Dictionary<int, int>(); // dealId → clientId
         var clientLtvMap = new Dictionary<int, double>(); // clientId → LTV
@@ -383,6 +403,15 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
 
         return new GraphResponseDto(nodes, edges);
     }
+
+    private static bool MatchesRiskLevel(double closureScore, string riskLevel) =>
+        riskLevel.ToLowerInvariant() switch
+        {
+            "low"    => closureScore >= 67.0,
+            "medium" => closureScore is >= 33.0 and < 67.0,
+            "high"   => closureScore < 33.0,
+            _        => false
+        };
 
     private static Dictionary<int, string> ClassifyTopBottom(
         Dictionary<int, double> scores,
