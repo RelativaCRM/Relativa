@@ -28,18 +28,23 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
             .ToListAsync(ct);
     }
 
-    public async Task<List<Entity>> GetByWorkspaceAsync(
+    public async Task<(List<Entity> Items, int Total)> GetByWorkspaceAsync(
         int workspaceId,
         int requesterUserId,
         int requesterRolePriority,
         int? entityTypeId,
         string? searchQuery,
+        int skip,
         int take,
+        IReadOnlyList<ResolvedFilterCondition> filters,
+        IReadOnlyList<EntitySortField> sort,
         int? excludeLinkedSourceRelTypeId = null,
         int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default)
     {
+        skip = Math.Max(skip, 0);
         take = Math.Clamp(take, 1, 500);
+
         var query = db.Entities
             .AsNoTracking()
             .Where(e => !e.IsArchived && e.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId))
@@ -69,13 +74,80 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
             query = query.Where(e => !db.EntityRelationships
                 .Any(r => r.TargetEntityId == e.Id && r.RelationshipTypeId == excludeLinkedTargetRelTypeId.Value));
 
-        return await query
+        // Combined AND-logic property filters
+        foreach (var f in filters)
+        {
+            var pid = f.PropertyId;
+            query = (f.DataType, f.Op) switch
+            {
+                (PropertyDataType.String,  "eq")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueString == f.StringValue)),
+                (PropertyDataType.String,  "neq")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueString != f.StringValue)),
+                (PropertyDataType.String,  "contains")   => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueString != null && v.ValueString.Contains(f.StringValue!))),
+                (PropertyDataType.String,  "startswith")  => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueString != null && v.ValueString.StartsWith(f.StringValue!))),
+                (PropertyDataType.Int,     "eq")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueInt == f.IntValue)),
+                (PropertyDataType.Int,     "neq")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueInt != f.IntValue)),
+                (PropertyDataType.Int,     "gt")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueInt > f.IntValue)),
+                (PropertyDataType.Int,     "lt")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueInt < f.IntValue)),
+                (PropertyDataType.Int,     "gte")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueInt >= f.IntValue)),
+                (PropertyDataType.Int,     "lte")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueInt <= f.IntValue)),
+                (PropertyDataType.Decimal, "eq")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDecimal == f.DecimalValue)),
+                (PropertyDataType.Decimal, "neq")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDecimal != f.DecimalValue)),
+                (PropertyDataType.Decimal, "gt")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDecimal > f.DecimalValue)),
+                (PropertyDataType.Decimal, "lt")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDecimal < f.DecimalValue)),
+                (PropertyDataType.Decimal, "gte")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDecimal >= f.DecimalValue)),
+                (PropertyDataType.Decimal, "lte")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDecimal <= f.DecimalValue)),
+                (PropertyDataType.Bool,    "eq")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueBool == f.BoolValue)),
+                (PropertyDataType.Bool,    "neq")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueBool != f.BoolValue)),
+                (PropertyDataType.Date,    "eq")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDate == f.DateValue)),
+                (PropertyDataType.Date,    "neq")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDate != f.DateValue)),
+                (PropertyDataType.Date,    "gt")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDate > f.DateValue)),
+                (PropertyDataType.Date,    "lt")         => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDate < f.DateValue)),
+                (PropertyDataType.Date,    "gte")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDate >= f.DateValue)),
+                (PropertyDataType.Date,    "lte")        => query.Where(e => e.EntityPropertyValues.Any(v => v.PropertyId == pid && v.ValueDate <= f.DateValue)),
+                _ => query
+            };
+        }
+
+        // Build ordered query (first field uses OrderBy, subsequent use ThenBy)
+        IOrderedQueryable<Entity> ordered;
+        if (sort is { Count: > 0 })
+        {
+            ordered = ApplySort(query, sort[0], isFirst: true);
+            foreach (var s in sort.Skip(1))
+                ordered = ApplySort(ordered, s, isFirst: false);
+        }
+        else
+        {
+            ordered = query.OrderBy(e => e.Id);
+        }
+
+        var total = await ordered.CountAsync(ct);
+        var items = await ordered
             .Include(e => e.EntityType)
             .Include(e => e.EntityPropertyValues)
                 .ThenInclude(epv => epv.Property)
-            .OrderBy(e => e.Id)
+            .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
+
+        return (items, total);
+    }
+
+    private static IOrderedQueryable<Entity> ApplySort(IQueryable<Entity> query, EntitySortField s, bool isFirst)
+    {
+        var pid = s.PropertyId;
+        var desc = s.Direction.Equals("desc", StringComparison.OrdinalIgnoreCase);
+        return (isFirst, desc) switch
+        {
+            (true,  true)  => query.OrderByDescending(e => e.EntityPropertyValues
+                .Where(v => v.PropertyId == pid).Select(v => v.ValueString).FirstOrDefault()),
+            (true,  false) => query.OrderBy(e => e.EntityPropertyValues
+                .Where(v => v.PropertyId == pid).Select(v => v.ValueString).FirstOrDefault()),
+            (false, true)  => ((IOrderedQueryable<Entity>)query).ThenByDescending(e => e.EntityPropertyValues
+                .Where(v => v.PropertyId == pid).Select(v => v.ValueString).FirstOrDefault()),
+            (false, false) => ((IOrderedQueryable<Entity>)query).ThenBy(e => e.EntityPropertyValues
+                .Where(v => v.PropertyId == pid).Select(v => v.ValueString).FirstOrDefault()),
+        };
     }
 
     public async Task<Entity?> GetByIdInWorkspaceAsync(int entityId, int workspaceId, CancellationToken ct = default)
