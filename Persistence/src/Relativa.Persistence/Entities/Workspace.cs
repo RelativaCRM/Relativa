@@ -9,6 +9,7 @@ public class Workspace
     public bool IsArchived { get; set; }
     public Organization Organization { get; set; } = null!;
     public User CreatedBy { get; set; } = null!;
+    public OrganizationSettings? OrganizationSettings { get; set; }
     public ICollection<EntityWorkspace> EntityWorkspaces { get; set; } = new List<EntityWorkspace>();
     public ICollection<UserRoleWorkspace> Members { get; set; } = new List<UserRoleWorkspace>();
     public ICollection<WorkspaceRole> Roles { get; set; } = new List<WorkspaceRole>();
