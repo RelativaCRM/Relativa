@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import Chart from 'primevue/chart';
+import Chart from '@/components/charts/SafeChart.vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';

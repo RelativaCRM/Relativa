@@ -426,7 +426,8 @@ onMounted(async () => {
               <RouterLink
                 :to="{ name: 'workspace-dashboard', params: { workspaceId: workspaceIdStr } }"
                 class="nav-link"
-                active-class="nav-link--active"
+                active-class=""
+                exact-active-class="nav-link--active"
               >
                 <i class="pi pi-th-large" />Dashboard
               </RouterLink>

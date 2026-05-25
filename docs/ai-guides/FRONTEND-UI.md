@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-19 (Global error boundary + centralized HTTP toast wired up via `setGlobalToast` / `notifyGlobal`; loading skeletons standardized through `LoadingSkeleton` and `ChartSkeleton` — see "Error handling" and "Loading states" sections.)
+> **Last verified:** 2026-05-25 (Graph deal nodes now color by ML closure-score risk tier — see the "Risk-based deal coloring" subsection under "Graph rendering". Global error boundary + centralized HTTP toast wired up via `setGlobalToast` / `notifyGlobal`; loading skeletons standardized through `LoadingSkeleton` and `ChartSkeleton` — see "Error handling" and "Loading states" sections.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -107,7 +107,22 @@ The vis-network graph in [GraphView.vue](../../Client/src/views/GraphView.vue) u
 | `workspace` | `#0d9488` | teal-600 |
 
 **Entity type colors (dynamic palette):**
-Entity nodes receive colors from `ENTITY_PALETTE` (violet-600, amber-600, green-600, red-600, cyan-600, purple-600, orange-600, sky-600). Colors are assigned at render time by sequential discovery order of `entityTypeName` values — **no color is hardcoded to any entity type name in source**. The mapping is built fresh on each render. If there are more entity types than palette slots, colors wrap around (modulo).
+Entity nodes receive colors from `ENTITY_PALETTE` (violet-600, amber-600, green-600, red-600, cyan-600, purple-600, orange-600, sky-600). Colors are assigned at render time by sequential discovery order of `entityTypeName` values — **no color is hardcoded to any entity type name in source**. The mapping is built fresh on each render. If there are more entity types than palette slots, colors wrap around (modulo). Deal nodes are the one **exception** — they are colored from the risk palette below, not the entity palette, and the `deal` swatch is intentionally suppressed from the type-legend row so the chrome doesn't double up.
+
+**Risk-based deal coloring:**
+Deal nodes are colored by their ML closure score, not by the type palette. After `graphStore.fetchGraph` resolves, `loadDealScores()` posts every deal id to `POST /ml/api/ml/score/batch` via `mlApi.scoreBatch` and stores the response in a local `dealScores: Map<entityId, DealScoreDto>`. `nodeColor()` then short-circuits for `type === 'entity' && entityTypeName === 'deal'` and picks a fill from `RISK_COLORS` based on the closure-score tier:
+
+| Closure score | Tier | Fill / border | Reads as |
+|---|---|---|---|
+| `> 70` | High risk | `#ef4444` / `#b91c1c` (red-500 / red-700) | Top-of-funnel attention |
+| `40 – 70` | Medium risk | `#f59e0b` / `#b45309` (amber-500 / amber-700) | Worth a check |
+| `< 40` | Low risk | `#10b981` / `#047857` (emerald-500 / emerald-700) | Healthy |
+| `unavailable_reason !== null` | Score unavailable / stale | `#94a3b8` / `#475569` (slate-400 / slate-600) | Score has not been computed |
+| no score row at all | — | falls back to the entity palette | Score request still in flight or backend skipped the deal |
+
+These hues are the same red-500 / amber-500 / emerald-500 the dashboard risk-distribution doughnut uses (see `riskChartData` in `WorkspaceDashboardView.vue`) — do not invent a separate palette for the graph. The score fetch is **soft-fail**: if `mlApi.scoreBatch` throws, the graph still renders with the type palette as a fallback (the http-layer toast surfaces the error).
+
+**Selected-node ML panel:** when the clicked node is a deal, the right-side detail panel renders a `<ProgressBar>` for `closure_score` (recolored inline to match the closure tier via `closureBarColor()`) and a rounded badge for `churn_score` (tone keyed by `churnBadgeClass()` — red-50 / amber-50 / emerald-50 background with a matching ring). The badge uses the **same threshold logic** as the closure tier so high churn reads as red regardless of which side of the panel you scan. If both scores are null but `unavailable_reason` is set, the panel renders the reason verbatim as an italic ink-400 line instead of empty tiles.
 
 **Edges:**
 | Edge type | Style | Color |
@@ -121,7 +136,7 @@ Entity nodes receive colors from `ENTITY_PALETTE` (violet-600, amber-600, green-
 
 **Canvas background:** `radial-gradient` dot grid (16 px, `brand-600` at 6 % opacity) for spatial reference — consistent with previous placeholder.
 
-**Legend:** a row of color swatches above the canvas is built dynamically from the same type color map — one entry per node type/entity type actually present in the response.
+**Legend:** a row of color swatches above the canvas is built dynamically from the same type color map — one entry per node type/entity type actually present in the response. When at least one deal node is on the canvas, a **second legend group** (separated by a vertical `border-line` divider and labeled `DEAL RISK`) lists the High / Medium / Low risk swatches; the `Score unavailable` swatch is appended only when at least one deal in `dealScores` has a non-null `unavailable_reason`, so the chrome stays quiet when nothing is stale.
 
 **Graph scope:** graph is org-level (route `/graph`, not workspace-scoped). Data fetched from `GET /graph/api/v1/graph?organizationId={id}` via [`Client/src/api/graph.ts`](../../Client/src/api/graph.ts). Graph store ([`Client/src/stores/graph.ts`](../../Client/src/stores/graph.ts)) holds `nodes`, `edges`, `isLoading`, `error`.
 
