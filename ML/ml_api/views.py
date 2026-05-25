@@ -5,6 +5,8 @@ import time
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from relativa_ml.ml_constants import CLOSURE_FEATURES, CHURN_FEATURES
+
 logger = logging.getLogger(__name__)
 
 from .apps import MlApiConfig
@@ -179,7 +181,7 @@ def score_batch(request):
                 "churn_score": results_by_id.get(entity_id, {}).get("churn_score"),
                 "unavailable_reason": results_by_id.get(entity_id, {}).get("unavailable_reason"),
             }
-            for entity_id in entity_ids
+            for entity_id in normalized
         ]
         _persist_scores(response_payload, config)
         return Response(response_payload, status=200)
@@ -222,29 +224,6 @@ def _persist_scores(scored_items, config):
 # ---------------------------------------------------------------------------
 
 _ALLOWED_STATUSES_HUMAN = "opened, pending, closed, or revoked"
-
-CLOSURE_FEATURE_ORDER = (
-    "avg_deal_value_log",
-    "deal_value_log",
-    "days_since_created",
-    "stage_encoded",
-    "num_interactions",
-    "days_until_expected_close",
-    "historical_close_rate",
-    "client_lifetime_value_log",
-    "client_tenure_days",
-)
-
-CHURN_FEATURE_ORDER = (
-    "days_since_last_contact",
-    "num_open_deals",
-    "avg_deal_value_log",
-    "historical_close_rate",
-    "client_lifetime_value_log",
-    "client_tenure_days",
-    "days_until_expected_close",
-)
-
 
 def _log1p(value):
     if value is None:
@@ -337,8 +316,8 @@ def _score_or_diagnose(analysis, deal_row, contracts, client_row):
         "days_until_expected_close": float(days_until_close),
     }
 
-    closure_input = [[closure_features[key] for key in CLOSURE_FEATURE_ORDER]]
-    churn_input = [[churn_features[key] for key in CHURN_FEATURE_ORDER]]
+    closure_input = [[closure_features[key] for key in CLOSURE_FEATURES]]
+    churn_input = [[churn_features[key] for key in CHURN_FEATURES]]
     closure_score = float(MlApiConfig.closure_model.predict_proba(closure_input)[0][1]) * 100.0
     churn_score = float(MlApiConfig.churn_model.predict_proba(churn_input)[0][1]) * 100.0
     return {

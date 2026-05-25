@@ -6,6 +6,13 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score
 import joblib
 
+from relativa_ml.ml_constants import (
+    CLOSURE_FEATURES,
+    CHURN_FEATURES,
+    DAYS_UNTIL_CLOSE_MEDIAN,
+    HIST_CLOSE_RATE_MEDIAN,
+)
+
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPTS_DIR)
@@ -13,10 +20,6 @@ MODELS_DIR = os.path.join(BASE_DIR, 'ml_api', 'models')
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
-
-# Imputation medians — must match recalculate_service constants
-DAYS_UNTIL_CLOSE_MEDIAN = 30
-HIST_CLOSE_RATE_MEDIAN = 50.0
 
 DEFAULT_TRAIN_ROWS = int(os.environ.get("ML_TRAIN_ROWS", "1000000"))
 RANDOM_SEED = int(os.environ.get("ML_RANDOM_SEED", "42"))
@@ -27,32 +30,9 @@ ENFORCE_MIN_ACCURACY = os.environ.get("ML_ENFORCE_ACCURACY", "0").lower() in ("1
 CLOSURE_LABEL_NOISE = float(os.environ.get("ML_CLOSURE_LABEL_NOISE", "0.03"))
 CHURN_LABEL_NOISE = float(os.environ.get("ML_CHURN_LABEL_NOISE", "0.04"))
 
-CLOSURE_FEATURES = (
-    "avg_deal_value_log",
-    "deal_value_log",
-    "days_since_created",
-    "stage_encoded",
-    "num_interactions",
-    "days_until_expected_close",
-    "historical_close_rate",
-    "client_lifetime_value_log",
-    "client_tenure_days",
-)
-
-CHURN_FEATURES = (
-    "days_since_last_contact",
-    "num_open_deals",
-    "avg_deal_value_log",
-    "historical_close_rate",
-    "client_lifetime_value_log",
-    "client_tenure_days",
-    "days_until_expected_close",
-)
-
-
 def _sample_deal_values(rng, size, high_value_ratio=HIGH_VALUE_RATIO, max_deal_value=MAX_DEAL_VALUE):
     base = rng.lognormal(mean=10.8, sigma=0.8, size=size)
-    high_mask = rng.random(size) < 0.026
+    high_mask = rng.random(size) < high_value_ratio
     if high_mask.any():
         base[high_mask] = rng.lognormal(mean=13.6, sigma=0.5, size=high_mask.sum())
     base = np.clip(base, 500.0, max_deal_value)
