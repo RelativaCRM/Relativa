@@ -12,7 +12,7 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
     private static readonly HashSet<string> SystemEntityTypes =
         new(StringComparer.OrdinalIgnoreCase) { "deal_analysis" };
 
-    public async Task<GraphResponseDto> BuildGraphAsync(int userId, int organizationId, string? riskLevel, CancellationToken ct)
+    public async Task<GraphResponseDto> BuildGraphAsync(int userId, int organizationId, CancellationToken ct)
     {
         var nodes = new List<GraphNodeDto>();
         var edges = new List<GraphEdgeDto>();
@@ -203,26 +203,14 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
             .Where(id => string.Equals(entityTypeNameMap.GetValueOrDefault(id), "deal", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var mlScores = await mlClient.ScoreBatchAsync(dealEntityIds, ct);
-
-        if (riskLevel is not null)
+        IReadOnlyDictionary<int, MlScoreDto> mlScores;
+        try
         {
-            var matchingDealIds = mlScores.Values
-                .Where(s => s.ClosureScore.HasValue && MatchesRiskLevel(s.ClosureScore.Value, riskLevel))
-                .Select(s => s.EntityId)
-                .ToHashSet();
-
-            var idsToRemove = entityWorkspaceMap.Keys
-                .Where(id => string.Equals(entityTypeNameMap.GetValueOrDefault(id), "deal",
-                                 StringComparison.OrdinalIgnoreCase)
-                             && !matchingDealIds.Contains(id))
-                .ToList();
-
-            foreach (var id in idsToRemove)
-            {
-                entityWorkspaceMap.Remove(id);
-                entityTypeNameMap.Remove(id);
-            }
+            mlScores = await mlClient.ScoreBatchAsync(dealEntityIds, ct);
+        }
+        catch
+        {
+            mlScores = new Dictionary<int, MlScoreDto>();
         }
 
         // deal→client relationship for client composite scoring
@@ -403,15 +391,6 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
 
         return new GraphResponseDto(nodes, edges);
     }
-
-    private static bool MatchesRiskLevel(double closureScore, string riskLevel) =>
-        riskLevel.ToLowerInvariant() switch
-        {
-            "low"    => closureScore >= 67.0,
-            "medium" => closureScore is >= 33.0 and < 67.0,
-            "high"   => closureScore < 33.0,
-            _        => false
-        };
 
     private static Dictionary<int, string> ClassifyTopBottom(
         Dictionary<int, double> scores,

@@ -104,7 +104,7 @@ public sealed class WorkspaceDashboardService(
             .Where(w => w.Id == workspaceId && !w.IsArchived)
             .Select(w => new { w.Id, w.Name })
             .FirstOrDefaultAsync(ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new WorkspaceNotFoundException(workspaceId);
 
         var dealIds   = await GetEntityIdsAsync(workspaceId, "deal",   ct);
         var clientIds = await GetEntityIdsAsync(workspaceId, "client", ct);

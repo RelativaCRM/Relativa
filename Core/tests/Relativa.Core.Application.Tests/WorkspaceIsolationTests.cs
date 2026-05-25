@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -96,7 +97,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _workspaceSvc.GetByIdAsync(workspaceId: 2, userId: 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -108,7 +109,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _workspaceSvc.UpdateAsync(workspaceId: 2, userId: 1, new UpdateWorkspaceRequest("Name"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -120,7 +121,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _memberSvc.GetMembersAsync(workspaceId: 2, userId: 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -132,7 +133,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _memberSvc.UpdateRoleAsync(2, 5, 1, new DTOs.Member.UpdateMemberRoleRequest(3));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -144,7 +145,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _roleSvc.GetByWorkspaceAsync(workspaceId: 2, userId: 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("You are not a member of this workspace.");
     }
 }
