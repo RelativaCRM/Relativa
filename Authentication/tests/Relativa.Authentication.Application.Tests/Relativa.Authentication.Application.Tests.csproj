@@ -24,8 +24,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.17.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.5" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.4.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Relativa.Authentication.Application\Relativa.Authentication.Application.csproj" />
     <ProjectReference Include="..\..\src\Relativa.Authentication.Domain\Relativa.Authentication.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Relativa.Authentication.Infrastructure\Relativa.Authentication.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\Persistence\src\Relativa.Persistence\Relativa.Persistence.csproj" />
   </ItemGroup>
 
