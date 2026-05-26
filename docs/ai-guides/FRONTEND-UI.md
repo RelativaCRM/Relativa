@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-25 (Graph deal nodes now color by ML closure-score risk tier — see the "Risk-based deal coloring" subsection under "Graph rendering". Global error boundary + centralized HTTP toast wired up via `setGlobalToast` / `notifyGlobal`; loading skeletons standardized through `LoadingSkeleton` and `ChartSkeleton` — see "Error handling" and "Loading states" sections.)
+> **Last verified:** 2026-05-25 (Graph deal nodes now color by ML closure-score risk tier — see the "Risk-based deal coloring" subsection under "Graph rendering". GraphView now hosts a server-side risk filter panel — see "Risk filter panel". Global error boundary + centralized HTTP toast wired up via `setGlobalToast` / `notifyGlobal`; loading skeletons standardized through `LoadingSkeleton` and `ChartSkeleton` — see "Error handling" and "Loading states" sections.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -139,6 +139,21 @@ These hues are the same red-500 / amber-500 / emerald-500 the dashboard risk-dis
 **Legend:** a row of color swatches above the canvas is built dynamically from the same type color map — one entry per node type/entity type actually present in the response. When at least one deal node is on the canvas, a **second legend group** (separated by a vertical `border-line` divider and labeled `DEAL RISK`) lists the High / Medium / Low risk swatches; the `Score unavailable` swatch is appended only when at least one deal in `dealScores` has a non-null `unavailable_reason`, so the chrome stays quiet when nothing is stale.
 
 **Graph scope:** graph is org-level (route `/graph`, not workspace-scoped). Data fetched from `GET /graph/api/v1/graph?organizationId={id}` via [`Client/src/api/graph.ts`](../../Client/src/api/graph.ts). Graph store ([`Client/src/stores/graph.ts`](../../Client/src/stores/graph.ts)) holds `nodes`, `edges`, `isLoading`, `error`.
+
+## Risk filter panel
+
+GraphView hosts a single-select risk filter ([Client/src/components/graph/RiskFilterPanel.vue](../../Client/src/components/graph/RiskFilterPanel.vue)) wired into the same `GET /graph` request via the new optional `riskLevel=high|medium|low` query param (camelCase — that is the actual minimal-API parameter name; the BE spec called it `risk_level` but the binding is on `riskLevel`). The server applies the WHERE clause on `closure_score`, so the SPA simply re-issues the fetch on change — no client-side filtering, no full payload trim.
+
+- **Three toggle pills** (High / Medium / Low) inside a rounded `bg-white` group with `border-line`. The active pill paints with its risk fill (`#ef4444` / `#f59e0b` / `#10b981`) — the **same hues** used by the deal-risk legend and the dashboard doughnut. Don't introduce a fourth tier or restyle these pills with blue brand tokens; the colored fills are what tie the filter to the legend below it.
+- **Reset button** (`pi pi-times` + "Reset") renders only when a filter is active; it emits `null` through `v-model`.
+- **Active badge** (`pi pi-filter-fill` + "{Level} risk active") renders next to the pills as a tinted ring/fill in the active tier's color, so the filter state stays visible even when the user has scrolled the canvas.
+- Clicking the active pill again deselects it — single-select toggle, not radio-group locked.
+
+Wiring on the GraphView side: `riskFilter` is a `ref<GraphRiskLevel | null>(null)` watched by a `watch(riskFilter, load)` that re-runs the same `load()` pipeline used for org switches (fetch graph → fetch deal scores → render). The filter is **reset to `null` when the active org switches** — otherwise a stale predicate would silently empty the new org's graph. When a filter is active and the server returns zero nodes, the empty-state card swaps from the generic "No data available yet" copy to "No deals match the active risk filter" + a **Clear filter** button so the user is never stranded inside an applied filter with no escape.
+
+The `RiskFilterPanel` is disabled (greyed pills) while `graphStore.isLoading` is true, so rapid clicks don't pile up overlapping fetches.
+
+**Semantic note:** the backend's risk thresholds are inverted relative to the frontend's `RISK_COLORS`/`classifyRisk` — backend treats `closure_score < 33` as "high risk" (a deal unlikely to close), while the existing frontend coloring under "Risk-based deal coloring" treats `closure_score > 70` as "high risk". This means a server-side filter for "high" returns deals that the canvas renders **green** today. That mismatch predates this filter and is tracked separately; do not paper over it by re-mapping levels in the SPA before re-issuing the call.
 
 ## Deal scores panel
 

@@ -4,6 +4,7 @@ export type GraphNodeType = 'user_self' | 'user' | 'workspace' | 'entity';
 export type GraphEdgeType = 'user_workspace' | 'workspace_entity' | 'entity_entity' | 'user_user';
 export type GraphResourceType = 'user' | 'workspace' | 'entity';
 export type GraphHighlightTag = 'best_deal' | 'worst_deal' | 'best_client' | 'worst_client';
+export type GraphRiskLevel = 'high' | 'medium' | 'low';
 
 export interface GraphNodeDto {
   id: string;
@@ -32,7 +33,12 @@ export interface GraphResponseDto {
 }
 
 export const graphApi = {
-  getGraph(organizationId: number): Promise<GraphResponseDto> {
-    return api.get<GraphResponseDto>(`/graph/api/v1/graph?organizationId=${organizationId}`);
+  getGraph(
+    organizationId: number,
+    riskLevel?: GraphRiskLevel | null,
+  ): Promise<GraphResponseDto> {
+    const params = new URLSearchParams({ organizationId: String(organizationId) });
+    if (riskLevel) params.set('riskLevel', riskLevel);
+    return api.get<GraphResponseDto>(`/graph/api/v1/graph?${params.toString()}`);
   },
 };

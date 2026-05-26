@@ -11,9 +11,10 @@ import ProgressBar from 'primevue/progressbar';
 import { useGraphStore } from '@/stores/graph';
 import { useEntityStore } from '@/stores/entity';
 import { useOrganizationStore } from '@/stores/organization';
-import type { GraphNodeDto, GraphHighlightTag } from '@/api/graph';
+import type { GraphNodeDto, GraphHighlightTag, GraphRiskLevel } from '@/api/graph';
 import { mlApi, type DealScoreDto } from '@/api/ml';
 import GraphSkeleton from '@/components/feedback/GraphSkeleton.vue';
+import RiskFilterPanel from '@/components/graph/RiskFilterPanel.vue';
 
 const router = useRouter();
 const graphStore = useGraphStore();
@@ -26,6 +27,7 @@ const container = ref<HTMLDivElement | null>(null);
 const network = shallowRef<Network | null>(null);
 const selectedNode = ref<GraphNodeDto | null>(null);
 const dealScores = ref<Map<number, DealScoreDto>>(new Map());
+const riskFilter = ref<GraphRiskLevel | null>(null);
 
 const orgId = computed(() => orgStore.currentOrgId);
 
@@ -278,13 +280,21 @@ async function load() {
   if (!orgId.value) return;
   selectedNode.value = null;
   dealScores.value = new Map();
-  await graphStore.fetchGraph(orgId.value);
+  await graphStore.fetchGraph(orgId.value, riskFilter.value);
   if (graphStore.error) return;
   await loadDealScores();
   await render();
 }
 
-watch(orgId, load);
+watch(orgId, () => {
+  if (riskFilter.value === null) {
+    load();
+  } else {
+    riskFilter.value = null;
+  }
+});
+
+watch(riskFilter, () => { load(); });
 
 onMounted(() => { load(); });
 
@@ -412,6 +422,13 @@ const hasGraph = computed(() => graphStore.nodes.length > 0);
       </div>
     </div>
 
+    <RiskFilterPanel
+      v-if="orgId"
+      v-model="riskFilter"
+      :disabled="graphStore.isLoading"
+      class="shrink-0"
+    />
+
     <!-- No org -->
     <Message v-if="!orgId" severity="info" :closable="false" class="!my-0">
       Select an organization to see your graph.
@@ -450,10 +467,26 @@ const hasGraph = computed(() => graphStore.nodes.length > 0);
     <!-- Empty -->
     <div
       v-else-if="!graphStore.isLoading && !hasGraph"
-      class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white"
+      class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
     >
       <i class="pi pi-share-alt text-4xl text-ink-300" />
-      <p class="mt-3 text-sm text-ink-500">No data available yet. Add workspaces and entities to populate the graph.</p>
+      <template v-if="riskFilter">
+        <p class="mt-3 text-sm font-medium text-ink-700">No deals match the active risk filter.</p>
+        <p class="mt-1 text-xs text-ink-500 max-w-md">
+          Clear the filter to see the full graph, or pick a different risk level.
+        </p>
+        <Button
+          label="Clear filter"
+          icon="pi pi-times"
+          severity="secondary"
+          size="small"
+          class="mt-4"
+          @click="riskFilter = null"
+        />
+      </template>
+      <p v-else class="mt-3 text-sm text-ink-500">
+        No data available yet. Add workspaces and entities to populate the graph.
+      </p>
     </div>
 
     <!-- Graph + panel -->
