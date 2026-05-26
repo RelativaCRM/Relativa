@@ -22,6 +22,7 @@ public sealed class WorkspaceServiceTests
     private readonly Mock<IValidator<CreateWorkspaceRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateWorkspaceRequest>> _updateValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IOrganizationSettingsRepository> _orgSettingsRepo = new();
     private readonly WorkspaceService _sut;
 
     public WorkspaceServiceTests()
@@ -38,6 +39,7 @@ public sealed class WorkspaceServiceTests
             _roleRepo.Object,
             _orgMemberRepo.Object,
             _workspaceAccessEvaluator,
+            _orgSettingsRepo.Object,
             _createValidator.Object,
             _updateValidator.Object,
             _auditOutboxWriter.Object);
@@ -153,7 +155,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateWorkspaceRequest("Team", 5));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*not a member of this organization*");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -172,7 +174,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateWorkspaceRequest("Team", 5));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*create_workspaces*");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -251,7 +253,7 @@ public sealed class WorkspaceServiceTests
         var sut = new WorkspaceService(
             _workspaceRepo.Object, _memberRepo.Object, _roleRepo.Object,
             _orgMemberRepo.Object, _workspaceAccessEvaluator,
-            _createValidator.Object, _updateValidator.Object, null);
+            _orgSettingsRepo.Object, _createValidator.Object, _updateValidator.Object, null);
 
         SetupValidCreate();
         _orgMemberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberWithPermission(1, 1, "create_workspaces"));
@@ -279,7 +281,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 99);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -311,7 +313,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateAsync(10, 3, new UpdateWorkspaceRequest("New Name"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -395,7 +397,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.ArchiveAsync(3, 5);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("Only workspace admins or organization owners can archive a workspace.");
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }

@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.DTOs.JoinRequest;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
@@ -199,7 +200,7 @@ public sealed class JoinRequestService(
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)
     {
         return await orgMemberRepository.GetAsync(userId, orgId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
     }
 
     private async Task RequireOrgPermission(int userId, int orgId, string permission, CancellationToken ct)
@@ -208,6 +209,6 @@ public sealed class JoinRequestService(
         var hasPermission = membership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
-            throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this organization.");
+            throw new ForbiddenAccessException($"You do not have the '{permission}' permission in this organization.");
     }
 }

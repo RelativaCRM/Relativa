@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
@@ -33,7 +34,7 @@ public sealed class RoleService(
     {
         await createValidator.ValidateAndThrowAsync(request, ct);
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
-            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
+            throw new ForbiddenAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var permissions = await permissionRepository.GetByIdsAsync(request.PermissionIds, ct);
         if (permissions.Count != request.PermissionIds.Count)
@@ -87,7 +88,7 @@ public sealed class RoleService(
     public async Task UpdateAsync(int workspaceId, int roleId, int userId, UpdateRoleRequest request, CancellationToken ct = default)
     {
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
-            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
+            throw new ForbiddenAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var role = await roleRepository.GetByIdAsync(roleId, ct)
             ?? throw new KeyNotFoundException("Role not found.");
@@ -142,7 +143,7 @@ public sealed class RoleService(
     public async Task ArchiveAsync(int workspaceId, int roleId, int userId, CancellationToken ct = default)
     {
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
-            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
+            throw new ForbiddenAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var role = await roleRepository.GetByIdAsync(roleId, ct)
             ?? throw new KeyNotFoundException("Role not found.");

@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.OrgRole;
 using Relativa.Core.Application.DTOs.Role;
@@ -191,7 +192,7 @@ public sealed class OrgRoleService(
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)
     {
         return await orgMemberRepository.GetAsync(userId, orgId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
     }
 
     private async Task RequireOrgPermission(int userId, int orgId, string permission, CancellationToken ct)
@@ -200,6 +201,6 @@ public sealed class OrgRoleService(
         var hasPermission = membership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
-            throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this organization.");
+            throw new ForbiddenAccessException($"You do not have the '{permission}' permission in this organization.");
     }
 }

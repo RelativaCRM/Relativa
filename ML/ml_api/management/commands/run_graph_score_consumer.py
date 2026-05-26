@@ -14,11 +14,12 @@ from ml_api.recalculate_service import (
     _check_deadline,
     _ensure_deal_analysis_entities,
     _load_analysis_state,
+    _load_client_inputs,
     _load_contract_inputs,
     _load_deal_inputs,
     _load_schema_config,
 )
-from ml_api.views import _persist_scores, _score_or_diagnose
+from ml_api.views import _needs_analysis_refresh, _persist_scores, _score_or_diagnose
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,8 @@ def _run_scoring(entity_ids: list[int]) -> list[dict]:
     for row in contract_rows:
         contracts_by_deal.setdefault(row["deal_id"], []).append(row)
     _check_deadline(deadline)
+    client_rows = _load_client_inputs(entity_ids, config)
+    _check_deadline(deadline)
 
     from ml_api.recalculate_service import ANALYSIS_PROP_SOURCE_UPDATED_AT, ANALYSIS_PROP_CALCULATED_AT
     results_by_id: dict[int, dict] = {}
@@ -137,7 +140,12 @@ def _run_scoring(entity_ids: list[int]) -> list[dict]:
     for deal_id in entity_ids:
         analysis = analysis_rows.get(deal_id)
         if analysis is None:
-            results_by_id[deal_id] = _score_or_diagnose(None, deal_rows.get(deal_id, {}), contracts_by_deal.get(deal_id, []))
+            results_by_id[deal_id] = _score_or_diagnose(
+                None,
+                deal_rows.get(deal_id, {}),
+                contracts_by_deal.get(deal_id, []),
+                client_rows.get(deal_id, {}),
+            )
             continue
 
         source_updated_at = analysis.get(ANALYSIS_PROP_SOURCE_UPDATED_AT)
@@ -146,16 +154,31 @@ def _run_scoring(entity_ids: list[int]) -> list[dict]:
             stale_analysis_ids.append(deal_id)
             continue
 
-        results_by_id[deal_id] = _score_or_diagnose(analysis, deal_rows.get(deal_id, {}), contracts_by_deal.get(deal_id, []))
+        if _needs_analysis_refresh(
+            analysis,
+            deal_rows.get(deal_id, {}),
+            contracts_by_deal.get(deal_id, []),
+        ):
+            stale_analysis_ids.append(deal_id)
+            continue
+
+        results_by_id[deal_id] = _score_or_diagnose(
+            analysis,
+            deal_rows.get(deal_id, {}),
+            contracts_by_deal.get(deal_id, []),
+            client_rows.get(deal_id, {}),
+        )
 
     if stale_analysis_ids:
         recompute_deal_analysis(stale_analysis_ids, deadline=deadline)
         refreshed = _load_analysis_state(stale_analysis_ids, config)
+        refreshed_clients = _load_client_inputs(stale_analysis_ids, config)
         for deal_id in stale_analysis_ids:
             results_by_id[deal_id] = _score_or_diagnose(
                 refreshed.get(deal_id),
                 deal_rows.get(deal_id, {}),
                 contracts_by_deal.get(deal_id, []),
+                refreshed_clients.get(deal_id, {}),
             )
 
     _check_deadline(deadline)

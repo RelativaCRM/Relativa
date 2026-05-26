@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -72,6 +73,7 @@ public sealed class PermissionGuardTests
             wsRoleRepo.Object,
             orgMemberRepo.Object,
             access,
+            new Mock<IOrganizationSettingsRepository>().Object,
             new Mock<IValidator<CreateWorkspaceRequest>>().Object,
             updateValidator.Object);
     }
@@ -176,7 +178,7 @@ public sealed class PermissionGuardTests
             .ReturnsAsync(Member(1, 5, roleName, rolePermission));
 
         var act = () => svc.UpdateAsync(5, 1, new UpdateWorkspaceRequest("New Name"));
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 
     [Fact]
@@ -192,7 +194,7 @@ public sealed class PermissionGuardTests
             .ReturnsAsync((UserRoleWorkspace?)null);
 
         var act = () => svc.UpdateAsync(5, 9, new UpdateWorkspaceRequest("New Name"));
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 
     [Fact]
@@ -252,7 +254,7 @@ public sealed class PermissionGuardTests
             .ReturnsAsync(Member(1, 5, roleName, rolePermission));
 
         var act = () => svc.RemoveAsync(5, 99, 1);
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 
     [Fact]
@@ -265,7 +267,7 @@ public sealed class PermissionGuardTests
             .ReturnsAsync((UserRoleWorkspace?)null);
 
         var act = () => svc.RemoveAsync(5, 99, 9);
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 
     [Fact]
@@ -304,7 +306,7 @@ public sealed class PermissionGuardTests
             .ReturnsAsync(Member(1, 5, roleName, rolePermission));
 
         var act = () => svc.CreateAsync(5, 1, new CreateRoleRequest("custom-role", [1]));
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 
     [Fact]
@@ -320,6 +322,6 @@ public sealed class PermissionGuardTests
             .ReturnsAsync((UserRoleWorkspace?)null);
 
         var act = () => svc.CreateAsync(5, 9, new CreateRoleRequest("custom-role", [1]));
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 }

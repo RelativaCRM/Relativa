@@ -434,6 +434,10 @@ def _load_analysis_state(deal_ids, config):
                 row[ANALYSIS_PROP_NUM_OPEN_DEALS] = value_int
             elif property_id == prop_ids.get(ANALYSIS_PROP_AVG_DEAL_VALUE):
                 row[ANALYSIS_PROP_AVG_DEAL_VALUE] = float(value_decimal) if value_decimal is not None else None
+            elif property_id == prop_ids.get(ANALYSIS_PROP_DAYS_UNTIL_CLOSE):
+                row[ANALYSIS_PROP_DAYS_UNTIL_CLOSE] = value_int
+            elif property_id == prop_ids.get(ANALYSIS_PROP_HIST_CLOSE_RATE):
+                row[ANALYSIS_PROP_HIST_CLOSE_RATE] = float(value_decimal) if value_decimal is not None else None
             elif property_id == prop_ids.get(ANALYSIS_PROP_SOURCE_UPDATED_AT):
                 row[ANALYSIS_PROP_SOURCE_UPDATED_AT] = value_date
             elif property_id == prop_ids.get(ANALYSIS_PROP_CALCULATED_AT):
@@ -507,6 +511,43 @@ def _load_contract_inputs(deal_ids, config):
                 row[CONTRACT_PROP_SIGNED_AT] = value_date
         result.extend(contracts.values())
     return result
+
+
+def _load_client_inputs(deal_ids, config):
+    deal_client_map = _load_deal_client_map(deal_ids, config)
+    if not deal_client_map:
+        return {}
+
+    prop_ids = config["prop_ids"]
+    lifetime_prop = prop_ids.get(CLIENT_PROP_LIFETIME_VALUE)
+    tenure_prop = prop_ids.get(CLIENT_PROP_TENURE_DAYS)
+    wanted = [p for p in [lifetime_prop, tenure_prop] if p is not None]
+    if not wanted:
+        return {}
+
+    client_ids = list(set(deal_client_map.values()))
+    client_by_id = {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT epv.entity_id, epv.property_id, epv.value_decimal, epv.value_int
+            FROM entity_property_value epv
+            WHERE epv.entity_id = ANY(%s)
+              AND epv.property_id = ANY(%s)
+            """,
+            [client_ids, wanted],
+        )
+        for client_id, property_id, value_decimal, value_int in cursor.fetchall():
+            row = client_by_id.setdefault(client_id, {})
+            if property_id == lifetime_prop:
+                row[CLIENT_PROP_LIFETIME_VALUE] = float(value_decimal) if value_decimal is not None else None
+            elif property_id == tenure_prop:
+                row[CLIENT_PROP_TENURE_DAYS] = value_int
+
+    deal_client_values = {}
+    for deal_id, client_id in deal_client_map.items():
+        deal_client_values[deal_id] = client_by_id.get(client_id, {})
+    return deal_client_values
 
 
 def recompute_deal_analysis(deal_ids, deadline=None):

@@ -32,6 +32,7 @@ const container = ref<HTMLDivElement | null>(null);
 const network = shallowRef<Network | null>(null);
 const selectedNode = ref<GraphNodeDto | null>(null);
 const dealScores = ref<Map<number, DealScoreDto>>(new Map());
+const riskFilter = ref<GraphRiskLevel | null>(null);
 
 // ── Combined filter state ────────────────────────────────────────────────────
 // `risk` re-issues the GET /graph request (server-side filter); the rest are
