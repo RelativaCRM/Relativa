@@ -72,10 +72,11 @@ test.describe('Entity Read View', () => {
     await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&id=${entityId}`);
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Edit' }).click();
-    const firstInput = page.locator('input[type="text"]').first();
-    await firstInput.clear();
-    await firstInput.fill('Updated-Name');
+    const firstInput = page.locator('input.p-inputtext').first();
+    await firstInput.click({ clickCount: 3 });
+    await firstInput.pressSequentially('Updated-Name', { delay: 20 });
     await page.getByRole('button', { name: 'Save' }).click();
+    await page.locator('.p-toast').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     await page.waitForLoadState('networkidle');
     await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&id=${entityId}`);
     await page.waitForLoadState('networkidle');
@@ -86,7 +87,7 @@ test.describe('Entity Read View', () => {
     await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&id=${entityId}`);
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Delete' }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.locator('.p-confirmdialog')).toBeVisible();
     await expect(page.getByText(/delete entity/i)).toBeVisible();
     await page.getByRole('button', { name: 'Cancel' }).click();
   });
