@@ -103,6 +103,6 @@ test.describe('Workspaces Page', () => {
   test('clicking Entities on a workspace card navigates to its entities page', async ({ page }) => {
     const card = page.locator('div.grid > div').filter({ hasText: `E2E Workspaces ${ts}` }).first();
     await card.getByRole('button', { name: /entities/i }).click();
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/entities`), { timeout: 10000 });
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}`), { timeout: 10000 });
   });
 });

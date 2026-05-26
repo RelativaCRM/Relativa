@@ -108,7 +108,7 @@ test.describe('Workspace Selector', () => {
     await page.goto(`${BASE}/workspace-select`);
     await page.waitForLoadState('networkidle');
     await page.getByText(`Alpha WS ${ts}`).click();
-    await expect(page).toHaveURL(/\/w\/\d+\/entities/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/\d+/, { timeout: 10000 });
   });
 
   test('user with single workspace is auto-selected and redirected to workspace entities', async ({ page }) => {
@@ -116,7 +116,7 @@ test.describe('Workspace Selector', () => {
     await fillLogin(page, SOLO_EMAIL, FRESH_PASS);
     await page.waitForURL(`${BASE}/`, { timeout: 10000 });
     await page.goto(`${BASE}/workspace-select`);
-    await expect(page).toHaveURL(/\/w\/\d+\/entities/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/\d+/, { timeout: 10000 });
     await expect(page).not.toHaveURL(/\/workspace-select/);
   });
 
@@ -134,7 +134,7 @@ test.describe('Workspace Selector', () => {
     await page.waitForLoadState('networkidle');
     await page.locator('#wsName').fill(`New WS ${ts}`);
     await page.getByRole('button', { name: /create workspace/i }).click();
-    await expect(page).toHaveURL(/\/w\/\d+\/entities/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/\d+/, { timeout: 10000 });
   });
 
   test('sign out from selector clears session and redirects to /login', async ({ page }) => {

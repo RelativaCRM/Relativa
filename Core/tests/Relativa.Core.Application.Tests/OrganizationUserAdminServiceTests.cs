@@ -95,7 +95,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.CreateOrgUserAsync(10, callerUserId: 5, ValidCreateRequest());
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*not a member*");
     }
 
@@ -242,7 +242,7 @@ public sealed class OrganizationUserAdminServiceTests
         var act = () => _sut.UpdateOtherUserProfileAsync(10, targetUserId: 5, callerUserId: 5,
             new UpdateOrgUserProfileRequest("Jane", "Doe"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*own profile*");
     }
 

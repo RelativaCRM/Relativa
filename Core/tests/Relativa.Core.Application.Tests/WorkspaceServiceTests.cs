@@ -153,7 +153,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateWorkspaceRequest("Team", 5));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*not a member of this organization*");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -172,7 +172,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateWorkspaceRequest("Team", 5));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*create_workspaces*");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -279,7 +279,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 99);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -311,7 +311,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateAsync(10, 3, new UpdateWorkspaceRequest("New Name"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -395,7 +395,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.ArchiveAsync(3, 5);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("Only workspace admins or organization owners can archive a workspace.");
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }

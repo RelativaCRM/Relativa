@@ -215,7 +215,7 @@ public sealed class OrganizationService(
         await RequireOrgPermission(callerUserId, organizationId, "remove_org_members", ct);
 
         var callerMembership = await orgMemberRepository.GetAsync(callerUserId, organizationId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
         var targetMember = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
             ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
 

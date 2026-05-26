@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Authorization;
 using Relativa.Core.Domain.Interfaces;
@@ -39,7 +40,7 @@ public sealed class WorkspaceAccessEvaluator(
             return;
         if (await IsOrgOwnerOfWorkspaceAsync(userId, workspaceId, ct))
             return;
-        throw new UnauthorizedAccessException("You are not a member of this workspace.");
+        throw new ForbiddenAccessException("You are not a member of this workspace.");
     }
 
     public async Task<bool> HasWorkspacePermissionAsync(

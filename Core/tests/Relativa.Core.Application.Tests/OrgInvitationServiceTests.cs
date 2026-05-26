@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -68,7 +69,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.InviteAsync(5, 3, new InviteToOrgRequest("test@relativa.io"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*invite_to_org*");
         _invitationRepo.Verify(r => r.AddAsync(It.IsAny<OrganizationInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -120,7 +121,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.CancelAsync(5, 10, 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 
     [Fact]
@@ -196,7 +197,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.AcceptAsync(5, "intruder@r.io", "tok");
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*different email address*");
     }
 
@@ -295,7 +296,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.ResendAsync(5, 10, 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*invite_to_org*");
         _invitationRepo.Verify(r => r.UpdateAsync(It.IsAny<OrganizationInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -424,7 +425,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.InviteAsync(5, 1, new InviteToOrgRequest("a@b.io", OrgRoleId: 7));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*assign_org_roles*");
     }
 
@@ -540,7 +541,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.GetByOrganizationAsync(5, 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*invite_to_org*");
         _invitationRepo.Verify(r => r.GetByOrganizationIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }

@@ -175,7 +175,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 99);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("You are not a member of this organization.");
     }
 
@@ -285,7 +285,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.GetMembersAsync(2, 5);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 
     [Fact]
