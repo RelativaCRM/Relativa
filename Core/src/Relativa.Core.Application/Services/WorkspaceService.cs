@@ -16,6 +16,7 @@ public sealed class WorkspaceService(
     IWorkspaceRoleRepository roleRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IWorkspaceAccessEvaluator workspaceAccess,
+    IOrganizationSettingsRepository orgSettingsRepository,
     IValidator<CreateWorkspaceRequest> createValidator,
     IValidator<UpdateWorkspaceRequest> updateValidator,
     IOutboxWriter? auditOutboxWriter = null) : IWorkspaceService
@@ -47,6 +48,13 @@ public sealed class WorkspaceService(
         };
 
         await workspaceRepository.AddAsync(workspace, ct);
+
+        await orgSettingsRepository.AddAsync(new OrganizationSettings
+        {
+            WorkspaceId = workspace.Id,
+            HighRiskThreshold = 0.7m,
+            MediumRiskThreshold = 0.4m
+        }, ct);
 
         var member = new UserRoleWorkspace
         {

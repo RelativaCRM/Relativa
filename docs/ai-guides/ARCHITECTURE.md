@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-15 (`PropertyAllowedValue` entity added and enforced at application layer; Graph→ML communication migrated from HTTP to RabbitMQ RPC; `GraphGlobalExceptionHandler` extended; global error handling hardened across all services.)
+> **Last verified:** 2026-05-24 (`OrganizationSettings` entity added for workspace-level risk thresholds.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -123,6 +123,7 @@ Several tables use `is_archived` instead of hard deletes for domain records. For
 | `User` | `users` | Credentials and profile. No `role_id` column (dropped). Partial unique index on `email` where `is_archived = false`. |
 | `Organization` | `organizations` | Top-level tenant boundary. |
 | `Workspace` | `workspaces` | Has `organization_id` FK (direct, no join table). |
+| `OrganizationSettings` | `organization_settings` | One-to-one workspace settings with risk thresholds. Unique on `workspace_id`. |
 | `OrganizationRole` | `organization_roles` | Org-scoped roles (system + custom). |
 | `OrganizationRolePermission` | `organization_role_permissions` | Join between org roles and permissions. |
 | `UserRoleOrganization` | `user_role_organization` | Org membership: user + org + org role. |
@@ -181,6 +182,7 @@ This matrix defines which service is the **authoritative writer** for each table
 | `organization_join_requests` | -- | **Read/Write** |
 | `organization_invitations` | -- | **Read/Write** |
 | `workspaces` | -- | **Read/Write** |
+| `organization_settings` | -- | **Read/Write** |
 | `workspace_roles` | -- | **Read/Write** |
 | `workspace_role_permissions` | -- | **Read/Write** |
 | `user_role_workspace` | -- | **Read/Write** |
