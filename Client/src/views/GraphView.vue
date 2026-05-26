@@ -287,16 +287,13 @@ async function load() {
 }
 
 watch(orgId, () => {
-  // Reset the risk filter when the org switches — keeping it would silently
-  // apply a stale predicate to a fresh dataset and could render an empty graph
-  // for reasons the user can't see.
-  riskFilter.value = null;
-  load();
+  if (riskFilter.value === null) {
+    load();
+  } else {
+    riskFilter.value = null;
+  }
 });
 
-// Re-fetch on filter change so the backend can apply the WHERE clause and
-// trim the node set; doing it client-side would still pay the full payload
-// cost and miss the server's score-based filter.
 watch(riskFilter, () => { load(); });
 
 onMounted(() => { load(); });
@@ -425,7 +422,6 @@ const hasGraph = computed(() => graphStore.nodes.length > 0);
       </div>
     </div>
 
-    <!-- Risk filter -->
     <RiskFilterPanel
       v-if="orgId"
       v-model="riskFilter"
