@@ -40,6 +40,15 @@ public partial class AddOrganizationSettings : EfMigration
             table: "organization_settings",
             column: "workspace_id",
             unique: true);
+
+        migrationBuilder.Sql("ALTER TABLE organization_settings ADD CONSTRAINT ck_org_settings_high_risk CHECK (high_risk_threshold BETWEEN 0.00 AND 1.00)");
+        migrationBuilder.Sql("ALTER TABLE organization_settings ADD CONSTRAINT ck_org_settings_medium_risk CHECK (medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold)");
+
+        migrationBuilder.Sql(@"
+            INSERT INTO organization_settings (workspace_id, high_risk_threshold, medium_risk_threshold)
+            SELECT id, 0.7, 0.4 FROM workspaces WHERE NOT is_archived
+            ON CONFLICT (workspace_id) DO NOTHING;
+        ");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)

@@ -8,7 +8,11 @@ public class OrganizationSettingsConfiguration : IEntityTypeConfiguration<Organi
 {
     public void Configure(EntityTypeBuilder<OrganizationSettings> builder)
     {
-        builder.ToTable("organization_settings");
+        builder.ToTable("organization_settings", t =>
+        {
+            t.HasCheckConstraint("ck_org_settings_high_risk", "high_risk_threshold BETWEEN 0.00 AND 1.00");
+            t.HasCheckConstraint("ck_org_settings_medium_risk", "medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold");
+        });
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.WorkspaceId).HasColumnName("workspace_id").IsRequired();
@@ -16,11 +20,13 @@ public class OrganizationSettingsConfiguration : IEntityTypeConfiguration<Organi
             .HasColumnName("high_risk_threshold")
             .HasColumnType("numeric(3,2)")
             .HasDefaultValue(0.7m)
+            .ValueGeneratedNever()
             .IsRequired();
         builder.Property(e => e.MediumRiskThreshold)
             .HasColumnName("medium_risk_threshold")
             .HasColumnType("numeric(3,2)")
             .HasDefaultValue(0.4m)
+            .ValueGeneratedNever()
             .IsRequired();
         builder.HasIndex(e => e.WorkspaceId)
             .IsUnique()

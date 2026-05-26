@@ -761,13 +761,13 @@ namespace Relativa.Migration.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<decimal>("HighRiskThreshold")
-                        .ValueGeneratedOnAdd()
+                        .ValueGeneratedNever()
                         .HasColumnType("numeric(3,2)")
                         .HasDefaultValue(0.7m)
                         .HasColumnName("high_risk_threshold");
 
                     b.Property<decimal>("MediumRiskThreshold")
-                        .ValueGeneratedOnAdd()
+                        .ValueGeneratedNever()
                         .HasColumnType("numeric(3,2)")
                         .HasDefaultValue(0.4m)
                         .HasColumnName("medium_risk_threshold");
@@ -781,6 +781,14 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("WorkspaceId")
                         .IsUnique()
                         .HasDatabaseName("ix_organization_settings_workspace_id");
+
+                    b.HasCheckConstraint("ck_org_settings_high_risk", "high_risk_threshold BETWEEN 0.00 AND 1.00");
+
+                    b.HasCheckConstraint("ck_org_settings_medium_risk", "medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold");
+
+                    b.HasCheckConstraint("ck_org_settings_high_risk", "high_risk_threshold BETWEEN 0.00 AND 1.00");
+
+                    b.HasCheckConstraint("ck_org_settings_medium_risk", "medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold");
 
                     b.ToTable("organization_settings", (string)null);
                 });

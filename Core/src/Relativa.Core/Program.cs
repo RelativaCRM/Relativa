@@ -57,6 +57,7 @@ try
     builder.Services.AddScoped<IUserProvisioningService, UserProvisioningService>();
 
     builder.Services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
+    builder.Services.AddScoped<IOrganizationSettingsRepository, OrganizationSettingsRepository>();
     builder.Services.AddScoped<IUserRoleWorkspaceRepository, UserRoleWorkspaceRepository>();
     builder.Services.AddScoped<IWorkspaceRoleRepository, WorkspaceRoleRepository>();
     builder.Services.AddScoped<IPermissionRepository, PermissionRepository>();
