@@ -42,6 +42,7 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+ML/data/synthetic_*.csv
 
 # Node / Client
 node_modules/
