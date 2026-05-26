@@ -18,12 +18,15 @@ public sealed class EntityService(
     IValidator<UpdateEntityRequest> updateValidator,
     IOutboxWriter? auditOutboxWriter = null) : IEntityService
 {
-    public async Task<List<EntityListItemDto>> GetByWorkspaceAsync(
+    public async Task<EntityPagedResult> GetByWorkspaceAsync(
         int workspaceId,
         int userId,
         int? entityTypeId,
         string? searchQuery,
+        int skip,
         int take,
+        IReadOnlyList<EntityFilterCondition>? filters = null,
+        IReadOnlyList<EntitySortField>? sort = null,
         int? excludeLinkedSourceRelTypeId = null,
         int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default)
@@ -31,17 +34,23 @@ public sealed class EntityService(
         await RequirePermission(userId, workspaceId, "view_entities", ct);
         var callerMembership = await GetMembershipOrThrowAsync(userId, workspaceId, ct);
 
-        var entities = await entityRepository.GetByWorkspaceAsync(
+        var resolved = await ResolveFiltersAsync(filters, entityTypeId, userId, workspaceId, ct);
+
+        var (items, total) = await entityRepository.GetByWorkspaceAsync(
             workspaceId,
             userId,
             callerMembership.Role.Priority,
             entityTypeId,
             searchQuery,
+            skip,
             take,
+            resolved,
+            sort ?? [],
             excludeLinkedSourceRelTypeId,
             excludeLinkedTargetRelTypeId,
             ct);
-        return entities.Select(MapToListItem).ToList();
+
+        return new EntityPagedResult(items.Select(MapToListItem).ToList(), total, skip, take);
     }
 
     public async Task<EntityDetailDto> GetByIdAsync(int entityId, int workspaceId, int userId, CancellationToken ct = default)
@@ -256,6 +265,53 @@ public sealed class EntityService(
             throw new ForbiddenAccessException("Access denied");
         return membership;
     }
+
+    private async Task<IReadOnlyList<ResolvedFilterCondition>> ResolveFiltersAsync(
+        IReadOnlyList<EntityFilterCondition>? raw,
+        int? entityTypeId,
+        int userId,
+        int workspaceId,
+        CancellationToken ct)
+    {
+        if (raw is null or { Count: 0 }) return [];
+
+        if (entityTypeId is null)
+            throw new ArgumentException("entityTypeId is required when filters are specified.");
+
+        var typeProps = await entityRepository.GetTypePropertiesAsync(entityTypeId.Value, ct);
+        if (typeProps.Count == 0)
+            throw new KeyNotFoundException($"Entity type {entityTypeId} does not exist or has no properties defined.");
+
+        var propMap = typeProps.ToDictionary(tp => tp.PropertyId, tp => tp.Property);
+        var hasViewAnalytics = await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "view_analytics", ct);
+
+        var resolved = new List<ResolvedFilterCondition>();
+        foreach (var f in raw)
+        {
+            if (!propMap.TryGetValue(f.PropertyId, out var prop))
+                throw new ArgumentException($"Property {f.PropertyId} does not belong to entity type {entityTypeId}.");
+
+            if (prop.IsReadonly && !hasViewAnalytics)
+                continue;
+
+            resolved.Add(ResolveFilter(f, prop));
+        }
+        return resolved;
+    }
+
+    private static ResolvedFilterCondition ResolveFilter(EntityFilterCondition f, Property prop) => prop.DataType switch
+    {
+        PropertyDataType.String  => new ResolvedFilterCondition(f.PropertyId, prop.DataType, f.Op, f.Value, null, null, null, null),
+        PropertyDataType.Int     => new ResolvedFilterCondition(f.PropertyId, prop.DataType, f.Op, null,
+            int.TryParse(f.Value, out var i) ? i : throw new ArgumentException($"Property '{prop.Name}' expects an integer filter value."), null, null, null),
+        PropertyDataType.Decimal => new ResolvedFilterCondition(f.PropertyId, prop.DataType, f.Op, null, null,
+            decimal.TryParse(f.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : throw new ArgumentException($"Property '{prop.Name}' expects a decimal filter value."), null, null),
+        PropertyDataType.Bool    => new ResolvedFilterCondition(f.PropertyId, prop.DataType, f.Op, null, null, null,
+            bool.TryParse(f.Value, out var b) ? b : throw new ArgumentException($"Property '{prop.Name}' expects a boolean filter value (true/false)."), null),
+        PropertyDataType.Date    => new ResolvedFilterCondition(f.PropertyId, prop.DataType, f.Op, null, null, null, null,
+            DateOnly.TryParseExact(f.Value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt) ? dt : throw new ArgumentException($"Property '{prop.Name}' expects a date filter value in yyyy-MM-dd format.")),
+        _ => throw new ArgumentException($"Unsupported data type '{prop.DataType}' for filter on property '{prop.Name}'.")
+    };
 
     private async Task EnsureCanAccessEntityAsync(int userId, int workspaceId, Entity entity, CancellationToken ct)
     {

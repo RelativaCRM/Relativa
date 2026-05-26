@@ -29,6 +29,7 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
     private int _managerUserId;
     private int _outsiderUserId;
     private int _archivedMemberUserId;
+    private int _basicStatsUserId;
     private int _targetWorkspaceId;
     private int _archivedWorkspaceId;
 
@@ -70,13 +71,15 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
         var managerUser        = new User { FirstName = "Mark",    LastName = "Manager", Email = "manager@test.com",       Password = "x", CreatedAt = DateTime.UtcNow, IsArchived = false };
         var outsiderUser       = new User { FirstName = "Outside", LastName = "User",    Email = "outsider@test.com",      Password = "x", CreatedAt = DateTime.UtcNow, IsArchived = false };
         var archivedMemberUser = new User { FirstName = "Former",  LastName = "Member",  Email = "former.member@test.com", Password = "x", CreatedAt = DateTime.UtcNow, IsArchived = false };
-        _db.Users.AddRange(analystUser, managerUser, outsiderUser, archivedMemberUser);
+        var basicStatsUser     = new User { FirstName = "Basic",   LastName = "Viewer",  Email = "basic.viewer@test.com",  Password = "x", CreatedAt = DateTime.UtcNow, IsArchived = false };
+        _db.Users.AddRange(analystUser, managerUser, outsiderUser, archivedMemberUser, basicStatsUser);
         await _db.SaveChangesAsync();
 
         _analystUserId        = analystUser.Id;
         _managerUserId        = managerUser.Id;
         _outsiderUserId       = outsiderUser.Id;
         _archivedMemberUserId = archivedMemberUser.Id;
+        _basicStatsUserId     = basicStatsUser.Id;
 
         var permViewAnalytics     = new Permission { Name = "view_analytics",      IsArchived = false };
         var permViewBasic         = new Permission { Name = "view_basic_stats",    IsArchived = false };
@@ -86,7 +89,8 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
 
         var wsAnalystRole = new WorkspaceRole { Name = "ws_analyst", WorkspaceId = null, Priority = 3, IsArchived = false };
         var wsManagerRole = new WorkspaceRole { Name = "ws_manager", WorkspaceId = null, Priority = 2, IsArchived = false };
-        _db.WorkspaceRoles.AddRange(wsAnalystRole, wsManagerRole);
+        var wsViewerRole  = new WorkspaceRole { Name = "ws_viewer",  WorkspaceId = null, Priority = 4, IsArchived = false };
+        _db.WorkspaceRoles.AddRange(wsAnalystRole, wsManagerRole, wsViewerRole);
         await _db.SaveChangesAsync();
 
         _db.WorkspaceRolePermissions.AddRange(
@@ -94,7 +98,8 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
             new WorkspaceRolePermission { WsRoleId = wsAnalystRole.Id, PermissionId = permViewBasic.Id },
             new WorkspaceRolePermission { WsRoleId = wsManagerRole.Id, PermissionId = permViewAnalytics.Id },
             new WorkspaceRolePermission { WsRoleId = wsManagerRole.Id, PermissionId = permViewBasic.Id },
-            new WorkspaceRolePermission { WsRoleId = wsManagerRole.Id, PermissionId = permViewTeamAnalytics.Id }
+            new WorkspaceRolePermission { WsRoleId = wsManagerRole.Id, PermissionId = permViewTeamAnalytics.Id },
+            new WorkspaceRolePermission { WsRoleId = wsViewerRole.Id,  PermissionId = permViewBasic.Id }
         );
         await _db.SaveChangesAsync();
 
@@ -112,7 +117,8 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
             new UserRoleWorkspace { UserId = managerUser.Id,        WorkspaceId = targetWs.Id,   WsRoleId = wsManagerRole.Id, JoinedAt = DateTime.UtcNow, IsArchived = false },
             new UserRoleWorkspace { UserId = outsiderUser.Id,       WorkspaceId = otherWs.Id,    WsRoleId = wsManagerRole.Id, JoinedAt = DateTime.UtcNow, IsArchived = false },
             new UserRoleWorkspace { UserId = archivedMemberUser.Id, WorkspaceId = targetWs.Id,   WsRoleId = wsAnalystRole.Id, JoinedAt = DateTime.UtcNow, IsArchived = true  },
-            new UserRoleWorkspace { UserId = analystUser.Id,        WorkspaceId = archivedWs.Id, WsRoleId = wsAnalystRole.Id, JoinedAt = DateTime.UtcNow, IsArchived = false }
+            new UserRoleWorkspace { UserId = analystUser.Id,        WorkspaceId = archivedWs.Id, WsRoleId = wsAnalystRole.Id, JoinedAt = DateTime.UtcNow, IsArchived = false },
+            new UserRoleWorkspace { UserId = basicStatsUser.Id,     WorkspaceId = targetWs.Id,   WsRoleId = wsViewerRole.Id,  JoinedAt = DateTime.UtcNow, IsArchived = false }
         );
         await _db.SaveChangesAsync();
     }
@@ -125,6 +131,10 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
         result.WorkspaceId.Should().Be(_targetWorkspaceId);
         result.AccessLevel.Should().Be("full",
             "analyst has view_analytics so the service must return full-access summary");
+        result.MemberCount.Should().Be(3,
+            "targetWs has 3 active assignments: analyst, manager, and viewer");
+        result.TotalPipelineValue.Should().NotBeNull(
+            "full analytics path must populate financial fields, never return null");
     }
 
     [Fact]
@@ -138,35 +148,50 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetPipelineAsync_AnalystMember_ReturnsPipeline()
+    public async Task GetPipelineAsync_AnalystMember_ReturnsFourStagesWithAllStatusKeys()
     {
         var result = await _svc.GetPipelineAsync(_analystUserId, _targetWorkspaceId, CancellationToken.None);
 
-        result.Should().NotBeNull("analyst has view_analytics — pipeline must be accessible");
+        result.Stages.Should().HaveCount(4,
+            "service always returns exactly the 4 fixed CRM stages regardless of deal count");
+        result.Stages.Select(s => s.Name).Should()
+            .Equal("Prospecting", "Qualification", "Proposal", "Negotiation");
+        result.StatusBreakdown.Keys.Should()
+            .BeEquivalentTo(new[] { "opened", "pending", "closed", "revoked" },
+                "all four deal status keys must always be present in the breakdown");
     }
 
     [Fact]
-    public async Task GetPipelineAsync_ManagerMember_ReturnsPipeline()
+    public async Task GetPipelineAsync_ManagerMember_ReturnsFourStagesWithAllStatusKeys()
     {
         var result = await _svc.GetPipelineAsync(_managerUserId, _targetWorkspaceId, CancellationToken.None);
 
-        result.Should().NotBeNull("manager has view_analytics — pipeline must be accessible");
+        result.Stages.Should().HaveCount(4,
+            "service always returns exactly the 4 fixed CRM stages regardless of deal count");
+        result.Stages.Select(s => s.Name).Should()
+            .Equal("Prospecting", "Qualification", "Proposal", "Negotiation");
+        result.StatusBreakdown.Keys.Should()
+            .BeEquivalentTo(new[] { "opened", "pending", "closed", "revoked" },
+                "all four deal status keys must always be present in the breakdown");
     }
 
     [Fact]
-    public async Task GetRiskDistributionAsync_AnalystMember_ReturnsDistribution()
+    public async Task GetRiskDistributionAsync_AnalystMember_ReturnsThreeBuckets()
     {
         var result = await _svc.GetRiskDistributionAsync(_analystUserId, _targetWorkspaceId, CancellationToken.None);
 
-        result.Should().NotBeNull("analyst has view_analytics — risk distribution must be accessible");
+        result.Distribution.Keys.Should()
+            .BeEquivalentTo(new[] { "high", "medium", "low" },
+                "risk distribution must always return exactly the three risk buckets");
     }
 
     [Fact]
-    public async Task GetTrendsAsync_AnalystMember_ReturnsTrends()
+    public async Task GetTrendsAsync_AnalystMember_ReturnsSixRollingMonths()
     {
         var result = await _svc.GetTrendsAsync(_analystUserId, _targetWorkspaceId, CancellationToken.None);
 
-        result.Should().NotBeNull("analyst has view_analytics — trends must be accessible");
+        result.Months.Should().HaveCount(6,
+            "trends always covers a fixed 6-month rolling window regardless of deal count");
     }
 
     [Fact]
@@ -269,11 +294,14 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetMemberActivityAsync_ManagerMember_ReturnsList()
+    public async Task GetMemberActivityAsync_ManagerMember_ReturnsOneEntryPerActiveMember()
     {
         var result = await _svc.GetMemberActivityAsync(_managerUserId, _targetWorkspaceId, CancellationToken.None);
 
-        result.Should().NotBeNull("manager has view_team_analytics — member activity must be accessible");
+        result.Should().HaveCount(3,
+            "targetWs has 3 active assignments (analyst, manager, viewer) — archived member must not appear");
+        result.Should().NotContain(m => m.UserId == _archivedMemberUserId,
+            "revoked membership must be excluded from the activity list");
     }
 
     [Fact]
@@ -289,5 +317,69 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
 
         samples.Max().Should().BeLessThanOrEqualTo(500,
             $"worst of 3 warm-path calls was {samples.Max()}ms — exceeds the 500ms SLA (samples: {string.Join(", ", samples)})");
+    }
+
+    [Fact]
+    public async Task GetSummaryAsync_BasicStatsMember_ReturnsBasicSummaryWithFinancialFieldsNull()
+    {
+        var result = await _svc.GetSummaryAsync(_basicStatsUserId, _targetWorkspaceId, CancellationToken.None);
+
+        result.AccessLevel.Should().Be("basic",
+            "user with only view_basic_stats must receive a basic-level summary, not full analytics");
+        result.TotalPipelineValue.Should().BeNull(
+            "basic tier must not expose total pipeline value");
+        result.WinRate.Should().BeNull(
+            "basic tier must not expose win rate");
+        result.AvgDealSize.Should().BeNull(
+            "basic tier must not expose average deal size");
+    }
+
+    [Fact]
+    public async Task GetMemberActivityAsync_NonMember_ThrowsForbiddenAccessException()
+    {
+        var act = () => _svc.GetMemberActivityAsync(_outsiderUserId, _targetWorkspaceId, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>(
+            "user with no role in this workspace must be denied member activity access");
+    }
+
+    [Fact]
+    public async Task GetTopEntitiesAsync_AnalystMember_ReturnsCappedLists()
+    {
+        var result = await _svc.GetTopEntitiesAsync(_analystUserId, _targetWorkspaceId, CancellationToken.None);
+
+        result.TopDeals.Should().HaveCountLessThanOrEqualTo(10,
+            "top deals are capped at 10 by deal value");
+        result.TopClients.Should().HaveCountLessThanOrEqualTo(10,
+            "top clients are capped at 10 by lifetime value");
+    }
+
+    [Fact]
+    public async Task GetTopEntitiesAsync_ManagerMember_ReturnsCappedLists()
+    {
+        var result = await _svc.GetTopEntitiesAsync(_managerUserId, _targetWorkspaceId, CancellationToken.None);
+
+        result.TopDeals.Should().HaveCountLessThanOrEqualTo(10,
+            "top deals are capped at 10 by deal value");
+        result.TopClients.Should().HaveCountLessThanOrEqualTo(10,
+            "top clients are capped at 10 by lifetime value");
+    }
+
+    [Fact]
+    public async Task GetTopEntitiesAsync_NonMember_ThrowsForbiddenAccessException()
+    {
+        var act = () => _svc.GetTopEntitiesAsync(_outsiderUserId, _targetWorkspaceId, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>(
+            "user with no role in this workspace must be denied at the permission guard");
+    }
+
+    [Fact]
+    public async Task GetTopEntitiesAsync_ArchivedMembership_ThrowsForbiddenAccessException()
+    {
+        var act = () => _svc.GetTopEntitiesAsync(_archivedMemberUserId, _targetWorkspaceId, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>(
+            "a revoked workspace assignment must not grant access to any guarded endpoint");
     }
 }
