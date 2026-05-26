@@ -226,4 +226,120 @@ public sealed class AuditLogReadRepositoryTests : IAsyncLifetime
         result.Total.Should().Be(1);
         result.Data[0].TargetUser!.Id.Should().Be(10);
     }
+
+    [Fact]
+    public async Task GetEntityScopeAsync_ReturnsOnlyLogsLinkedToWorkspace()
+    {
+        var action = $"ws_isolation_{Guid.NewGuid():N}";
+        var now    = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            db.EntityAuditLogs.AddRange(
+                new EntityAuditLog { Id = Guid.NewGuid(), Action = action, EntityId = 1, ChangedAt = now },
+                new EntityAuditLog { Id = Guid.NewGuid(), Action = action, EntityId = 2, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetEntityScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            action, null, null, null,
+            workspaceId: 1, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+        result.Data[0].Entity!.Id.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetEntityScopeAsync_ActionFilter_NarrowsResults()
+    {
+        var actionA = $"ent_scopeA_{Guid.NewGuid():N}";
+        var actionB = $"ent_scopeB_{Guid.NewGuid():N}";
+        var now     = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            db.EntityAuditLogs.AddRange(
+                new EntityAuditLog { Id = Guid.NewGuid(), Action = actionA, EntityId = 1, ChangedAt = now },
+                new EntityAuditLog { Id = Guid.NewGuid(), Action = actionB, EntityId = 1, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetEntityScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            actionA, null, null, null,
+            workspaceId: 1, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+        result.Data[0].Action.Should().Be(actionA);
+    }
+
+    [Fact]
+    public async Task GetOrganizationScopeAsync_ReturnsOnlyLogsForOrg()
+    {
+        var now    = DateTimeOffset.UtcNow;
+        var orgIdA = 200;
+        var orgIdB = 201;
+
+        await using (var db = Db())
+        {
+            db.OrganizationAuditLogs.AddRange(
+                new OrganizationAuditLog { Id = Guid.NewGuid(), Action = "org_created", OrganizationId = orgIdA, ChangedAt = now },
+                new OrganizationAuditLog { Id = Guid.NewGuid(), Action = "org_created", OrganizationId = orgIdA, ChangedAt = now },
+                new OrganizationAuditLog { Id = Guid.NewGuid(), Action = "org_created", OrganizationId = orgIdB, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetOrganizationScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            null, null, orgIdA, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetOrganizationScopeAsync_ActorFilter_NarrowsResults()
+    {
+        var now   = DateTimeOffset.UtcNow;
+        var orgId = 202;
+
+        await using (var db = Db())
+        {
+            db.OrganizationAuditLogs.AddRange(
+                new OrganizationAuditLog { Id = Guid.NewGuid(), Action = "org_updated", OrganizationId = orgId, ChangedById = 1, ChangedAt = now },
+                new OrganizationAuditLog { Id = Guid.NewGuid(), Action = "org_updated", OrganizationId = orgId, ChangedById = 2, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetOrganizationScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            null, actorUserId: 1, orgId, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task BuildFilterContextAsync_WorkspaceScope_ReturnsWorkspaceAndOrgNames()
+    {
+        var q = new GetAuditLogQuery("workspace", null, null, null, 1, 10, null, null, 1, null, null, null);
+
+        var result = await Sut().BuildFilterContextAsync(q, "workspace", CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.Workspace.Should().NotBeNull();
+        result.Workspace!.Name.Should().Be("WS");
+        result.Workspace.OrganizationName.Should().Be("Test Org");
+    }
+
+    [Fact]
+    public async Task BuildFilterContextAsync_OrgScope_ReturnsOrgName()
+    {
+        var q = new GetAuditLogQuery("organization", null, null, null, 1, 10, null, null, null, 1, null, null);
+
+        var result = await Sut().BuildFilterContextAsync(q, "organization", CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.Organization.Should().NotBeNull();
+        result.Organization!.Name.Should().Be("Test Org");
+    }
 }
