@@ -25,12 +25,12 @@ public sealed class WorkspaceService(
         await createValidator.ValidateAndThrowAsync(request, ct);
 
         var orgMembership = await orgMemberRepository.GetAsync(userId, request.OrganizationId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
 
         var hasPermission = orgMembership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == OrganizationPermissions.CreateWorkspaces) ?? false;
         if (!hasPermission)
-            throw new UnauthorizedAccessException($"You do not have the '{OrganizationPermissions.CreateWorkspaces}' permission in this organization.");
+            throw new ForbiddenAccessException($"You do not have the '{OrganizationPermissions.CreateWorkspaces}' permission in this organization.");
 
         var adminRole = await roleRepository.GetSystemRoleWithPermissionsSupersetAsync(
                 WorkspacePermissions.FullWorkspaceAuthority,
@@ -158,7 +158,7 @@ public sealed class WorkspaceService(
     {
         await updateValidator.ValidateAndThrowAsync(request, ct);
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, WorkspacePermissions.ManageWsSettings, ct))
-            throw new UnauthorizedAccessException($"You do not have the '{WorkspacePermissions.ManageWsSettings}' permission in this workspace.");
+            throw new ForbiddenAccessException($"You do not have the '{WorkspacePermissions.ManageWsSettings}' permission in this workspace.");
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
             ?? throw new KeyNotFoundException("Workspace not found.");
@@ -209,7 +209,7 @@ public sealed class WorkspaceService(
             WorkspacePermissions.DeleteWorkspace,
             ct);
         if (!canDeleteWorkspace && !isOrgOwner && !isWsAdminFallback)
-            throw new UnauthorizedAccessException(
+            throw new ForbiddenAccessException(
                 "Only workspace admins or organization owners can archive a workspace.");
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)

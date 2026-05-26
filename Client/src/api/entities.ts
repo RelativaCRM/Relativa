@@ -109,6 +109,16 @@ export interface ListEntitiesQuery {
   excludeLinkedTargetRelTypeId?: number;
 }
 
+// Core /workspaces/{id}/entities switched to a paged envelope (items + total/skip/take).
+// We keep the public list() signature returning a flat array — all callsites assume that —
+// and unwrap `items` here. Drop this shim when pagination is plumbed through the UI.
+interface EntityPagedResult {
+  items: EntityListItemDto[];
+  total: number;
+  skip: number;
+  take: number;
+}
+
 const CORE = '/core/api/v1';
 
 function buildEntityListQuery(q?: ListEntitiesQuery): string {
@@ -127,11 +137,13 @@ export const entityApi = {
   listTypes(): Promise<EntityTypeDto[]> {
     return api.get<EntityTypeDto[]>(`${CORE}/entity-types`);
   },
-  list(workspaceId: number, query?: ListEntitiesQuery): Promise<EntityListItemDto[]> {
+  async list(workspaceId: number, query?: ListEntitiesQuery): Promise<EntityListItemDto[]> {
     const qs = buildEntityListQuery(query);
-    return api.get<EntityListItemDto[]>(
+    const res = await api.get<EntityPagedResult | EntityListItemDto[]>(
       `${CORE}/workspaces/${workspaceId}/entities${qs}`,
     );
+    // Tolerate both shapes so the client survives a future Core rollback as well.
+    return Array.isArray(res) ? res : (res?.items ?? []);
   },
   get(workspaceId: number, entityId: number): Promise<EntityDetailDto> {
     return api.get<EntityDetailDto>(

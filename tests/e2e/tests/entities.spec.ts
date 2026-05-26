@@ -49,7 +49,7 @@ test.describe('Entities Page', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`${BASE}/w/${workspaceId}/entities`);
+    await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client`);
     await page.waitForLoadState('networkidle');
   });
 
@@ -71,14 +71,14 @@ test.describe('Entities Page', () => {
       headers: { Authorization: `Bearer ${accessToken}` },
       data: { name: `E2E EmptyEntities ${ts}`, organizationId: orgs[0].id },
     })).json();
-    await page.goto(`${BASE}/w/${emptyWs.id}/entities`);
+    await page.goto(`${BASE}/w/${emptyWs.id}/entities?entityType=client`);
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('button', { name: /create entity/i })).toBeVisible();
   });
 
   test('New entity button navigates to create form', async ({ page }) => {
     await page.getByRole('button', { name: /new entity/i }).click();
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/entities\\?action=create`), { timeout: 10000 });
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/entities.*action=create`), { timeout: 10000 });
   });
 });
 
@@ -105,7 +105,7 @@ test.describe('Entity Create Form', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`${BASE}/w/${workspaceId}/entities/new`);
+    await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&action=create`);
     await page.waitForLoadState('networkidle');
   });
 

@@ -208,6 +208,13 @@ public static class AggregatedOpenApiEndpoint
         ["userId"]         = JsonValue.Create(2)!,
         ["id"]             = JsonValue.Create(1)!,
         ["q"]              = JsonValue.Create("acme")!,
+        ["entityTypeId"]   = JsonValue.Create(1)!,
+        ["skip"]           = JsonValue.Create(0)!,
+        ["take"]           = JsonValue.Create(50)!,
+        ["f"]              = JsonNode.Parse("""["5:contains:Acme","7:gt:0.5"]""")!,
+        ["sort"]           = JsonNode.Parse("""["7:desc","5:asc"]""")!,
+        ["excludeLinkedSourceRelTypeId"] = JsonValue.Create(1)!,
+        ["excludeLinkedTargetRelTypeId"] = JsonValue.Create(1)!,
 
         // Audit — GET /audit-log and GET /entities/{entityId}/audit-log (scope filters differ by entity_type)
         ["entity_type"]       = JsonValue.Create("workspace")!,

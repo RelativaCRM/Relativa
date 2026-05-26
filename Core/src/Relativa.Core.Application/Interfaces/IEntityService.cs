@@ -1,15 +1,19 @@
 using Relativa.Core.Application.DTOs.Entity;
+using Relativa.Core.Domain.Interfaces;
 
 namespace Relativa.Core.Application.Interfaces;
 
 public interface IEntityService
 {
-    Task<List<EntityListItemDto>> GetByWorkspaceAsync(
+    Task<EntityPagedResult> GetByWorkspaceAsync(
         int workspaceId,
         int userId,
         int? entityTypeId,
         string? searchQuery,
+        int skip,
         int take,
+        IReadOnlyList<EntityFilterCondition>? filters = null,
+        IReadOnlyList<EntitySortField>? sort = null,
         int? excludeLinkedSourceRelTypeId = null,
         int? excludeLinkedTargetRelTypeId = null,
         CancellationToken ct = default);
