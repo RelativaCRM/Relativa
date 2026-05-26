@@ -751,6 +751,48 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("organization_role_permissions", (string)null);
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.OrganizationSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("HighRiskThreshold")
+                        .ValueGeneratedNever()
+                        .HasColumnType("numeric(3,2)")
+                        .HasDefaultValue(0.7m)
+                        .HasColumnName("high_risk_threshold");
+
+                    b.Property<decimal>("MediumRiskThreshold")
+                        .ValueGeneratedNever()
+                        .HasColumnType("numeric(3,2)")
+                        .HasDefaultValue(0.4m)
+                        .HasColumnName("medium_risk_threshold");
+
+                    b.Property<int>("WorkspaceId")
+                        .HasColumnType("integer")
+                        .HasColumnName("workspace_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkspaceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_organization_settings_workspace_id");
+
+                    b.HasCheckConstraint("ck_org_settings_high_risk", "high_risk_threshold BETWEEN 0.00 AND 1.00");
+
+                    b.HasCheckConstraint("ck_org_settings_medium_risk", "medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold");
+
+                    b.HasCheckConstraint("ck_org_settings_high_risk", "high_risk_threshold BETWEEN 0.00 AND 1.00");
+
+                    b.HasCheckConstraint("ck_org_settings_medium_risk", "medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold");
+
+                    b.ToTable("organization_settings", (string)null);
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.Permission", b =>
                 {
                     b.Property<int>("Id")
@@ -1398,6 +1440,18 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.OrganizationSettings", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
+                        .WithOne("OrganizationSettings")
+                        .HasForeignKey("Relativa.Persistence.Entities.OrganizationSettings", "WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_org_settings_workspace");
+
+                    b.Navigation("Workspace");
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.Property", b =>
                 {
                     b.HasOne("Relativa.Persistence.Entities.Organization", "Organization")
@@ -1498,6 +1552,8 @@ namespace Relativa.Migration.Migrations
                         .HasConstraintName("fk_workspaces_organization");
 
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("OrganizationSettings");
 
                     b.Navigation("Organization");
                 });

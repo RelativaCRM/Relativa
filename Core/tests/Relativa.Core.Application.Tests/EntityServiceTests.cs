@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -43,6 +44,9 @@ public sealed class EntityServiceTests
         _entityRepo
             .Setup(r => r.ArchiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        _entityRepo
+            .Setup(r => r.GetTypePropertiesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         _createValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<CreateEntityRequest>>(), It.IsAny<CancellationToken>()))
@@ -121,23 +125,29 @@ public sealed class EntityServiceTests
             .Setup(x => x.HasWorkspacePermissionAsync(1, 1, "view_entities", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        await _sut.Invoking(s => s.GetByWorkspaceAsync(1, 1, null, null, 500))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+        await _sut.Invoking(s => s.GetByWorkspaceAsync(1, 1, null, null, 0, 50))
+            .Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*view_entities*");
     }
 
     [Fact]
-    public async Task GetByWorkspaceAsync_ReturnsOnlyNonArchivedEntities()
+    public async Task GetByWorkspaceAsync_ActiveEntity_MapsToDto()
     {
         var active = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
-        _entityRepo.Setup(r => r.GetByWorkspaceAsync(1, 1, 4, null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([active]);
+        _entityRepo.Setup(r => r.GetByWorkspaceAsync(
+                1, 1, It.IsAny<int>(), null, null,
+                It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<IReadOnlyList<ResolvedFilterCondition>>(),
+                It.IsAny<IReadOnlyList<EntitySortField>>(),
+                It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(([active], 1));
 
-        var result = await _sut.GetByWorkspaceAsync(1, 1, null, null, 500);
+        var result = await _sut.GetByWorkspaceAsync(1, 1, null, null, 0, 50);
 
-        result.Should().HaveCount(1);
-        result[0].Id.Should().Be(1);
-        result[0].EntityTypeName.Should().Be("client");
+        result.Items.Should().HaveCount(1);
+        result.Items[0].Id.Should().Be(1);
+        result.Items[0].EntityTypeName.Should().Be("client");
+        result.Total.Should().Be(1);
     }
 
     [Fact]
@@ -174,7 +184,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(new Dictionary<int, int> { [1] = 4, [2] = 4 });
 
         await _sut.Invoking(s => s.GetByIdAsync(5, 1, 1))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("Access denied");
     }
 
@@ -193,13 +203,13 @@ public sealed class EntityServiceTests
     }
 
     [Fact]
-    public async Task GetByIdAsync_EntityNotInWorkspace_ThrowsKeyNotFound()
+    public async Task GetByIdAsync_EntityNotInWorkspace_ThrowsEntityNotFoundException()
     {
         _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(99, 1, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Entity?)null);
 
         await _sut.Invoking(s => s.GetByIdAsync(99, 1, 1))
-            .Should().ThrowAsync<KeyNotFoundException>()
+            .Should().ThrowAsync<EntityNotFoundException>()
             .WithMessage("*99*");
     }
 
@@ -208,10 +218,10 @@ public sealed class EntityServiceTests
     {
         _workspaceAccess.Setup(x =>
                 x.HasWorkspacePermissionAsync(2, 1, "view_entities", It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new UnauthorizedAccessException("You are not a member of this workspace."));
+            .ThrowsAsync(new ForbiddenAccessException("You are not a member of this workspace."));
 
         await _sut.Invoking(s => s.GetByIdAsync(5, 1, 2))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*not a member*");
     }
 
@@ -224,7 +234,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.CreateAsync(2, 5, new CreateEntityRequest(0, [])))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*create_entities*");
 
         _createValidator.Verify(
@@ -415,7 +425,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest(null!)))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*edit_entities*");
 
         _updateValidator.Verify(
@@ -482,7 +492,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "New")])))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*edit_archived_entities*");
     }
 
@@ -541,7 +551,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.ArchiveAsync(1, 1, 1))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*delete_entities*");
     }
 
@@ -568,7 +578,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(new Dictionary<int, int> { [1] = 4, [2] = 4 });
 
         await _sut.Invoking(s => s.ArchiveAsync(1, 1, 1))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("Access denied");
     }
 

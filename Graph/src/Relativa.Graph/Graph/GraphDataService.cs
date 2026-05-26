@@ -203,26 +203,25 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
             .Where(id => string.Equals(entityTypeNameMap.GetValueOrDefault(id), "deal", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var mlScores = await mlClient.ScoreBatchAsync(dealEntityIds, ct);
+        IReadOnlyDictionary<int, MlScoreDto> mlScores;
+        try
+        {
+            mlScores = await mlClient.ScoreBatchAsync(dealEntityIds, ct);
+        }
+        catch
+        {
+            mlScores = new Dictionary<int, MlScoreDto>();
+        }
 
         if (riskLevel is not null)
         {
-            var matchingDealIds = mlScores.Values
-                .Where(s => s.ClosureScore.HasValue && MatchesRiskLevel(s.ClosureScore.Value, riskLevel))
-                .Select(s => s.EntityId)
+            var excludedDealIds = dealEntityIds
+                .Where(id => !mlScores.TryGetValue(id, out var s) || !s.ClosureScore.HasValue || !IsInRiskBucket(s.ClosureScore.Value, riskLevel))
                 .ToHashSet();
-
-            var idsToRemove = entityWorkspaceMap.Keys
-                .Where(id => string.Equals(entityTypeNameMap.GetValueOrDefault(id), "deal",
-                                 StringComparison.OrdinalIgnoreCase)
-                             && !matchingDealIds.Contains(id))
-                .ToList();
-
-            foreach (var id in idsToRemove)
-            {
+            foreach (var id in excludedDealIds)
                 entityWorkspaceMap.Remove(id);
-                entityTypeNameMap.Remove(id);
-            }
+            dealEntityIds = dealEntityIds.Where(id => !excludedDealIds.Contains(id)).ToList();
+            entityIds = entityWorkspaceMap.Keys.ToList();
         }
 
         // deal→client relationship for client composite scoring
@@ -404,14 +403,13 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
         return new GraphResponseDto(nodes, edges);
     }
 
-    private static bool MatchesRiskLevel(double closureScore, string riskLevel) =>
-        riskLevel.ToLowerInvariant() switch
-        {
-            "low"    => closureScore >= 67.0,
-            "medium" => closureScore is >= 33.0 and < 67.0,
-            "high"   => closureScore < 33.0,
-            _        => false
-        };
+    private static bool IsInRiskBucket(double score, string riskLevel) => riskLevel switch
+    {
+        "high"   => score < 33.0,
+        "medium" => score >= 33.0 && score < 67.0,
+        "low"    => score >= 67.0,
+        _        => true
+    };
 
     private static Dictionary<int, string> ClassifyTopBottom(
         Dictionary<int, double> scores,

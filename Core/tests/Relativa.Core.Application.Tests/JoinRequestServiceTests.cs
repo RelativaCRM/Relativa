@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using Moq;
 using Relativa.Core.Application.DTOs.JoinRequest;
@@ -179,7 +180,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.GetByOrganizationAsync(3, 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
             .WithMessage("*manage_join_requests*");
     }
 
@@ -220,7 +221,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<ForbiddenAccessException>();
     }
 
     [Fact]

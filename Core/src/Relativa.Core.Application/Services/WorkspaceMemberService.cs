@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.DTOs.Member;
 using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.Interfaces;
@@ -186,7 +187,7 @@ public sealed class WorkspaceMemberService(
     private async Task RequirePermission(int userId, int workspaceId, string permission, CancellationToken ct)
     {
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, permission, ct))
-            throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this workspace.");
+            throw new ForbiddenAccessException($"You do not have the '{permission}' permission in this workspace.");
     }
 
     private async Task<bool> WorkspaceMemberHasOrOrgOwnerPermissionAsync(int userId, int workspaceId, string permission,
@@ -223,9 +224,9 @@ public sealed class WorkspaceMemberService(
             ?? throw new KeyNotFoundException("Workspace not found.");
 
         _ = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
 
-        throw new UnauthorizedAccessException("You do not have the 'add_ws_members' permission in this workspace.");
+        throw new ForbiddenAccessException("You do not have the 'add_ws_members' permission in this workspace.");
     }
 
     private async Task RequireRemoveMemberPermissionAsync(int callerUserId, int workspaceId, CancellationToken ct)
@@ -240,8 +241,8 @@ public sealed class WorkspaceMemberService(
             ?? throw new KeyNotFoundException("Workspace not found.");
 
         _ = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
 
-        throw new UnauthorizedAccessException("You do not have the 'remove_ws_members' permission in this workspace.");
+        throw new ForbiddenAccessException("You do not have the 'remove_ws_members' permission in this workspace.");
     }
 }

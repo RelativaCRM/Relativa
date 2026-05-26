@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentValidation;
 using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Core.Application.DTOs.OrgInvitation;
@@ -153,7 +154,7 @@ public sealed class OrgInvitationService(
             ?? throw new KeyNotFoundException("Invitation not found or has expired.");
 
         if (!string.Equals(invitation.Email, userEmail, StringComparison.OrdinalIgnoreCase))
-            throw new UnauthorizedAccessException("This invitation was sent to a different email address.");
+            throw new ForbiddenAccessException("This invitation was sent to a different email address.");
 
         if (invitation.Status != "Pending")
             throw new InvalidOperationException($"Invitation is no longer pending (status: {invitation.Status}).");
@@ -295,7 +296,7 @@ public sealed class OrgInvitationService(
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)
     {
         return await orgMemberRepository.GetAsync(userId, orgId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
     }
 
     private async Task RequireOrgPermission(int userId, int orgId, string permission, CancellationToken ct)
@@ -304,6 +305,6 @@ public sealed class OrgInvitationService(
         var hasPermission = membership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
-            throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this organization.");
+            throw new ForbiddenAccessException($"You do not have the '{permission}' permission in this organization.");
     }
 }

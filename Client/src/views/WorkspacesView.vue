@@ -65,7 +65,7 @@ function openWorkspace(id: number) {
 function openEntities(id: number) {
   wsStore.setCurrentWorkspace(id);
   router.push({
-    name: 'workspace-entities',
+    name: 'workspace-dashboard',
     params: { workspaceId: String(id) },
   });
 }

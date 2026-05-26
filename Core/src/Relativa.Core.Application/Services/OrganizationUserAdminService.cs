@@ -74,7 +74,7 @@ public sealed class OrganizationUserAdminService(
         await RequireOrgPermission(callerUserId, organizationId, OrganizationPermissions.EditOtherOrgUsersProfile, ct);
 
         if (targetUserId == callerUserId)
-            throw new UnauthorizedAccessException("Edit your own profile via the account settings endpoint.");
+            throw new ForbiddenAccessException("Edit your own profile via the account settings endpoint.");
 
         _ = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
             ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
@@ -100,7 +100,7 @@ public sealed class OrganizationUserAdminService(
             throw new ForbiddenAccessException("You can archive only users with the same email domain.");
 
         var callerMembership = await orgMemberRepository.GetAsync(callerUserId, organizationId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
         if (callerMembership.Role!.Priority >= targetMembership.Role!.Priority)
         {
             throw new ForbiddenAccessException(
@@ -172,7 +172,7 @@ public sealed class OrganizationUserAdminService(
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)
     {
         return await orgMemberRepository.GetAsync(userId, orgId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
     }
 
     private async Task RequireOrgPermission(int userId, int orgId, string permission, CancellationToken ct)
