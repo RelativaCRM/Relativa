@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-25 (Graph deal nodes now color by ML closure-score risk tier — see the "Risk-based deal coloring" subsection under "Graph rendering". GraphView now hosts a server-side risk filter panel — see "Risk filter panel". Global error boundary + centralized HTTP toast wired up via `setGlobalToast` / `notifyGlobal`; loading skeletons standardized through `LoadingSkeleton` and `ChartSkeleton` — see "Error handling" and "Loading states" sections.)
+> **Last verified:** 2026-05-25 (Graph deal nodes now color by ML closure-score risk tier — see the "Risk-based deal coloring" subsection under "Graph rendering". GraphView hosts a combined `FilterPanel` (risk pills + manager / workspace dropdowns + entity-type chips + real-time visible/total counter) — see "Combined graph filter panel". Global error boundary + centralized HTTP toast wired up via `setGlobalToast` / `notifyGlobal`; loading skeletons standardized through `LoadingSkeleton` and `ChartSkeleton` — see "Error handling" and "Loading states" sections.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -140,20 +140,36 @@ These hues are the same red-500 / amber-500 / emerald-500 the dashboard risk-dis
 
 **Graph scope:** graph is org-level (route `/graph`, not workspace-scoped). Data fetched from `GET /graph/api/v1/graph?organizationId={id}` via [`Client/src/api/graph.ts`](../../Client/src/api/graph.ts). Graph store ([`Client/src/stores/graph.ts`](../../Client/src/stores/graph.ts)) holds `nodes`, `edges`, `isLoading`, `error`.
 
-## Risk filter panel
+## Combined graph filter panel
 
-GraphView hosts a single-select risk filter ([Client/src/components/graph/RiskFilterPanel.vue](../../Client/src/components/graph/RiskFilterPanel.vue)) wired into the same `GET /graph` request via the new optional `riskLevel=high|medium|low` query param (camelCase — that is the actual minimal-API parameter name; the BE spec called it `risk_level` but the binding is on `riskLevel`). The server applies the WHERE clause on `closure_score`, so the SPA simply re-issues the fetch on change — no client-side filtering, no full payload trim.
+GraphView hosts a single combined filter panel ([Client/src/components/graph/FilterPanel.vue](../../Client/src/components/graph/FilterPanel.vue)) that bundles every supported way of narrowing the graph plus a real-time visible/total counter. The host (`GraphView.vue`) owns a single `filters: FilterPanelState` ref with shape `{ risk, managerUserId, workspaceId, entityTypeNames }`. The panel emits `update:modelValue` for the whole state; GraphView decides what to do with each slice.
 
-- **Three toggle pills** (High / Medium / Low) inside a rounded `bg-white` group with `border-line`. The active pill paints with its risk fill (`#ef4444` / `#f59e0b` / `#10b981`) — the **same hues** used by the deal-risk legend and the dashboard doughnut. Don't introduce a fourth tier or restyle these pills with blue brand tokens; the colored fills are what tie the filter to the legend below it.
-- **Reset button** (`pi pi-times` + "Reset") renders only when a filter is active; it emits `null` through `v-model`.
-- **Active badge** (`pi pi-filter-fill` + "{Level} risk active") renders next to the pills as a tinted ring/fill in the active tier's color, so the filter state stays visible even when the user has scrolled the canvas.
-- Clicking the active pill again deselects it — single-select toggle, not radio-group locked.
+| Filter | Where it runs | Notes |
+|---|---|---|
+| **Risk** (`high`/`medium`/`low` pills) | Server-side via `?riskLevel=` on `GET /graph` | A `watch(filters.risk, load)` re-issues the fetch so the backend can apply the WHERE clause on `closure_score`. Don't filter risk in the SPA — the server already trims the response. |
+| **Manager** (dropdown) | Client-side, derived from `user_workspace` edges | Visible only when `canManagerFilter` is true (org_owner / org_admin / any ws_admin or ws_analyst membership — see Voice & terminology for role identifiers). Selecting a manager keeps the manager's user node, the workspaces they're a member of, and the entities inside those workspaces; everything else is hidden. |
+| **Workspace** (dropdown) | Client-side | Narrows the canvas to one workspace's chrome + entities (and to users connected to it). Source: workspace nodes already on the canvas — no extra fetch. |
+| **Entity type** (toggle chips) | Client-side | Multi-select; built from the distinct `entityTypeName` values currently in `graphStore.nodes` (so chips never reference a type the user can't see). User/workspace nodes are always kept regardless of the type set. |
 
-Wiring on the GraphView side: `riskFilter` is a `ref<GraphRiskLevel | null>(null)` watched by a `watch(riskFilter, load)` that re-runs the same `load()` pipeline used for org switches (fetch graph → fetch deal scores → render). The filter is **reset to `null` when the active org switches** — otherwise a stale predicate would silently empty the new org's graph. When a filter is active and the server returns zero nodes, the empty-state card swaps from the generic "No data available yet" copy to "No deals match the active risk filter" + a **Clear filter** button so the user is never stranded inside an applied filter with no escape.
+**Real-time counter** lives in the panel header as a `bg-brand-50` pill: `{visibleCount} of {totalCount} visible`. `visibleCount` comes from `filteredNodes.length` (the post-client-filter set); `totalCount` from `graphStore.nodeCount` (post-server-risk-filter). The pill updates synchronously on each filter toggle because both numbers are reactive computeds.
 
-The `RiskFilterPanel` is disabled (greyed pills) while `graphStore.isLoading` is true, so rapid clicks don't pile up overlapping fetches.
+**Per-filter reset** affordances:
+- Risk pills: clicking the active pill again deselects it; a small `pi pi-times-circle` next to the pill group clears it explicitly.
+- Manager / workspace dropdowns: PrimeVue's `Select` `show-clear` X cleans the field.
+- Entity-type chips: a trailing `pi pi-times-circle` clears the whole multi-select.
+- A single **Reset all** button on the panel header clears every slice in one click; it renders only when at least one filter is active.
 
-**Semantic note:** the backend's risk thresholds are inverted relative to the frontend's `RISK_COLORS`/`classifyRisk` — backend treats `closure_score < 33` as "high risk" (a deal unlikely to close), while the existing frontend coloring under "Risk-based deal coloring" treats `closure_score > 70` as "high risk". This means a server-side filter for "high" returns deals that the canvas renders **green** today. That mismatch predates this filter and is tracked separately; do not paper over it by re-mapping levels in the SPA before re-issuing the call.
+**Selection drop-off:** if the user has a node selected in the side panel and a filter change hides it, GraphView clears `selectedNode` so the detail card never hovers over an invisible record.
+
+**Org-switch behavior:** changing the active org resets every filter to its empty default (the same `risk:null, managerUserId:null, workspaceId:null, entityTypeNames:[]`) before re-fetching — a stale predicate would silently apply to a fresh dataset and could render an empty graph for reasons the user can't see.
+
+**Two empty states:**
+- Server returns zero nodes (e.g. risk filter matches no deals) → existing "No nodes match the active filters" card + **Clear all filters** button.
+- Server returned nodes but the client-side combination filters them all out → `pi pi-filter-slash` card with the same "too narrow" copy and **Clear all filters** button. This is split from the first state so the empty-state stays accurate when an org genuinely has no data vs. when filters are the cause.
+
+**Color rules:** the risk pills paint with the same red / amber / emerald hues as the deal-risk legend below the canvas (do not reintroduce blue brand tokens for the active risk pill — the colored fills are what tie the filter to the legend). Manager / workspace / entity-type controls stay inside the blue brand palette (`bg-brand-600` for active type chips, `bg-brand-50` for active-filter pills in the chip row). The active-filter chip row beneath the controls is the bridge between "what I'm currently filtering by" and the legend, so don't hide it once the chip row exists.
+
+**Semantic note (carry-over from the standalone risk filter):** the backend's risk thresholds are inverted relative to the frontend's `RISK_COLORS`/`classifyRisk` — backend treats `closure_score < 33` as "high risk", while the canvas treats `closure_score > 70` as "high risk". That mismatch predates this filter and is tracked separately; do not paper over it by re-mapping levels in the SPA before re-issuing the call.
 
 ## Deal scores panel
 

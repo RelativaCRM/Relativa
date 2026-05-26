@@ -11,15 +11,20 @@ import ProgressBar from 'primevue/progressbar';
 import { useGraphStore } from '@/stores/graph';
 import { useEntityStore } from '@/stores/entity';
 import { useOrganizationStore } from '@/stores/organization';
-import type { GraphNodeDto, GraphHighlightTag, GraphRiskLevel } from '@/api/graph';
+import { useWorkspaceStore } from '@/stores/workspace';
+import type { GraphNodeDto, GraphEdgeDto, GraphHighlightTag, GraphRiskLevel } from '@/api/graph';
 import { mlApi, type DealScoreDto } from '@/api/ml';
 import GraphSkeleton from '@/components/feedback/GraphSkeleton.vue';
-import RiskFilterPanel from '@/components/graph/RiskFilterPanel.vue';
+import FilterPanel, {
+  type FilterPanelOption,
+  type FilterPanelState,
+} from '@/components/graph/FilterPanel.vue';
 
 const router = useRouter();
 const graphStore = useGraphStore();
 const entityStore = useEntityStore();
 const orgStore = useOrganizationStore();
+const wsStore = useWorkspaceStore();
 const confirm = useConfirm();
 const toast = useToast();
 
@@ -28,6 +33,17 @@ const network = shallowRef<Network | null>(null);
 const selectedNode = ref<GraphNodeDto | null>(null);
 const dealScores = ref<Map<number, DealScoreDto>>(new Map());
 const riskFilter = ref<GraphRiskLevel | null>(null);
+
+// ── Combined filter state ────────────────────────────────────────────────────
+// `risk` re-issues the GET /graph request (server-side filter); the rest are
+// applied client-side over the returned node/edge set so we don't need new
+// query params. Reset granularity is per-filter via FilterPanel.
+const filters = ref<FilterPanelState>({
+  risk: null,
+  managerUserId: null,
+  workspaceId: null,
+  entityTypeNames: [],
+});
 
 const orgId = computed(() => orgStore.currentOrgId);
 
@@ -180,6 +196,149 @@ function formatTypeName(name: string): string {
   return name.split('_').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
+// ── Client-side filter derivation ────────────────────────────────────────────
+// Manager / workspace / entity-type filters are applied here rather than
+// re-fetching the graph: the backend currently only exposes ?riskLevel=, and
+// we don't want a round-trip on every dropdown click. The risk filter goes
+// through the store fetch (re-issues GET /graph) — see load() below.
+
+// Adjacency between users and workspaces, derived from `user_workspace` edges.
+// Used so the "Manager" dropdown can scope the canvas to a single user's
+// workspaces + the entities those workspaces hold.
+const userToWorkspaceIds = computed(() => {
+  const map = new Map<number, Set<number>>();
+  for (const n of graphStore.nodes) {
+    if (n.type === 'user' || n.type === 'user_self') {
+      map.set(n.resourceId, new Set<number>());
+    }
+  }
+  const nodeById = new Map(graphStore.nodes.map(n => [n.id, n]));
+  for (const e of graphStore.edges) {
+    if (e.type !== 'user_workspace') continue;
+    const a = nodeById.get(e.from);
+    const b = nodeById.get(e.to);
+    if (!a || !b) continue;
+    const userNode = a.resourceType === 'user' ? a : b.resourceType === 'user' ? b : null;
+    const wsNode = a.resourceType === 'workspace' ? a : b.resourceType === 'workspace' ? b : null;
+    if (!userNode || !wsNode) continue;
+    const set = map.get(userNode.resourceId) ?? new Set<number>();
+    set.add(wsNode.resourceId);
+    map.set(userNode.resourceId, set);
+  }
+  return map;
+});
+
+// Visible node id-set after applying manager + workspace + entity-type filters.
+// Risk filter is applied server-side, so its trimming is already baked into
+// `graphStore.nodes` by the time this runs.
+const visibleNodeIds = computed<Set<string>>(() => {
+  const f = filters.value;
+  const hasAnyClientFilter =
+    f.managerUserId !== null ||
+    f.workspaceId !== null ||
+    f.entityTypeNames.length > 0;
+  if (!hasAnyClientFilter) {
+    return new Set(graphStore.nodes.map(n => n.id));
+  }
+
+  // The selected manager's workspaces define the in-scope workspace set when
+  // a manager is picked; otherwise every workspace is in scope.
+  const managerScopedWsIds: Set<number> | null =
+    f.managerUserId !== null
+      ? userToWorkspaceIds.value.get(f.managerUserId) ?? new Set<number>()
+      : null;
+
+  const visible = new Set<string>();
+  for (const n of graphStore.nodes) {
+    if (n.type === 'user_self' || n.type === 'user') {
+      // Keep the selected manager's own node (and self) so the canvas isn't
+      // just a floating cloud of entities.
+      if (f.managerUserId === null || n.resourceId === f.managerUserId || n.type === 'user_self') {
+        visible.add(n.id);
+      }
+      continue;
+    }
+
+    if (n.type === 'workspace') {
+      if (f.workspaceId !== null && n.resourceId !== f.workspaceId) continue;
+      if (managerScopedWsIds && !managerScopedWsIds.has(n.resourceId)) continue;
+      visible.add(n.id);
+      continue;
+    }
+
+    // entity
+    if (f.workspaceId !== null && n.workspaceId !== f.workspaceId) continue;
+    if (managerScopedWsIds && n.workspaceId !== undefined && !managerScopedWsIds.has(n.workspaceId)) continue;
+    if (
+      f.entityTypeNames.length > 0 &&
+      (!n.entityTypeName || !f.entityTypeNames.includes(n.entityTypeName))
+    ) {
+      continue;
+    }
+    visible.add(n.id);
+  }
+  return visible;
+});
+
+const filteredNodes = computed<GraphNodeDto[]>(() =>
+  graphStore.nodes.filter(n => visibleNodeIds.value.has(n.id)),
+);
+
+const filteredEdges = computed<GraphEdgeDto[]>(() =>
+  graphStore.edges.filter(
+    e => visibleNodeIds.value.has(e.from) && visibleNodeIds.value.has(e.to),
+  ),
+);
+
+// ── Filter panel option lists ────────────────────────────────────────────────
+const managerOptions = computed<FilterPanelOption[]>(() => {
+  // Source: org members with `ws_manager` role at least somewhere. Falls back
+  // to "users present in the graph as nodes" when membership data isn't loaded
+  // yet, so the dropdown is never empty on first render.
+  const fromMembers = orgStore.members
+    .map(m => ({
+      label: `${m.firstName} ${m.lastName}`.trim() || m.email,
+      value: m.userId,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  if (fromMembers.length > 0) return fromMembers;
+
+  return graphStore.nodes
+    .filter(n => n.type === 'user' || n.type === 'user_self')
+    .map(n => ({ label: n.label, value: n.resourceId }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+});
+
+const workspaceOptions = computed<FilterPanelOption[]>(() =>
+  graphStore.nodes
+    .filter(n => n.type === 'workspace')
+    .map(n => ({ label: n.label, value: n.resourceId }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
+);
+
+const entityTypeOptions = computed<FilterPanelOption[]>(() => {
+  const seen = new Map<string, string>();
+  for (const n of graphStore.nodes) {
+    if (n.type === 'entity' && n.entityTypeName && !seen.has(n.entityTypeName)) {
+      seen.set(n.entityTypeName, formatTypeName(n.entityTypeName));
+    }
+  }
+  return [...seen.entries()]
+    .map(([value, label]) => ({ label, value }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+});
+
+// Manager dropdown is gated to ws_admin / ws_analyst (matches the parent
+// task's spec). Org owners/admins implicitly satisfy this since they hold
+// admin-equivalent visibility across workspaces.
+const canManagerFilter = computed(() => {
+  const orgRole = orgStore.currentOrg?.userRole;
+  if (orgRole === 'org_owner' || orgRole === 'org_admin') return true;
+  return wsStore.workspaces.some(
+    w => w.userRole === 'ws_admin' || w.userRole === 'ws_analyst',
+  );
+});
+
 // ── Render ───────────────────────────────────────────────────────────────────
 async function render() {
   await nextTick();
@@ -187,7 +346,7 @@ async function render() {
 
   const typeColorMap = buildEntityTypeColorMap(graphStore.nodes);
 
-  const visNodes = graphStore.nodes.map(n => {
+  const visNodes = filteredNodes.value.map(n => {
     const hl = n.highlightTag ? HIGHLIGHT[n.highlightTag] : null;
     const baseColor = nodeColor(n, typeColorMap);
     return {
@@ -206,7 +365,7 @@ async function render() {
     };
   });
 
-  const visEdges = graphStore.edges.map(e => ({
+  const visEdges = filteredEdges.value.map(e => ({
     id: e.id,
     from: e.from,
     to: e.to,
@@ -242,6 +401,19 @@ async function render() {
     }
   });
 }
+
+// Re-render the canvas whenever the client-side filter set changes, but stay
+// quiet until the initial graph fetch lands (no canvas → render() exits early
+// anyway, but skipping the call keeps Vue's reactivity graph cleaner).
+watch(visibleNodeIds, () => {
+  if (graphStore.nodes.length === 0) return;
+  // Drop selection if the previously-selected node is no longer visible —
+  // otherwise the side panel would hover over a filtered-out record.
+  if (selectedNode.value && !visibleNodeIds.value.has(selectedNode.value.id)) {
+    selectedNode.value = null;
+  }
+  render();
+});
 
 function edgeColor(type: string): string {
   switch (type) {
@@ -280,23 +452,43 @@ async function load() {
   if (!orgId.value) return;
   selectedNode.value = null;
   dealScores.value = new Map();
-  await graphStore.fetchGraph(orgId.value, riskFilter.value);
+  await graphStore.fetchGraph(orgId.value, filters.value.risk);
   if (graphStore.error) return;
   await loadDealScores();
   await render();
 }
 
 watch(orgId, () => {
-  if (riskFilter.value === null) {
-    load();
-  } else {
-    riskFilter.value = null;
-  }
+  // Reset every filter when the org switches — keeping a stale predicate would
+  // silently apply it to a fresh dataset and could render an empty graph for
+  // reasons the user can't see.
+  filters.value = {
+    risk: null,
+    managerUserId: null,
+    workspaceId: null,
+    entityTypeNames: [],
+  };
+  load();
 });
 
-watch(riskFilter, () => { load(); });
+// Risk re-fetches (server-side filter). The other filters are derived locally
+// from `graphStore.nodes` so they don't pay a round-trip.
+watch(() => filters.value.risk, () => { load(); });
 
-onMounted(() => { load(); });
+onMounted(() => {
+  load();
+  // Background-load org members so the Manager dropdown is populated when an
+  // admin/analyst opens the graph for the first time. We don't await — the
+  // dropdown falls back to graph user nodes until membership arrives.
+  if (orgStore.currentOrgId && orgStore.members.length === 0) {
+    orgStore.fetchMembers().catch(() => { /* silently fall back */ });
+  }
+  // Workspace list is needed to gate `canManagerFilter` correctly outside the
+  // workspace-scoped routes (the Graph view is org-level).
+  if (orgStore.currentOrgId && wsStore.workspaces.length === 0) {
+    wsStore.fetchWorkspaces(orgStore.currentOrgId).catch(() => { /* ignore */ });
+  }
+});
 
 onUnmounted(() => {
   network.value?.destroy();
@@ -401,6 +593,25 @@ function requestDelete(node: GraphNodeDto) {
 }
 
 const hasGraph = computed(() => graphStore.nodes.length > 0);
+const hasFilteredGraph = computed(() => filteredNodes.value.length > 0);
+const hasAnyActiveFilter = computed(() => {
+  const f = filters.value;
+  return (
+    f.risk !== null ||
+    f.managerUserId !== null ||
+    f.workspaceId !== null ||
+    f.entityTypeNames.length > 0
+  );
+});
+
+function resetAllFilters() {
+  filters.value = {
+    risk: null,
+    managerUserId: null,
+    workspaceId: null,
+    entityTypeNames: [],
+  };
+}
 </script>
 
 <template>
@@ -422,11 +633,17 @@ const hasGraph = computed(() => graphStore.nodes.length > 0);
       </div>
     </div>
 
-    <RiskFilterPanel
+    <!-- Combined filter panel -->
+    <FilterPanel
       v-if="orgId"
-      v-model="riskFilter"
+      v-model="filters"
       :disabled="graphStore.isLoading"
-      class="shrink-0"
+      :visible-count="filteredNodes.length"
+      :total-count="graphStore.nodeCount"
+      :manager-options="managerOptions"
+      :workspace-options="workspaceOptions"
+      :entity-type-options="entityTypeOptions"
+      :can-manager-filter="canManagerFilter"
     />
 
     <!-- No org -->
@@ -470,23 +687,45 @@ const hasGraph = computed(() => graphStore.nodes.length > 0);
       class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
     >
       <i class="pi pi-share-alt text-4xl text-ink-300" />
-      <template v-if="riskFilter">
-        <p class="mt-3 text-sm font-medium text-ink-700">No deals match the active risk filter.</p>
+      <template v-if="hasAnyActiveFilter">
+        <p class="mt-3 text-sm font-medium text-ink-700">No nodes match the active filters.</p>
         <p class="mt-1 text-xs text-ink-500 max-w-md">
-          Clear the filter to see the full graph, or pick a different risk level.
+          Clear or relax the filters to see more of the graph.
         </p>
         <Button
-          label="Clear filter"
+          label="Clear all filters"
           icon="pi pi-times"
           severity="secondary"
           size="small"
           class="mt-4"
-          @click="riskFilter = null"
+          @click="resetAllFilters"
         />
       </template>
       <p v-else class="mt-3 text-sm text-ink-500">
         No data available yet. Add workspaces and entities to populate the graph.
       </p>
+    </div>
+
+    <!-- Filtered-empty (graph has data, but all client-side filters together
+         returned zero nodes — the backend risk filter case is already covered
+         above when the server returns zero nodes). -->
+    <div
+      v-else-if="hasGraph && !hasFilteredGraph"
+      class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
+    >
+      <i class="pi pi-filter-slash text-4xl text-ink-300" />
+      <p class="mt-3 text-sm font-medium text-ink-700">No nodes match the active filters.</p>
+      <p class="mt-1 text-xs text-ink-500 max-w-md">
+        Try removing a filter or widening the selection. The current combination is too narrow.
+      </p>
+      <Button
+        label="Clear all filters"
+        icon="pi pi-times"
+        severity="secondary"
+        size="small"
+        class="mt-4"
+        @click="resetAllFilters"
+      />
     </div>
 
     <!-- Graph + panel -->

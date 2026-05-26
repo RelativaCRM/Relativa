@@ -286,6 +286,16 @@ services:
       start_period: 60s
     networks:
       - relativa_net
+    develop:
+      watch:
+        - action: sync
+          path: ./Client/src
+          target: /app/src
+        - action: sync
+          path: ./Client/index.html
+          target: /app/index.html
+        - action: rebuild
+          path: ./Client/package.json
 
   migration:
     build:
