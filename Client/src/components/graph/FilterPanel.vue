@@ -18,15 +18,11 @@ export interface FilterPanelState {
 const props = defineProps<{
   modelValue: FilterPanelState;
   disabled?: boolean;
-  /** Visible nodes after all filters applied (real-time counter). */
   visibleCount: number;
-  /** Total nodes returned by the server before client-side narrowing. */
   totalCount: number;
-  /** Org members with `ws_manager` role — gating happens outside via canManagerFilter. */
   managerOptions: FilterPanelOption[];
   workspaceOptions: FilterPanelOption[];
   entityTypeOptions: FilterPanelOption[];
-  /** Hides the manager dropdown for roles that shouldn't see it (ws_member/ws_manager themselves). */
   canManagerFilter: boolean;
 }>();
 
@@ -41,16 +37,11 @@ type RiskOption = {
   border: string;
 };
 
-// Same red/amber/emerald hues as the graph deal-risk legend and the dashboard
-// risk-distribution doughnut, so the filter pills read as siblings of the
-// existing risk swatches instead of a new accent palette.
 const RISK_OPTIONS: ReadonlyArray<RiskOption> = [
   { value: 'high',   label: 'High',   fill: '#ef4444', border: '#b91c1c' },
   { value: 'medium', label: 'Medium', fill: '#f59e0b', border: '#b45309' },
   { value: 'low',    label: 'Low',    fill: '#10b981', border: '#047857' },
 ];
-
-const state = computed(() => props.modelValue);
 
 function patch(partial: Partial<FilterPanelState>) {
   if (props.disabled) return;
@@ -70,7 +61,6 @@ function toggleEntityType(name: string) {
 }
 
 function resetAll() {
-  if (props.disabled) return;
   emit('update:modelValue', {
     risk: null,
     managerUserId: null,
@@ -81,15 +71,12 @@ function resetAll() {
 
 const hasAnyFilter = computed(
   () =>
-    state.value.risk !== null ||
-    state.value.managerUserId !== null ||
-    state.value.workspaceId !== null ||
-    state.value.entityTypeNames.length > 0,
+    props.modelValue.risk !== null ||
+    props.modelValue.managerUserId !== null ||
+    props.modelValue.workspaceId !== null ||
+    props.modelValue.entityTypeNames.length > 0,
 );
 
-const activeRisk = computed(() =>
-  RISK_OPTIONS.find((o) => o.value === state.value.risk) ?? null,
-);
 </script>
 
 <template>
@@ -97,7 +84,6 @@ const activeRisk = computed(() =>
     class="rounded-xl border border-line bg-white px-4 py-3 flex flex-col gap-3 shrink-0"
     aria-label="Graph filters"
   >
-    <!-- Header row: title + real-time counter + reset-all -->
     <header class="flex items-center justify-between gap-3 flex-wrap">
       <div class="flex items-center gap-2">
         <i class="pi pi-filter text-ink-500" />
@@ -111,10 +97,12 @@ const activeRisk = computed(() =>
       </div>
 
       <button
-        v-if="hasAnyFilter"
         type="button"
-        :disabled="disabled"
-        class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-ink-500 hover:text-ink-800 hover:bg-surface transition-colors disabled:opacity-50"
+        :disabled="disabled || !hasAnyFilter"
+        :class="[
+          'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-ink-600 border border-line bg-white hover:bg-surface hover:border-ink-300 hover:text-ink-900 transition-colors disabled:opacity-50',
+          !hasAnyFilter && 'invisible pointer-events-none',
+        ]"
         @click="resetAll"
       >
         <i class="pi pi-times text-[10px]" />
@@ -122,15 +110,13 @@ const activeRisk = computed(() =>
       </button>
     </header>
 
-    <!-- Filter controls: Risk on its own row; Manager + Workspace + Type share row 2 -->
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <!-- Risk pills -->
       <div class="flex items-center gap-2">
         <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
           Risk
         </span>
         <div
-          class="inline-flex items-center rounded-full border border-line bg-white p-0.5"
+          class="inline-flex items-center rounded-lg border border-line bg-white p-0.5"
           role="group"
           aria-label="Risk level filter"
         >
@@ -138,17 +124,17 @@ const activeRisk = computed(() =>
             v-for="opt in RISK_OPTIONS"
             :key="opt.value"
             type="button"
-            :aria-pressed="state.risk === opt.value"
+            :aria-pressed="modelValue.risk === opt.value"
             :disabled="disabled"
             :class="[
-              'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors',
-              state.risk === opt.value
+              'inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors',
+              modelValue.risk === opt.value
                 ? 'text-white shadow-sm'
                 : 'text-ink-700 hover:bg-surface',
               disabled && 'opacity-50 cursor-not-allowed',
             ]"
             :style="
-              state.risk === opt.value
+              modelValue.risk === opt.value
                 ? { backgroundColor: opt.fill, borderColor: opt.border }
                 : undefined
             "
@@ -157,14 +143,14 @@ const activeRisk = computed(() =>
             <span
               class="w-2 h-2 rounded-full shrink-0"
               :style="{
-                backgroundColor: state.risk === opt.value ? '#ffffff' : opt.fill,
+                backgroundColor: modelValue.risk === opt.value ? '#ffffff' : opt.fill,
               }"
             />
             {{ opt.label }}
           </button>
         </div>
         <button
-          v-if="state.risk !== null"
+          v-if="modelValue.risk !== null"
           type="button"
           :disabled="disabled"
           class="text-ink-400 hover:text-ink-700 transition-colors disabled:opacity-50"
@@ -177,13 +163,12 @@ const activeRisk = computed(() =>
     </div>
 
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <!-- Manager dropdown (ws_admin / ws_analyst only) -->
       <div v-if="canManagerFilter" class="flex items-center gap-2">
         <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
           Manager
         </span>
         <Select
-          :model-value="state.managerUserId"
+          :model-value="modelValue.managerUserId"
           :options="managerOptions"
           option-label="label"
           option-value="value"
@@ -195,13 +180,12 @@ const activeRisk = computed(() =>
         />
       </div>
 
-      <!-- Workspace dropdown -->
       <div class="flex items-center gap-2">
         <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
           Workspace
         </span>
         <Select
-          :model-value="state.workspaceId"
+          :model-value="modelValue.workspaceId"
           :options="workspaceOptions"
           option-label="label"
           option-value="value"
@@ -213,7 +197,6 @@ const activeRisk = computed(() =>
         />
       </div>
 
-      <!-- Entity-type chips -->
       <div v-if="entityTypeOptions.length > 0" class="flex items-center gap-2 flex-wrap">
         <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
           Type
@@ -223,11 +206,11 @@ const activeRisk = computed(() =>
             v-for="opt in entityTypeOptions"
             :key="opt.value"
             type="button"
-            :aria-pressed="state.entityTypeNames.includes(String(opt.value))"
+            :aria-pressed="modelValue.entityTypeNames.includes(String(opt.value))"
             :disabled="disabled"
             :class="[
-              'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors ring-1 ring-inset',
-              state.entityTypeNames.includes(String(opt.value))
+              'inline-flex items-center px-2.5 py-1 rounded text-xs font-medium transition-colors ring-1 ring-inset',
+              modelValue.entityTypeNames.includes(String(opt.value))
                 ? 'bg-brand-600 text-white ring-brand-700 shadow-sm'
                 : 'bg-white text-ink-700 ring-line hover:bg-surface',
               disabled && 'opacity-50 cursor-not-allowed',
@@ -237,7 +220,7 @@ const activeRisk = computed(() =>
             {{ opt.label }}
           </button>
           <button
-            v-if="state.entityTypeNames.length > 0"
+            v-if="modelValue.entityTypeNames.length > 0"
             type="button"
             :disabled="disabled"
             class="text-ink-400 hover:text-ink-700 transition-colors disabled:opacity-50"
@@ -250,63 +233,5 @@ const activeRisk = computed(() =>
       </div>
     </div>
 
-    <!-- Active filter chips row (helps user remember what's narrowing the canvas) -->
-    <Transition name="chips">
-      <div
-        v-if="hasAnyFilter"
-        class="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100"
-      >
-        <span
-          v-if="activeRisk"
-          class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ring-inset"
-          :style="{
-            color: activeRisk.border,
-            backgroundColor: `${activeRisk.fill}1a`,
-            // ring-1 ring-inset uses --tw-ring-color; set inline so we don't need
-            // a per-tier Tailwind variant.
-            '--tw-ring-color': `${activeRisk.fill}66`,
-          }"
-        >
-          <i class="pi pi-filter-fill text-[9px]" />
-          {{ activeRisk.label }} risk
-        </span>
-
-        <span
-          v-if="state.managerUserId !== null"
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100"
-        >
-          Manager:
-          {{ managerOptions.find((o) => o.value === state.managerUserId)?.label ?? 'Selected' }}
-        </span>
-
-        <span
-          v-if="state.workspaceId !== null"
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100"
-        >
-          Workspace:
-          {{ workspaceOptions.find((o) => o.value === state.workspaceId)?.label ?? 'Selected' }}
-        </span>
-
-        <span
-          v-for="name in state.entityTypeNames"
-          :key="`type-${name}`"
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100"
-        >
-          {{ entityTypeOptions.find((o) => String(o.value) === name)?.label ?? name }}
-        </span>
-      </div>
-    </Transition>
   </section>
 </template>
-
-<style scoped>
-.chips-enter-active,
-.chips-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-.chips-enter-from,
-.chips-leave-to {
-  opacity: 0;
-  transform: translateY(-2px);
-}
-</style>

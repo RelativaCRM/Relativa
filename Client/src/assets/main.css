@@ -70,6 +70,26 @@
   border-color: #ef4444 !important;
 }
 
+.p-select {
+  border: 1px solid #94a3b8 !important;
+}
+
+.p-select.p-focused {
+  border-color: #2563eb !important;
+  box-shadow: none !important;
+}
+
+.p-select.p-disabled {
+  border-color: #e2e8f0 !important;
+}
+
+.p-select .p-select-label {
+  display: flex;
+  align-items: center;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
 .p-password-toggle-mask-icon,
 .p-password button {
   cursor: pointer !important;
