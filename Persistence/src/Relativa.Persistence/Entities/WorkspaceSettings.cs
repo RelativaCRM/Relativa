@@ -1,6 +1,6 @@
 namespace Relativa.Persistence.Entities;
 
-public class OrganizationSettings
+public class WorkspaceSettings
 {
     public int Id { get; set; }
     public int WorkspaceId { get; set; }

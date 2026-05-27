@@ -16,8 +16,8 @@ public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> opti
     public DbSet<UserRoleOrganization> UserRoleOrganizations => Set<UserRoleOrganization>();
     public DbSet<OrganizationJoinRequest> OrganizationJoinRequests => Set<OrganizationJoinRequest>();
     public DbSet<OrganizationInvitation> OrganizationInvitations => Set<OrganizationInvitation>();
-    public DbSet<OrganizationSettings> OrganizationSettings => Set<OrganizationSettings>();
 
+    public DbSet<WorkspaceSettings> WorkspaceSettings => Set<WorkspaceSettings>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceRole> WorkspaceRoles => Set<WorkspaceRole>();
     public DbSet<WorkspaceRolePermission> WorkspaceRolePermissions => Set<WorkspaceRolePermission>();

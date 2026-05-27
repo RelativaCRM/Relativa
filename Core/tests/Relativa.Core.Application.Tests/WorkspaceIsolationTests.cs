@@ -57,7 +57,7 @@ public sealed class WorkspaceIsolationTests
             _workspaceRoleRepo.Object,
             _orgRepo.Object,
             _workspaceAccessEvaluator,
-            new Mock<IOrganizationSettingsRepository>().Object,
+            new Mock<IWorkspaceSettingsRepository>().Object,
             new Mock<IValidator<CreateWorkspaceRequest>>().Object,
             updateValidator.Object);
 
