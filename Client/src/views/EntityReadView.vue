@@ -162,6 +162,16 @@ const linkIsReassign = ref(false);
 const linkCandidates = ref<EntityListItemDto[]>([]);
 const linkLoading = ref(false);
 const linkError = ref<string | null>(null);
+const linkSearch = ref('');
+
+const filteredLinkCandidates = computed<EntityListItemDto[]>(() => {
+  const query = linkSearch.value.trim().toLowerCase();
+  if (!query) return linkCandidates.value;
+  return linkCandidates.value.filter((item) => {
+    if (String(item.id).includes(query)) return true;
+    return previewLinkLabel(item).toLowerCase().includes(query);
+  });
+});
 
 async function openLinkModal(tab: EdgeRelTab) {
   linkModalTab.value = tab;
@@ -169,6 +179,7 @@ async function openLinkModal(tab: EdgeRelTab) {
   linkModalOpen.value = true;
   linkError.value = null;
   linkCandidates.value = [];
+  linkSearch.value = '';
   linkLoading.value = true;
   try {
     const targetTypeName = tab.otherEntityTypeName;
@@ -1208,19 +1219,32 @@ watch(
     <p v-else-if="linkCandidates.length === 0" class="text-sm text-ink-500 py-4">
       No linkable records found.
     </p>
-    <ul v-else class="space-y-2 py-2 max-h-80 overflow-y-auto text-sm">
-      <li v-for="item in linkCandidates" :key="item.id">
-        <button
-          type="button"
-          class="w-full text-left rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
-          @click="confirmLink(item)"
-        >
-          <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
-          <span class="font-mono text-xs text-ink-600"> #{{ item.id }}</span>
-          <span class="block text-xs text-ink-500 mt-0.5">{{ previewLinkLabel(item) }}</span>
-        </button>
-      </li>
-    </ul>
+    <template v-else>
+      <div class="relative mb-3">
+        <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-400" />
+        <InputText
+          v-model="linkSearch"
+          :placeholder="linkModalTab ? `Search ${humanize(linkModalTab.otherEntityTypeName)} by name or id…` : 'Search by name or id…'"
+          class="w-full !h-10 !pl-9"
+        />
+      </div>
+      <p v-if="filteredLinkCandidates.length === 0" class="text-sm text-ink-500 py-4">
+        No records match your search.
+      </p>
+      <ul v-else class="space-y-2 py-2 max-h-80 overflow-y-auto text-sm">
+        <li v-for="item in filteredLinkCandidates" :key="item.id">
+          <button
+            type="button"
+            class="w-full text-left rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
+            @click="confirmLink(item)"
+          >
+            <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
+            <span class="font-mono text-xs text-ink-600"> #{{ item.id }}</span>
+            <span class="block text-xs text-ink-500 mt-0.5">{{ previewLinkLabel(item) }}</span>
+          </button>
+        </li>
+      </ul>
+    </template>
   </Dialog>
 
   <Dialog
