@@ -4,14 +4,14 @@ using Relativa.Persistence.Entities;
 
 namespace Relativa.Persistence.Configurations;
 
-public class OrganizationSettingsConfiguration : IEntityTypeConfiguration<OrganizationSettings>
+public class WorkspaceSettingsConfiguration : IEntityTypeConfiguration<WorkspaceSettings>
 {
-    public void Configure(EntityTypeBuilder<OrganizationSettings> builder)
+    public void Configure(EntityTypeBuilder<WorkspaceSettings> builder)
     {
-        builder.ToTable("organization_settings", t =>
+        builder.ToTable("workspace_settings", t =>
         {
-            t.HasCheckConstraint("ck_org_settings_high_risk", "high_risk_threshold BETWEEN 0.00 AND 1.00");
-            t.HasCheckConstraint("ck_org_settings_medium_risk", "medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold");
+            t.HasCheckConstraint("ck_workspace_settings_high_risk", "high_risk_threshold BETWEEN 0.00 AND 1.00");
+            t.HasCheckConstraint("ck_workspace_settings_medium_risk", "medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold");
         });
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
@@ -30,11 +30,11 @@ public class OrganizationSettingsConfiguration : IEntityTypeConfiguration<Organi
             .IsRequired();
         builder.HasIndex(e => e.WorkspaceId)
             .IsUnique()
-            .HasDatabaseName("ix_organization_settings_workspace_id");
+            .HasDatabaseName("ix_workspace_settings_workspace_id");
         builder.HasOne(e => e.Workspace)
-            .WithOne(w => w.OrganizationSettings)
-            .HasForeignKey<OrganizationSettings>(e => e.WorkspaceId)
+            .WithOne(w => w.WorkspaceSettings)
+            .HasForeignKey<WorkspaceSettings>(e => e.WorkspaceId)
             .OnDelete(DeleteBehavior.Cascade)
-            .HasConstraintName("fk_org_settings_workspace");
+            .HasConstraintName("fk_workspace_settings_workspace");
     }
 }
