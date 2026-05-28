@@ -30,7 +30,6 @@ const { notify } = useApiErrorHandler();
 type Tab = 'invitations' | 'create' | 'join';
 const activeTab = ref<Tab>('create');
 
-/* ── Invitations inbox (organization scope only) ───────── */
 const orgInvitations = ref<OrgInvitationDto[]>([]);
 const pendingJoinRequests = ref<JoinRequestDto[]>([]);
 const inboxLoading = ref(true);
@@ -78,7 +77,6 @@ async function acceptOrgInvite(token: string) {
 
 onMounted(loadInbox);
 
-/* ── Create org ────────────────────────────────────────── */
 const newOrgName = ref('');
 const creating = ref(false);
 const createError = ref<string | null>(null);
@@ -97,7 +95,6 @@ async function handleCreate() {
   }
 }
 
-/* ── Search & join ─────────────────────────────────────── */
 const searchQuery = ref('');
 const searchResults = ref<OrganizationDto[]>([]);
 const searching = ref(false);
@@ -142,7 +139,6 @@ async function handleJoinRequest(orgId: number) {
   }
 }
 
-/* ── Logout ────────────────────────────────────────────── */
 function handleLogout() {
   auth.logout();
   orgStore.clear();
@@ -161,7 +157,7 @@ function handleLogout() {
       Create a new organization or join an existing one.
     </p>
 
-    <!-- Tabs -->
+    
     <div class="mt-5 flex border-b border-line">
       <button
         v-for="tab in (['invitations', 'create', 'join'] as Tab[])"
@@ -188,7 +184,7 @@ function handleLogout() {
       </button>
     </div>
 
-    <!-- Invitations tab -->
+    
     <div
       v-if="activeTab === 'invitations'"
       class="mt-5 flex flex-col gap-3"
@@ -223,7 +219,7 @@ function handleLogout() {
       </div>
 
       <div v-else class="flex flex-col gap-2">
-        <!-- Email invitations -->
+        
         <ul v-if="pendingOrgInvitations.length" class="flex flex-col gap-2">
           <li
             v-for="inv in pendingOrgInvitations"
@@ -247,7 +243,7 @@ function handleLogout() {
           </li>
         </ul>
 
-        <!-- Pending join requests -->
+        
         <ul v-if="pendingJoinRequests.length" class="flex flex-col gap-2">
           <li
             v-for="req in pendingJoinRequests"
@@ -277,7 +273,7 @@ function handleLogout() {
       </Message>
     </div>
 
-    <!-- Create tab -->
+    
     <form
       v-if="activeTab === 'create'"
       class="mt-5 flex flex-col gap-4"
@@ -314,7 +310,7 @@ function handleLogout() {
       </Button>
     </form>
 
-    <!-- Join tab -->
+    
     <div v-else-if="activeTab === 'join'" class="mt-5 flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
         <label for="searchOrg" class="text-xs font-medium text-ink-600">
@@ -376,7 +372,7 @@ function handleLogout() {
       </Message>
     </div>
 
-    <!-- Sign out -->
+    
     <p class="mt-6 text-center text-[13px] text-ink-500">
       <button class="font-medium text-brand-600 hover:underline" @click="handleLogout">
         Sign out

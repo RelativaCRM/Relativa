@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, reactive } from 'vue';
+import { ref, computed, watch, reactive, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -95,7 +95,6 @@ function allowedValuesFor(propertyId: number): string[] {
   return typeSchema.value?.properties.find((p) => p.propertyId === propertyId)?.allowedValues ?? [];
 }
 
-// ── Per-tab relationship metadata helpers ────────────────────────────────────
 
 function tabRelSchema(tab: EdgeRelTab) {
   return tab.direction === 'out'
@@ -116,7 +115,6 @@ function tabCardinality(tab: EdgeRelTab): string | null {
   return tabRelSchema(tab)?.relationshipCardinality ?? null;
 }
 
-/** Is the CURRENT entity limited to at most one link for this tab? */
 function tabCurrentEntityLimited(tab: EdgeRelTab): boolean {
   const c = tabCardinality(tab);
   if (!c) return false;
@@ -125,19 +123,16 @@ function tabCurrentEntityLimited(tab: EdgeRelTab): boolean {
     : c === 'one_to_many' || c === 'one_to_one';
 }
 
-/** Total number of existing links for this tab. */
 function tabLinkCount(tab: EdgeRelTab): number {
   return tab.direction === 'out'
     ? outboundLinksForTab(tab).length
     : inboundLinksFor(tab.relationshipTypeId).length;
 }
 
-/** Should we show "Reassign" instead of "Link"? */
 function tabIsReassign(tab: EdgeRelTab): boolean {
   return tabCurrentEntityLimited(tab) && tabLinkCount(tab) > 0;
 }
 
-/** Do CANDIDATES need to be filtered (they may already have a conflicting link)? */
 function tabCandidateLimited(tab: EdgeRelTab): boolean {
   const c = tabCardinality(tab);
   if (!c) return false;
@@ -146,7 +141,6 @@ function tabCandidateLimited(tab: EdgeRelTab): boolean {
     : c === 'one_to_one';
 }
 
-/** Does this tab allow unlimited links from the current entity? → show "+" create+link button. */
 function tabAllowsMultiple(tab: EdgeRelTab): boolean {
   const c = tabCardinality(tab);
   if (!c) return true;
@@ -155,13 +149,38 @@ function tabAllowsMultiple(tab: EdgeRelTab): boolean {
     : c === 'many_to_one' || c === 'many_to_many';
 }
 
-// ── Link / Unlink modal state ────────────────────────────────────────────────
 const linkModalOpen = ref(false);
 const linkModalTab = ref<EdgeRelTab | null>(null);
 const linkIsReassign = ref(false);
 const linkCandidates = ref<EntityListItemDto[]>([]);
 const linkLoading = ref(false);
 const linkError = ref<string | null>(null);
+const linkSearch = ref('');
+const linkSearchInputRef = ref<{ $el?: HTMLInputElement } | null>(null);
+
+const SEARCHABLE_PROPS = new Set(['name', 'first_name', 'last_name', 'title', 'email']);
+
+const filteredLinkCandidates = computed<EntityListItemDto[]>(() => {
+  const query = linkSearch.value.trim().toLowerCase();
+  if (!query) return linkCandidates.value;
+  return linkCandidates.value.filter((item) => {
+    if (String(item.id).includes(query)) return true;
+    return item.propertyValues.some((p) =>
+      SEARCHABLE_PROPS.has(p.propertyName.toLowerCase())
+      && typeof p.value === 'string'
+      && p.value.toLowerCase().includes(query),
+    );
+  });
+});
+
+watch(
+  () => [linkModalOpen.value, linkLoading.value, linkCandidates.value.length] as const,
+  async ([open, loading, count]) => {
+    if (!open || loading || count === 0) return;
+    await nextTick();
+    linkSearchInputRef.value?.$el?.focus();
+  },
+);
 
 async function openLinkModal(tab: EdgeRelTab) {
   linkModalTab.value = tab;
@@ -169,6 +188,7 @@ async function openLinkModal(tab: EdgeRelTab) {
   linkModalOpen.value = true;
   linkError.value = null;
   linkCandidates.value = [];
+  linkSearch.value = '';
   linkLoading.value = true;
   try {
     const targetTypeName = tab.otherEntityTypeName;
@@ -200,6 +220,26 @@ function previewLinkLabel(item: EntityListItemDto): string {
     (p) => ['name', 'first_name', 'title', 'email'].includes(p.propertyName.toLowerCase()),
   );
   return v ? String(v.value ?? '') : `#${item.id}`;
+}
+
+function findStringProp(item: EntityListItemDto, name: string): string | null {
+  const p = item.propertyValues.find((pv) => pv.propertyName.toLowerCase() === name);
+  if (!p || typeof p.value !== 'string') return null;
+  const s = p.value.trim();
+  return s.length > 0 ? s : null;
+}
+
+function candidatePrimary(item: EntityListItemDto): string {
+  const first = findStringProp(item, 'first_name');
+  const last = findStringProp(item, 'last_name');
+  if (first || last) return [first, last].filter(Boolean).join(' ');
+  return findStringProp(item, 'name')
+    ?? findStringProp(item, 'title')
+    ?? `#${item.id}`;
+}
+
+function candidateSecondary(item: EntityListItemDto): string | null {
+  return findStringProp(item, 'email');
 }
 
 async function confirmLink(candidate: EntityListItemDto) {
@@ -239,7 +279,6 @@ async function unlinkRelationship(relationshipId: number) {
   }
 }
 
-// ── Create + Link dialog ─────────────────────────────────────────────────────
 const createLinkOpen = ref(false);
 const createLinkTab = ref<EdgeRelTab | null>(null);
 const createLinkTargetType = ref<EntityTypeDto | null>(null);
@@ -250,14 +289,12 @@ const createLinkSubmitting = ref(false);
 const createLinkError = ref<string | null>(null);
 const createLinkSubmitAttempted = ref(false);
 
-/** Required outgoing relationships of the new entity that the user must fill in (not pre-filled). */
 const createLinkOtherRequired = computed(() => {
   const tab = createLinkTab.value;
   const t = createLinkTargetType.value;
   if (!t) return [];
   return t.outgoingRelationships.filter((r) => {
     if (!r.isRequired) return false;
-    // For inbound tabs: we pre-fill the link back to the current entity, so skip it here.
     if (tab?.direction === 'in' && r.relationshipTypeId === tab.relationshipTypeId) return false;
     return true;
   });
@@ -361,7 +398,6 @@ async function submitCreateLink() {
     }));
 
     const links: { relationshipTypeId: number; targetEntityId: number }[] = [];
-    // For inbound tabs: pre-fill the link back to the current entity
     if (tab.direction === 'in') {
       links.push({ relationshipTypeId: tab.relationshipTypeId, targetEntityId: detail.value.id });
     }
@@ -376,7 +412,6 @@ async function submitCreateLink() {
       ...(links.length > 0 ? { links } : {}),
     });
 
-    // For outbound tabs: the relationship goes current → new, so create it explicitly
     if (tab.direction === 'out') {
       await entityApi.createRelationship(props.workspaceId, {
         sourceEntityId: detail.value.id,
@@ -395,7 +430,6 @@ async function submitCreateLink() {
   }
 }
 
-// ── Right-panel expand state ─────────────────────────────────────────────────
 const expandedKeys = ref(new Set<string>());
 const expandedCache = ref(new Map<number, EntityDetailDto>());
 const expandedLoading = ref(new Set<number>());
@@ -421,7 +455,6 @@ async function toggleExpand(tabKey: string, entityId: number) {
       const d = await entityStore.fetchDetail(props.workspaceId, entityId);
       expandedCache.value.set(entityId, d);
     } catch {
-      // show preview only on fetch failure
     } finally {
       expandedLoading.value.delete(entityId);
     }
@@ -432,7 +465,7 @@ type EdgeRelTab = {
   direction: 'out' | 'in';
   relationshipTypeId: number;
   name: string;
-  /** Outbound: target type name. Inbound: source type name (records pointing at this entity). */
+
   otherEntityTypeName: string;
 };
 
@@ -475,11 +508,6 @@ const outboundRelTabs = computed((): EdgeRelTab[] => {
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 });
 
-/**
- * Hide inbound tabs when the current entity type already has an outgoing relationship
- * type to the same peer type. This removes duplicate pair tabs like `deal_contract`
- * on a `contract` page where `contract_deal` is the canonical direction.
- */
 const outboundCoveredTypeNames = computed<Set<string>>(() => {
   const schemaOut = typeSchema.value?.outgoingRelationships;
   if (schemaOut?.length) {
@@ -497,8 +525,6 @@ const inboundRelTabs = computed((): EdgeRelTab[] => {
     const coveredNames = outboundCoveredTypeNames.value;
     return [...schemaRels]
       .filter((r) => !currentType || r.sourceEntityTypeName !== currentType)
-      // Hide inbound duplicates when there's an outbound relationship to the same peer type.
-      // Example: on `contract`, hide `deal_contract` if `contract_deal` exists (outbound tab will mirror links).
       .filter((r) => !coveredNames.has(r.sourceEntityTypeName))
       .map((r) => ({
         direction: 'in' as const,
@@ -566,8 +592,6 @@ function outboundLinksForTab(tab: EdgeRelTab) {
     d.outboundRelationships.filter((r) => r.relationshipTypeId === tab.relationshipTypeId) ??
     [];
 
-  // If the DB stores the inverse direction (e.g. `deal_contract`) but the schema exposes
-  // the canonical outgoing tab (e.g. `contract_deal`), mirror those inbound links here.
   const inverseName = inverseRelationshipName(tab.name);
   const mirrored =
     inverseName
@@ -710,7 +734,6 @@ async function loadDetail() {
     loading.value = false;
   }
 
-  // Fire-and-forget score fetch for deals so the page paints first.
   if (detail.value && isDeal.value) {
     void loadScore();
   }
@@ -1208,19 +1231,46 @@ watch(
     <p v-else-if="linkCandidates.length === 0" class="text-sm text-ink-500 py-4">
       No linkable records found.
     </p>
-    <ul v-else class="space-y-2 py-2 max-h-80 overflow-y-auto text-sm">
-      <li v-for="item in linkCandidates" :key="item.id">
-        <button
-          type="button"
-          class="w-full text-left rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
-          @click="confirmLink(item)"
-        >
-          <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
-          <span class="font-mono text-xs text-ink-600"> #{{ item.id }}</span>
-          <span class="block text-xs text-ink-500 mt-0.5">{{ previewLinkLabel(item) }}</span>
-        </button>
-      </li>
-    </ul>
+    <template v-else>
+      <div class="relative mb-2">
+        <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-400" />
+        <InputText
+          ref="linkSearchInputRef"
+          v-model="linkSearch"
+          :placeholder="linkModalTab ? `Search ${humanize(linkModalTab.otherEntityTypeName)} by name, email or id…` : 'Search by name, email or id…'"
+          class="w-full !h-10 !pl-9"
+        />
+      </div>
+      <p class="text-xs text-ink-500 mb-2">
+        <template v-if="linkSearch.trim()">
+          Showing {{ filteredLinkCandidates.length }} of {{ linkCandidates.length }}
+        </template>
+        <template v-else>
+          {{ linkCandidates.length }} {{ linkCandidates.length === 1 ? 'record' : 'records' }}
+        </template>
+      </p>
+      <p v-if="filteredLinkCandidates.length === 0" class="text-sm text-ink-500 py-4">
+        No records match your search.
+      </p>
+      <ul v-else class="space-y-2 py-2 max-h-80 overflow-y-auto text-sm">
+        <li v-for="item in filteredLinkCandidates" :key="item.id">
+          <button
+            type="button"
+            class="w-full text-left rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
+            @click="confirmLink(item)"
+          >
+            <span class="flex items-baseline gap-2">
+              <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
+              <span class="font-mono text-xs text-ink-600">#{{ item.id }}</span>
+            </span>
+            <span class="block text-sm text-ink-900 mt-0.5">{{ candidatePrimary(item) }}</span>
+            <span v-if="candidateSecondary(item)" class="block text-xs text-ink-500">
+              {{ candidateSecondary(item) }}
+            </span>
+          </button>
+        </li>
+      </ul>
+    </template>
   </Dialog>
 
   <Dialog

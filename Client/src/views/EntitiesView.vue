@@ -83,7 +83,6 @@ function formatTypeName(name: string): string {
     .join(' ');
 }
 
-/** List row subtitle: capitalize words from snake_case names. */
 function rowPreview(ent: EntityListItemDto): string {
   const parts = ent.propertyValues.slice(0, 3).map((p) => {
     const label = formatTypeName(p.propertyName);

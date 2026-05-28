@@ -2,12 +2,6 @@
 import { computed } from 'vue';
 import Skeleton from 'primevue/skeleton';
 
-/**
- * Generic loading placeholder. Pick a `variant` that roughly matches the
- * shape of the eventual content (table rows, card grid, key/value detail,
- * stacked list) so the user does not see a sudden layout shift when data
- * arrives.
- */
 type Variant = 'table' | 'cards' | 'list' | 'detail' | 'stats';
 
 const props = withDefaults(
@@ -28,7 +22,7 @@ const repeatCount = computed(() => Math.max(1, props.rows));
     role="status"
     :aria-label="label"
   >
-    <!-- Tabular content: simulated header + rows so the height matches a real table. -->
+    
     <template v-if="variant === 'table'">
       <div class="border-b border-line bg-surface px-5 py-3">
         <Skeleton width="8rem" height="0.75rem" />
@@ -44,7 +38,7 @@ const repeatCount = computed(() => Math.max(1, props.rows));
       </div>
     </template>
 
-    <!-- Card grid (e.g. workspaces, dashboards). -->
+    
     <template v-else-if="variant === 'cards'">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4">
         <div
@@ -65,7 +59,7 @@ const repeatCount = computed(() => Math.max(1, props.rows));
       </div>
     </template>
 
-    <!-- Detail/form view: stacked label + control pairs. -->
+    
     <template v-else-if="variant === 'detail'">
       <div class="p-6 flex flex-col gap-5">
         <div v-for="i in repeatCount" :key="i" class="flex flex-col gap-2">
@@ -75,7 +69,7 @@ const repeatCount = computed(() => Math.max(1, props.rows));
       </div>
     </template>
 
-    <!-- Stat tiles, e.g. the deal Scores card. -->
+    
     <template v-else-if="variant === 'stats'">
       <div class="grid gap-4 sm:grid-cols-2 p-6">
         <div
@@ -89,7 +83,7 @@ const repeatCount = computed(() => Math.max(1, props.rows));
       </div>
     </template>
 
-    <!-- Plain stacked list (members, audit rows in compact layouts). -->
+    
     <template v-else>
       <div class="p-5 flex flex-col gap-4">
         <div

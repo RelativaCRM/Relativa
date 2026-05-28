@@ -66,7 +66,6 @@ const canRemoveOther = computed(
 
 const canAssignRoles = computed(() => hasWsPermission(ASSIGN_WS_ROLES));
 
-/* ── Add member dialog (org members not yet in workspace) ─ */
 const showAddMember = ref(false);
 const addMemberUserId = ref<number | null>(null);
 const addMemberRoleId = ref<number | null>(null);
@@ -150,7 +149,6 @@ async function handleAddMember() {
   }
 }
 
-/* ── Role change ───────────────────────────────────────── */
 const changingRole = ref<number | null>(null);
 const roleSelectVersion = ref(0);
 
@@ -200,7 +198,6 @@ async function handleRoleChange(userId: number, newRoleId: number) {
   }
 }
 
-/* ── Remove ────────────────────────────────────────────── */
 const removingId = ref<number | null>(null);
 
 async function handleRemove(userId: number) {

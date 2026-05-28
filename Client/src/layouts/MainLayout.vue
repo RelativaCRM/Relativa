@@ -139,7 +139,7 @@ watch(
     try {
       await wsStore.fetchWorkspaces(id);
     } catch {
-      /* list refresh is optional when org changes from elsewhere */
+
     }
   },
 );
@@ -151,7 +151,7 @@ watch(
     try {
       await entityStore.fetchTypes();
     } catch {
-      /* sidebar can render without per-type subitems if this fails */
+
     }
   },
   { immediate: true },
@@ -162,7 +162,7 @@ onMounted(async () => {
     try {
       await wsStore.fetchWorkspaces(orgStore.currentOrgId);
     } catch {
-      /* non-fatal */
+
     }
   }
 });
@@ -171,14 +171,14 @@ onMounted(async () => {
 <template>
   <div class="min-h-screen flex flex-col bg-surface">
 
-    <!-- Shared backdrop -->
+    
     <div
       v-if="showOrgPanel || showWsPanel || showProfilePanel"
       class="fixed inset-0 z-40 bg-black/20"
       @click="showOrgPanel = false; showWsPanel = false; showProfilePanel = false"
     />
 
-    <!-- Org popup -->
+    
     <div
       v-if="showOrgPanel"
       class="fixed left-[248px] top-24 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
@@ -210,7 +210,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Workspace popup -->
+    
     <div
       v-if="showWsPanel"
       class="fixed left-[248px] top-44 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
@@ -242,7 +242,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Profile popup -->
+    
     <div
       v-if="showProfilePanel"
       class="fixed left-[248px] bottom-4 z-50 w-52 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
@@ -298,13 +298,13 @@ onMounted(async () => {
 
         <nav class="nav flex flex-col text-sm text-ink-700 flex-1 overflow-y-auto">
 
-          <!-- Home -->
+          
           <RouterLink to="/" class="nav-link" active-class="" exact-active-class="nav-link--active">
             <i class="pi pi-home" />Home
           </RouterLink>
           <hr class="border-t border-slate-200 mx-1 my-1" />
 
-          <!-- Organization section -->
+          
           <div class="flex flex-col">
             <div v-if="orgStore.currentOrg" class="relative flex items-stretch nav-entry" :class="{ 'nav-entry--active': showOrgPanel }">
               <button
@@ -336,7 +336,7 @@ onMounted(async () => {
               </RouterLink>
               <hr class="border-t border-slate-200 mx-1 my-1" />
 
-              <!-- Workspaces (collapsible sub-list) -->
+              
               <div class="relative flex items-stretch nav-entry" :class="{ 'nav-entry--active': showWsPanel }">
                 <button
                   type="button"
@@ -405,7 +405,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- Workspace section -->
+          
           <div v-if="inWorkspaceShell && workspaceIdStr" class="flex flex-col mt-3 pt-3 border-t border-slate-200">
             <div class="relative flex items-stretch nav-entry">
               <button
@@ -445,7 +445,7 @@ onMounted(async () => {
 
         </nav>
 
-        <!-- Profile entry -->
+        
         <div class="pt-3 mt-3 border-t border-slate-200 shrink-0">
           <button
             v-if="auth.user"
@@ -470,7 +470,7 @@ onMounted(async () => {
       </main>
     </div>
 
-    <!-- Create workspace modal -->
+    
     <Dialog
       v-model:visible="showCreateWs"
       header="Create workspace"

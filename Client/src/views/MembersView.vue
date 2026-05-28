@@ -51,7 +51,6 @@ const pendingJoinRequests = computed(() =>
 
 const displayRole = roleDisplayName;
 
-/* ── Create user dialog ─────────────────────────────── */
 const showCreateUser = ref(false);
 const createSubmitting = ref(false);
 const createError = ref<string | null>(null);
@@ -136,7 +135,6 @@ async function handleCreateUser() {
   }
 }
 
-/* ── Invite dialog ───────────────────────────────────── */
 const showInvite = ref(false);
 const inviteEmail = ref('');
 const inviteRoleId = ref<number | null>(null);
@@ -176,7 +174,6 @@ async function handleInvite() {
   }
 }
 
-/* ── Join requests + invitations ─────────────────────── */
 async function fetchJoinRequests() {
   if (!orgStore.currentOrgId || !canManageJoinRequests.value) return;
   try {
@@ -277,10 +274,10 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Loading -->
+    
     <LoadingSkeleton v-if="loading" variant="table" :rows="6" label="Loading members" />
 
-    <!-- Members table -->
+    
     <div v-else class="rounded-xl border border-line bg-white overflow-hidden">
       <table class="w-full text-sm">
         <thead>
@@ -314,7 +311,7 @@ onMounted(async () => {
         </tbody>
       </table>
 
-      <!-- Pending invitations -->
+      
       <div v-if="orgStore.invitations.length" class="border-t border-line">
         <div class="px-5 py-3 bg-surface text-xs font-medium text-ink-500 uppercase tracking-wider">
           Pending invitations
@@ -359,7 +356,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Join requests (admins only) -->
+      
       <div
         v-if="canManageJoinRequests && pendingJoinRequests.length"
         class="border-t border-line"
@@ -453,7 +450,7 @@ onMounted(async () => {
       </form>
     </Dialog>
 
-    <!-- Invite dialog -->
+    
     <Dialog
       v-model:visible="showInvite"
       header="Invite member"

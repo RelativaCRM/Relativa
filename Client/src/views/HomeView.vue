@@ -60,7 +60,6 @@ function displayOrgRole(roleName: string | null | undefined): string {
   return roleName;
 }
 
-// ── KPIs ──────────────────────────────────────────────────────────────────────
 const kpis = computed(() => {
   const s = dashStore.summary;
   if (!s) return [];
@@ -149,7 +148,6 @@ const kpis = computed(() => {
   return base;
 });
 
-// ── Workspace comparison chart ─────────────────────────────────────────────────
 const workspaceComparisonChartData = computed(() => {
   const wc = dashStore.workspacesComparison;
   if (!wc?.length) return null;
@@ -199,7 +197,6 @@ const workspaceComparisonChartOptions = {
   },
 };
 
-// ── Pipeline chart ────────────────────────────────────────────────────────────
 const pipelineChartData = computed(() => {
   const p = dashStore.pipeline;
   if (!p) return null;
@@ -227,7 +224,6 @@ const pipelineChartOptions = {
   },
 };
 
-// ── Risk doughnut ─────────────────────────────────────────────────────────────
 const riskChartData = computed(() => {
   const r = dashStore.riskDistribution;
   if (!r) return null;
@@ -256,7 +252,6 @@ const riskChartOptions = {
   },
 };
 
-// ── Trends line ───────────────────────────────────────────────────────────────
 const trendsChartData = computed(() => {
   const t = dashStore.trends;
   if (!t) return null;
@@ -333,7 +328,6 @@ const trendsChartOptions = {
   },
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('de-DE', {
     style: 'currency',
@@ -367,7 +361,7 @@ function scoreBar(score?: number) {
 
 <template>
   <div class="space-y-8">
-    <!-- Greeting + quick info -->
+    
     <section class="max-w-3xl">
       <div class="relative overflow-hidden rounded-2xl border border-line bg-white px-7 py-8 shadow-sm">
         <div
@@ -414,7 +408,7 @@ function scoreBar(score?: number) {
       </div>
     </section>
 
-    <!-- Analytics -->
+    
     <template v-if="canView">
       <div class="flex items-center justify-between">
         <div>
@@ -432,7 +426,7 @@ function scoreBar(score?: number) {
         </button>
       </div>
 
-      <!-- Loading skeleton -->
+      
       <div v-if="dashStore.isLoading" class="space-y-4">
         <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           <div v-for="i in 6" :key="i" class="h-24 rounded-xl bg-slate-100 animate-pulse" />
@@ -449,19 +443,19 @@ function scoreBar(score?: number) {
       </div>
 
       <template v-else>
-        <!-- Error banner -->
+        
         <div v-if="dashStore.error" class="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
           <i class="pi pi-exclamation-circle shrink-0" />
           {{ dashStore.error }}
         </div>
 
-        <!-- Basic access notice -->
+        
         <div v-if="accessLevel === 'basic'" class="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
           <i class="pi pi-lock shrink-0" />
           You have limited access. Contact your organization admin to unlock full analytics.
         </div>
 
-        <!-- ── KPI row ── -->
+        
         <div v-if="dashStore.summary" :class="['grid gap-4', hasFullAccess ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6' : 'grid-cols-1 sm:grid-cols-3']">
           <div
             v-for="kpi in kpis"
@@ -478,7 +472,7 @@ function scoreBar(score?: number) {
           </div>
         </div>
 
-        <!-- ── Workspace comparison (full_org only) ── -->
+        
         <div v-if="isFullOrg && workspaceComparisonChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
           <h3 class="text-sm font-semibold text-ink-700 mb-4">Workspace Comparison</h3>
           <div style="height: 220px">
@@ -516,13 +510,13 @@ function scoreBar(score?: number) {
           </div>
         </div>
 
-        <!-- ── Full analytics sections (full or full_org) ── -->
+        
         <template v-if="hasFullAccess">
 
-        <!-- ── Middle row: Pipeline + Risk ── -->
+        
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
-          <!-- Pipeline funnel -->
+          
           <div class="bg-white rounded-xl border border-line shadow-sm p-5">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-sm font-semibold text-ink-700">Deal Pipeline</h3>
@@ -546,7 +540,7 @@ function scoreBar(score?: number) {
             </div>
           </div>
 
-          <!-- Risk distribution -->
+          
           <div class="bg-white rounded-xl border border-line shadow-sm p-5">
             <h3 class="text-sm font-semibold text-ink-700 mb-4">Risk Distribution (Active Deals)</h3>
             <div v-if="riskChartData" class="flex items-center gap-6">
@@ -576,7 +570,7 @@ function scoreBar(score?: number) {
           </div>
         </div>
 
-        <!-- ── Trends ── -->
+        
         <div class="bg-white rounded-xl border border-line shadow-sm p-5">
           <h3 class="text-sm font-semibold text-ink-700 mb-4">6-Month Deal Trends</h3>
           <div v-if="trendsChartData" style="height: 220px">
@@ -584,10 +578,10 @@ function scoreBar(score?: number) {
           </div>
         </div>
 
-        <!-- ── Top entities ── -->
+        
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
-          <!-- Top deals -->
+          
           <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
             <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Deals by Value</h3>
             <DataTable
@@ -642,7 +636,7 @@ function scoreBar(score?: number) {
             <p v-else class="text-sm text-ink-400 italic">No deal data yet.</p>
           </div>
 
-          <!-- Top clients -->
+          
           <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
             <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Clients by Lifetime Value</h3>
             <DataTable
@@ -692,7 +686,7 @@ function scoreBar(score?: number) {
           </div>
         </div>
 
-        </template><!-- end hasFullAccess -->
+        </template>
       </template>
     </template>
   </div>
