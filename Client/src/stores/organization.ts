@@ -7,6 +7,8 @@ import {
   type OrgMemberDto,
   type OrgRoleDto,
   type OrgInvitationDto,
+  type OrganizationSettingsDto,
+  type UpdateOrganizationSettingsRequest,
 } from '@/api/organizations';
 import { loadNumber, saveNumber } from '@/api/persistence';
 
@@ -18,6 +20,7 @@ export const useOrganizationStore = defineStore('organization', () => {
   const members = ref<OrgMemberDto[]>([]);
   const roles = ref<OrgRoleDto[]>([]);
   const invitations = ref<OrgInvitationDto[]>([]);
+  const orgSettings = ref<OrganizationSettingsDto | null>(null);
 
   const currentOrg = computed(() =>
     organizations.value.find((o) => o.id === currentOrgId.value) ?? null,
@@ -110,12 +113,29 @@ export const useOrganizationStore = defineStore('organization', () => {
     members.value = members.value.filter((m) => m.userId !== userId);
   }
 
+  async function fetchSettings(orgId?: number) {
+    const id = orgId ?? currentOrgId.value;
+    if (!id) return;
+    orgSettings.value = await orgApi.getSettings(id);
+    return orgSettings.value;
+  }
+
+  async function updateSettings(data: UpdateOrganizationSettingsRequest, orgId?: number) {
+    const id = orgId ?? currentOrgId.value;
+    if (!id) return;
+    await orgApi.updateSettings(id, data);
+    if (orgSettings.value) {
+      orgSettings.value = { ...orgSettings.value, ...data };
+    }
+  }
+
   function clear() {
     organizations.value = [];
     currentOrgId.value = null;
     members.value = [];
     roles.value = [];
     invitations.value = [];
+    orgSettings.value = null;
     saveNumber(ORG_KEY, null);
   }
 
@@ -127,6 +147,7 @@ export const useOrganizationStore = defineStore('organization', () => {
     members,
     roles,
     invitations,
+    orgSettings,
     setCurrentOrg,
     fetchOrganizations,
     createOrganization,
@@ -140,6 +161,8 @@ export const useOrganizationStore = defineStore('organization', () => {
     removeMember,
     createOrgUser,
     deleteOrgUser,
+    fetchSettings,
+    updateSettings,
     clear,
   };
 });

@@ -61,6 +61,27 @@ public static class OrganizationEndpoints
         .Produces(StatusCodes.Status204NoContent)
         .ProducesValidationProblem();
 
+        group.MapGet("/{id:int}/settings", async (int id, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            var result = await service.GetSettingsAsync(id, userId, ct);
+            return Results.Ok(result);
+        })
+        .WithName("GetOrganizationSettings")
+        .WithSummary("Get settings for an organization (any org member)")
+        .Produces<OrganizationSettingsDto>();
+
+        group.MapPut("/{id:int}/settings", async (int id, UpdateOrganizationSettingsRequest request, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            await service.UpdateSettingsAsync(id, userId, request, ct);
+            return Results.NoContent();
+        })
+        .WithName("UpdateOrganizationSettings")
+        .WithSummary("Update settings for an organization (requires manage_org_settings)")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesValidationProblem();
+
         return group;
     }
 }

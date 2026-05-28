@@ -11,6 +11,7 @@ public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> opti
     public DbSet<Permission> Permissions => Set<Permission>();
 
     public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationSettings> OrganizationSettings => Set<OrganizationSettings>();
     public DbSet<OrganizationRole> OrganizationRoles => Set<OrganizationRole>();
     public DbSet<OrganizationRolePermission> OrganizationRolePermissions => Set<OrganizationRolePermission>();
     public DbSet<UserRoleOrganization> UserRoleOrganizations => Set<UserRoleOrganization>();

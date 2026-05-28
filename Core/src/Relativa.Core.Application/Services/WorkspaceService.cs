@@ -19,6 +19,7 @@ public sealed class WorkspaceService(
     IWorkspaceSettingsRepository workspaceSettingsRepository,
     IValidator<CreateWorkspaceRequest> createValidator,
     IValidator<UpdateWorkspaceRequest> updateValidator,
+    IValidator<UpdateWorkspaceSettingsRequest> updateSettingsValidator,
     IOutboxWriter? auditOutboxWriter = null) : IWorkspaceService
 {
     public async Task<WorkspaceDto> CreateAsync(int userId, CreateWorkspaceRequest request, CancellationToken ct = default)
@@ -251,6 +252,112 @@ public sealed class WorkspaceService(
                 workspace.OrganizationId,
                 userId,
                 workspace.Name,
+                ct);
+        }
+    }
+
+    public async Task<WorkspaceSettingsDto> GetSettingsAsync(int workspaceId, int userId, CancellationToken ct = default)
+    {
+        await workspaceAccess.EnsureCanAccessWorkspaceAsync(userId, workspaceId, ct);
+
+        var settings = await workspaceSettingsRepository.GetByWorkspaceIdAsync(workspaceId, ct)
+            ?? throw new KeyNotFoundException("Workspace settings not found.");
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAuditAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: workspaceId,
+                    Action: "workspace_settings_read",
+                    FieldName: null,
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: null),
+                ct);
+        }
+
+        return new WorkspaceSettingsDto(
+            settings.WorkspaceId,
+            settings.Description,
+            settings.HighRiskThreshold,
+            settings.MediumRiskThreshold,
+            settings.RiskScoringEnabled);
+    }
+
+    public async Task UpdateSettingsAsync(int workspaceId, int userId, UpdateWorkspaceSettingsRequest request, CancellationToken ct = default)
+    {
+        await updateSettingsValidator.ValidateAndThrowAsync(request, ct);
+
+        if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, WorkspacePermissions.ManageWsSettings, ct))
+            throw new ForbiddenAccessException($"You do not have the '{WorkspacePermissions.ManageWsSettings}' permission in this workspace.");
+
+        var settings = await workspaceSettingsRepository.GetByWorkspaceIdAsync(workspaceId, ct)
+            ?? throw new KeyNotFoundException("Workspace settings not found.");
+
+        var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
+            ?? throw new KeyNotFoundException("Workspace not found.");
+
+        var oldJson = JsonSerializer.Serialize(new
+        {
+            settings.Description,
+            settings.HighRiskThreshold,
+            settings.MediumRiskThreshold,
+            settings.RiskScoringEnabled
+        });
+
+        settings.Description = request.Description;
+        settings.HighRiskThreshold = request.HighRiskThreshold;
+        settings.MediumRiskThreshold = request.MediumRiskThreshold;
+        settings.RiskScoringEnabled = request.RiskScoringEnabled;
+
+        await workspaceSettingsRepository.UpdateAsync(settings, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAuditAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeWorkspace,
+                    TargetId: workspaceId,
+                    Action: "workspace_settings_updated",
+                    FieldName: null,
+                    EntityType: null,
+                    OldValueJson: oldJson,
+                    NewValueJson: JsonSerializer.Serialize(new
+                    {
+                        request.Description,
+                        request.HighRiskThreshold,
+                        request.MediumRiskThreshold,
+                        request.RiskScoringEnabled
+                    })),
+                ct);
+
+            var sagaId = Guid.NewGuid();
+            await auditOutboxWriter.EnqueueDomainAsync(
+                DomainRouting.RoutingKeyCoreWorkspace(DomainRouting.CoreWorkspaceVerbSettingsUpdated),
+                new DomainMessageEnvelope(
+                    SchemaVersion: MessagingSchemaVersions.V1,
+                    MessageId: Guid.NewGuid(),
+                    CorrelationId: sagaId,
+                    SagaInstanceId: sagaId,
+                    CausationId: null,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    PayloadTypeName: DomainPayloadTypes.WorkspaceSettingsUpdatedV1,
+                    PayloadJson: JsonSerializer.Serialize(new WorkspaceSettingsUpdatedPayloadV1(
+                        workspaceId,
+                        workspace.OrganizationId,
+                        userId))),
                 ct);
         }
     }

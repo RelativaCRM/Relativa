@@ -7,6 +7,8 @@ public static class DomainRouting
     public const string CoreWorkspaceVerbCreated = "created";
     public const string CoreWorkspaceVerbUpdated = "updated";
     public const string CoreWorkspaceVerbArchived = "archived";
+    public const string CoreWorkspaceVerbSettingsUpdated = "settings_updated";
+    public const string CoreOrganizationVerbSettingsUpdated = "settings_updated";
     public const string CoreEntityVerbChanged = "changed";
     public const string MlRecalculateVerbEnqueued = "enqueued";
     public const string MlRecalculateVerbProgress = "progress";
@@ -15,6 +17,10 @@ public static class DomainRouting
     public static string RoutingKeyCoreWorkspace(string verb) =>
         verb is null ? throw new ArgumentNullException(nameof(verb))
         : $"{BoundedContext.Core}.workspace.{verb}";
+
+    public static string RoutingKeyCoreOrganization(string verb) =>
+        verb is null ? throw new ArgumentNullException(nameof(verb))
+        : $"{BoundedContext.Core}.organization.{verb}";
 
     public static string RoutingKeyCoreEntity(string verb) =>
         verb is null ? throw new ArgumentNullException(nameof(verb))

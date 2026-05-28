@@ -26,6 +26,8 @@ const WorkspaceDashboardView = () => import('@/views/WorkspaceDashboardView.vue'
 const AuditLogView = () => import('@/views/AuditLogView.vue');
 const AccountSettingsView = () => import('@/views/AccountSettingsView.vue');
 const InvitationsView = () => import('@/views/InvitationsView.vue');
+const OrgSettingsView = () => import('@/views/OrgSettingsView.vue');
+const WorkspaceSettingsView = () => import('@/views/WorkspaceSettingsView.vue');
 
 const orgMeta = { navScope: 'org' as const, skipWorkspaceCheck: true };
 const userMeta = { navScope: 'user' as const, skipWorkspaceCheck: true };
@@ -121,6 +123,12 @@ const router = createRouter({
           meta: userMeta,
         },
         {
+          path: 'org-settings',
+          name: 'org-settings',
+          component: OrgSettingsView,
+          meta: orgMeta,
+        },
+        {
           path: 'invitations',
           name: 'invitations',
           component: InvitationsView,
@@ -160,6 +168,12 @@ const router = createRouter({
               path: 'members',
               name: 'workspace-members',
               component: WorkspaceMembersView,
+              meta: workspaceMeta,
+            },
+            {
+              path: 'settings',
+              name: 'workspace-settings',
+              component: WorkspaceSettingsView,
               meta: workspaceMeta,
             },
             {

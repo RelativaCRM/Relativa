@@ -66,6 +66,20 @@ export interface MyInvitationsDto {
   organizationInvitations: OrgInvitationDto[];
 }
 
+export interface OrganizationSettingsDto {
+  organizationId: number;
+  description: string | null;
+  joinPolicy: 'open' | 'invite_only';
+  defaultOrgRoleId: number | null;
+  defaultOrgRoleName: string | null;
+}
+
+export interface UpdateOrganizationSettingsRequest {
+  description?: string | null;
+  joinPolicy: 'open' | 'invite_only';
+  defaultOrgRoleId?: number | null;
+}
+
 /* ── API ────────────────────────────────────────────────── */
 
 const CORE = '/core/api/v1';
@@ -191,5 +205,13 @@ export const orgApi = {
   },
   myOrganizationInvitations(): Promise<OrgInvitationDto[]> {
     return api.get<OrgInvitationDto[]>(`${CORE}/invitations/mine/organization`);
+  },
+
+  /* Settings */
+  getSettings(orgId: number): Promise<OrganizationSettingsDto> {
+    return api.get<OrganizationSettingsDto>(`${CORE}/organizations/${orgId}/settings`);
+  },
+  updateSettings(orgId: number, data: UpdateOrganizationSettingsRequest): Promise<void> {
+    return api.put(`${CORE}/organizations/${orgId}/settings`, data);
   },
 };

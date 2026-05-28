@@ -5,6 +5,8 @@ import {
   type WorkspaceDto,
   type WorkspaceMemberDto,
   type WorkspaceRoleDto,
+  type WorkspaceSettingsDto,
+  type UpdateWorkspaceSettingsRequest,
 } from '@/api/workspaces';
 import { loadNumber, saveNumber } from '@/api/persistence';
 
@@ -15,6 +17,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentWorkspaceId = ref<number | null>(loadNumber(WS_KEY));
   const members = ref<WorkspaceMemberDto[]>([]);
   const roles = ref<WorkspaceRoleDto[]>([]);
+  const wsSettings = ref<WorkspaceSettingsDto | null>(null);
 
   const currentWorkspace = computed(
     () =>
@@ -86,11 +89,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     members.value = members.value.filter((m) => m.userId !== userId);
   }
 
+  async function fetchSettings(wsId: number) {
+    wsSettings.value = await workspaceApi.getSettings(wsId);
+    return wsSettings.value;
+  }
+
+  async function updateSettings(wsId: number, data: UpdateWorkspaceSettingsRequest) {
+    await workspaceApi.updateSettings(wsId, data);
+    wsSettings.value = { ...wsSettings.value!, ...data, workspaceId: wsId };
+  }
+
   function clear() {
     workspaces.value = [];
     currentWorkspaceId.value = null;
     members.value = [];
     roles.value = [];
+    wsSettings.value = null;
     saveNumber(WS_KEY, null);
   }
 
@@ -100,6 +114,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     currentWorkspace,
     members,
     roles,
+    wsSettings,
     setCurrentWorkspace,
     fetchWorkspaces,
     createWorkspace,
@@ -110,6 +125,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     addMember,
     changeMemberRole,
     removeMember,
+    fetchSettings,
+    updateSettings,
     clear,
   };
 });
