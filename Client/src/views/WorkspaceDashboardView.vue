@@ -35,7 +35,6 @@ watch(workspaceId, (id) => {
 const isFullAccess  = computed(() => store.summary?.accessLevel === 'full');
 const hasMemberData = computed(() => store.memberActivity !== null && store.memberActivity.length > 0);
 
-// ── KPI cards ────────────────────────────────────────────────────────────────
 const kpis = computed(() => {
   const s = store.summary;
   if (!s) return [];
@@ -118,7 +117,6 @@ const kpis = computed(() => {
   return cards;
 });
 
-// ── Basic status bar chart (for basic access) ─────────────────────────────────
 const basicStatusChartData = computed(() => {
   const s = store.summary;
   if (!s) return null;
@@ -142,7 +140,6 @@ const basicChartOptions = {
   },
 };
 
-// ── Pipeline chart ────────────────────────────────────────────────────────────
 const pipelineChartData = computed(() => {
   const p = store.pipeline;
   if (!p) return null;
@@ -168,7 +165,6 @@ const pipelineChartOptions = {
   },
 };
 
-// ── Risk doughnut ─────────────────────────────────────────────────────────────
 const riskChartData = computed(() => {
   const r = store.riskDistribution;
   if (!r || !r.items.length) return null;
@@ -195,7 +191,6 @@ const riskChartOptions = {
   },
 };
 
-// ── Trends line ───────────────────────────────────────────────────────────────
 const trendsChartData = computed(() => {
   const t = store.trends;
   if (!t) return null;
@@ -272,7 +267,6 @@ const trendsChartOptions = {
   },
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('de-DE', {
     style: 'currency',
@@ -306,7 +300,7 @@ function scoreBar(score?: number | null) {
 <template>
   <div class="space-y-8">
 
-    <!-- Header -->
+    
     <section class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold text-ink-900">
@@ -325,7 +319,7 @@ function scoreBar(score?: number | null) {
       </button>
     </section>
 
-    <!-- Error banner -->
+    
     <div
       v-if="store.error"
       class="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700"
@@ -334,9 +328,9 @@ function scoreBar(score?: number | null) {
       {{ store.error }}
     </div>
 
-    <!-- ── KPI row ── -->
+    
     <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-      <!-- skeleton while summary loads -->
+      
       <template v-if="store.isLoadingSummary">
         <div v-for="i in 6" :key="i" class="h-24 rounded-xl skeleton-shimmer" />
       </template>
@@ -358,7 +352,7 @@ function scoreBar(score?: number | null) {
       </template>
     </div>
 
-    <!-- ── Basic access sections ── -->
+    
     <template v-if="store.summary && !isFullAccess">
       <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-center gap-3 text-sm text-amber-800">
         <i class="pi pi-lock shrink-0" />
@@ -372,13 +366,13 @@ function scoreBar(score?: number | null) {
       </div>
     </template>
 
-    <!-- ── Full analytics sections ── -->
+    
     <template v-if="store.summary && isFullAccess">
 
-      <!-- ── Pipeline + Risk ── -->
+      
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
-        <!-- Pipeline -->
+        
         <div class="bg-white rounded-xl border border-line shadow-sm p-5">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-semibold text-ink-700">Deal Pipeline</h3>
@@ -387,7 +381,7 @@ function scoreBar(score?: number | null) {
               <span>Avg close <strong class="text-ink-700">{{ store.pipeline.avgDaysToClose }}d</strong></span>
             </div>
           </div>
-          <!-- skeleton -->
+          
           <div v-if="store.isLoadingPipeline" class="space-y-2">
             <div class="h-5 skeleton-shimmer rounded w-3/4" />
             <div class="h-5 skeleton-shimmer rounded w-1/2" />
@@ -411,10 +405,10 @@ function scoreBar(score?: number | null) {
           </template>
         </div>
 
-        <!-- Risk distribution -->
+        
         <div class="bg-white rounded-xl border border-line shadow-sm p-5">
           <h3 class="text-sm font-semibold text-ink-700 mb-4">Risk Distribution</h3>
-          <!-- skeleton -->
+          
           <div v-if="store.isLoadingRisk" class="flex items-center gap-6">
             <div class="w-[180px] h-[180px] rounded-full skeleton-shimmer shrink-0" />
             <div class="flex-1 space-y-2">
@@ -425,7 +419,7 @@ function scoreBar(score?: number | null) {
             </div>
           </div>
           <template v-else>
-            <!-- Chart (shown normally, or dimmed while ML is recalculating with partial data) -->
+            
             <div v-if="riskChartData" :class="['flex items-center gap-6', store.isMlRecalculating && 'opacity-60']">
               <div style="height: 180px; width: 180px; flex-shrink: 0">
                 <Chart type="doughnut" :data="riskChartData" :options="riskChartOptions" />
@@ -447,7 +441,7 @@ function scoreBar(score?: number | null) {
                 </div>
               </div>
             </div>
-            <!-- ML recalculation progress banner -->
+            
             <div v-if="store.isMlRecalculating" class="mt-3 space-y-2">
               <div class="flex items-center gap-3 px-3 py-2.5 bg-brand-50 border border-brand-100 rounded-lg text-xs text-brand-700">
                 <i class="pi pi-spin pi-spinner shrink-0 text-brand-500" />
@@ -472,16 +466,16 @@ function scoreBar(score?: number | null) {
                 :show-value="false"
               />
             </div>
-            <!-- No data and not recalculating -->
+            
             <p v-else-if="!riskChartData" class="text-xs text-ink-400 italic">No risk score data available.</p>
           </template>
         </div>
       </div>
 
-      <!-- ── Trends ── -->
+      
       <div class="bg-white rounded-xl border border-line shadow-sm p-5">
         <h3 class="text-sm font-semibold text-ink-700 mb-4">6-Month Deal Trends</h3>
-        <!-- skeleton -->
+        
         <div v-if="store.isLoadingTrends" class="space-y-2">
           <div class="flex items-end gap-1 h-44">
             <div v-for="i in 12" :key="i" :style="`height: ${30 + (i * 13) % 70}%`" class="flex-1 skeleton-shimmer rounded-t" />
@@ -493,13 +487,13 @@ function scoreBar(score?: number | null) {
         </div>
       </div>
 
-      <!-- ── Top entities ── -->
+      
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
-        <!-- Top deals -->
+        
         <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
           <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Deals by Value</h3>
-          <!-- skeleton -->
+          
           <div v-if="store.isLoadingTopEntities" class="space-y-3">
             <div v-for="i in 5" :key="i" class="flex items-center justify-between gap-4">
               <div class="space-y-1.5 flex-1">
@@ -563,10 +557,10 @@ function scoreBar(score?: number | null) {
           </template>
         </div>
 
-        <!-- Top clients -->
+        
         <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
           <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Clients by Lifetime Value</h3>
-          <!-- skeleton -->
+          
           <div v-if="store.isLoadingTopEntities" class="space-y-3">
             <div v-for="i in 5" :key="i" class="flex items-center justify-between gap-4">
               <div class="space-y-1.5 flex-1">
@@ -621,10 +615,10 @@ function scoreBar(score?: number | null) {
         </div>
       </div>
 
-      <!-- ── Member activity ── -->
+      
       <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
         <h3 class="text-sm font-semibold text-ink-700 mb-3">Member Activity</h3>
-        <!-- skeleton -->
+        
         <div v-if="store.isLoadingMemberActivity" class="space-y-3">
           <div v-for="i in 3" :key="i" class="flex items-center gap-4">
             <div class="w-8 h-8 rounded-full skeleton-shimmer shrink-0" />

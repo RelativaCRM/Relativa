@@ -2,15 +2,6 @@
 import { computed } from 'vue';
 import Skeleton from 'primevue/skeleton';
 
-/**
- * Placeholder used while chart / graph data is being fetched. Keeps the
- * canvas-sized area reserved so the surrounding layout doesn't shift when
- * the real visualization paints in.
- *
- * Pass `fill` when the parent is a flex container with a defined height
- * (e.g. the graph view) — the skeleton then stretches to fill remaining
- * space instead of using its own fixed height.
- */
 const props = withDefaults(
   defineProps<{
     height?: string;

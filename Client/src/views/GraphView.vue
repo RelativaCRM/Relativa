@@ -34,10 +34,6 @@ const selectedNode = ref<GraphNodeDto | null>(null);
 const dealScores = ref<Map<number, DealScoreDto>>(new Map());
 const riskFilter = ref<GraphRiskLevel | null>(null);
 
-// ── Combined filter state ────────────────────────────────────────────────────
-// `risk` re-issues the GET /graph request (server-side filter); the rest are
-// applied client-side over the returned node/edge set so we don't need new
-// query params. Reset granularity is per-filter via FilterPanel.
 const filters = ref<FilterPanelState>({
   risk: null,
   managerUserId: null,
@@ -47,7 +43,6 @@ const filters = ref<FilterPanelState>({
 
 const orgId = computed(() => orgStore.currentOrgId);
 
-// ── Highlight palette ────────────────────────────────────────────────────────
 const HIGHLIGHT: Record<GraphHighlightTag, { border: string; shadow: string; label: string }> = {
   best_deal:    { border: '#16a34a', shadow: 'rgba(22,163,74,0.55)',  label: 'Best deal (top 20%)' },
   worst_deal:   { border: '#dc2626', shadow: 'rgba(220,38,38,0.55)',  label: 'Worst deal (bottom 20%)' },
@@ -55,22 +50,21 @@ const HIGHLIGHT: Record<GraphHighlightTag, { border: string; shadow: string; lab
   worst_client: { border: '#dc2626', shadow: 'rgba(220,38,38,0.55)',  label: 'Worst client (bottom 20%)' },
 };
 
-// ── Color palette ────────────────────────────────────────────────────────────
 const TYPE_COLORS: Record<string, string> = {
-  user_self: '#1d4ed8',  // brand-700
-  user:      '#93c5fd',  // brand-300
-  workspace: '#0d9488',  // teal-600
+  user_self: '#1d4ed8',
+  user:      '#93c5fd',
+  workspace: '#0d9488',
 };
 
 const ENTITY_PALETTE = [
-  '#7c3aed', // violet-600
-  '#d97706', // amber-600
-  '#16a34a', // green-600
-  '#dc2626', // red-600
-  '#0891b2', // cyan-600
-  '#9333ea', // purple-600
-  '#ea580c', // orange-600
-  '#0284c7', // sky-600
+  '#7c3aed',
+  '#d97706',
+  '#16a34a',
+  '#dc2626',
+  '#0891b2',
+  '#9333ea',
+  '#ea580c',
+  '#0284c7',
 ];
 
 const TYPE_BORDER_DARKEN: Record<string, string> = {
@@ -79,20 +73,15 @@ const TYPE_BORDER_DARKEN: Record<string, string> = {
   workspace: '#0f766e',
 };
 
-// ── Risk palette (deal nodes) ────────────────────────────────────────────────
-// Same hues as the dashboard risk-distribution doughnut (red-500/amber-500/emerald-500)
-// plus a slate-400 "stale" tone for nodes whose score is unavailable.
 type RiskLevel = 'high' | 'medium' | 'low' | 'stale';
 
 const RISK_COLORS: Record<RiskLevel, { fill: string; border: string; label: string }> = {
-  high:   { fill: '#ef4444', border: '#b91c1c', label: 'High risk' },     // red-500 / red-700
-  medium: { fill: '#f59e0b', border: '#b45309', label: 'Medium risk' },   // amber-500 / amber-700
-  low:    { fill: '#10b981', border: '#047857', label: 'Low risk' },      // emerald-500 / emerald-700
-  stale:  { fill: '#94a3b8', border: '#475569', label: 'Score unavailable' }, // slate-400 / slate-600
+  high:   { fill: '#ef4444', border: '#b91c1c', label: 'High risk' },
+  medium: { fill: '#f59e0b', border: '#b45309', label: 'Medium risk' },
+  low:    { fill: '#10b981', border: '#047857', label: 'Low risk' },
+  stale:  { fill: '#94a3b8', border: '#475569', label: 'Score unavailable' },
 };
 
-// Closure-score thresholds expressed on the 0–100 scale used by the ML service.
-// Task spec: red>0.7, yellow 0.4–0.7, green<0.4 → mapped to 70 and 40.
 function classifyRisk(score: DealScoreDto | undefined): RiskLevel | null {
   if (!score) return null;
   if (score.unavailable_reason !== null) return 'stale';
@@ -102,7 +91,6 @@ function classifyRisk(score: DealScoreDto | undefined): RiskLevel | null {
   return 'low';
 }
 
-// Built at render time — no color is tied to any entity type name in source
 function buildEntityTypeColorMap(nodes: GraphNodeDto[]): Map<string, string> {
   const map = new Map<string, string>();
   let idx = 0;
@@ -116,10 +104,6 @@ function buildEntityTypeColorMap(nodes: GraphNodeDto[]): Map<string, string> {
 }
 
 function nodeColor(node: GraphNodeDto, typeColorMap: Map<string, string>) {
-  // Deals get risk-based coloring from ML closure score; everything else uses
-  // the type palette. When a deal has no score yet (request pending, never
-  // scored, or non-applicable status) we fall back to the entity palette so
-  // the canvas isn't dominated by grey before scores arrive.
   if (node.type === 'entity' && node.entityTypeName === 'deal') {
     const risk = classifyRisk(dealScores.value.get(node.resourceId));
     if (risk !== null) {
@@ -149,7 +133,6 @@ function nodeColor(node: GraphNodeDto, typeColorMap: Map<string, string>) {
   };
 }
 
-// ── Legend data ──────────────────────────────────────────────────────────────
 const typeLegendItems = computed(() => {
   const items: { label: string; color: string; border?: string }[] = [
     { label: 'You', color: TYPE_COLORS.user_self },
@@ -158,12 +141,9 @@ const typeLegendItems = computed(() => {
   ];
   const typeMap = buildEntityTypeColorMap(graphStore.nodes);
   for (const [name, color] of typeMap) {
-    // The deal palette slot is owned by the risk legend; skip it from the type row
-    // to avoid showing a misleading purple/violet "deal" swatch.
     if (name === 'deal') continue;
     items.push({ label: formatTypeName(name), color });
   }
-  // Append highlight legend entries when any highlighted nodes exist
   const usedTags = new Set(
     graphStore.nodes.map(n => n.highlightTag).filter(Boolean) as string[]
   );
@@ -177,7 +157,6 @@ const typeLegendItems = computed(() => {
   return items;
 });
 
-// Risk legend is shown only when at least one deal node is present.
 const hasDealNodes = computed(() =>
   graphStore.nodes.some(n => n.type === 'entity' && n.entityTypeName === 'deal'),
 );
@@ -186,7 +165,6 @@ const riskLegendItems = computed(() => {
   if (!hasDealNodes.value) return [];
   const levels: RiskLevel[] = ['high', 'medium', 'low'];
   const items = levels.map(level => ({ label: RISK_COLORS[level].label, color: RISK_COLORS[level].fill }));
-  // Surface the stale swatch only when at least one deal actually has an unavailable score
   const anyStale = [...dealScores.value.values()].some(s => s.unavailable_reason !== null);
   if (anyStale) items.push({ label: RISK_COLORS.stale.label, color: RISK_COLORS.stale.fill });
   return items;
@@ -196,15 +174,7 @@ function formatTypeName(name: string): string {
   return name.split('_').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-// ── Client-side filter derivation ────────────────────────────────────────────
-// Manager / workspace / entity-type filters are applied here rather than
-// re-fetching the graph: the backend currently only exposes ?riskLevel=, and
-// we don't want a round-trip on every dropdown click. The risk filter goes
-// through the store fetch (re-issues GET /graph) — see load() below.
 
-// Adjacency between users and workspaces, derived from `user_workspace` edges.
-// Used so the "Manager" dropdown can scope the canvas to a single user's
-// workspaces + the entities those workspaces hold.
 const userToWorkspaceIds = computed(() => {
   const map = new Map<number, Set<number>>();
   for (const n of graphStore.nodes) {
@@ -228,9 +198,6 @@ const userToWorkspaceIds = computed(() => {
   return map;
 });
 
-// Visible node id-set after applying manager + workspace + entity-type filters.
-// Risk filter is applied server-side, so its trimming is already baked into
-// `graphStore.nodes` by the time this runs.
 const visibleNodeIds = computed<Set<string>>(() => {
   const f = filters.value;
   const hasAnyClientFilter =
@@ -241,8 +208,6 @@ const visibleNodeIds = computed<Set<string>>(() => {
     return new Set(graphStore.nodes.map(n => n.id));
   }
 
-  // The selected manager's workspaces define the in-scope workspace set when
-  // a manager is picked; otherwise every workspace is in scope.
   const managerScopedWsIds: Set<number> | null =
     f.managerUserId !== null
       ? userToWorkspaceIds.value.get(f.managerUserId) ?? new Set<number>()
@@ -251,8 +216,6 @@ const visibleNodeIds = computed<Set<string>>(() => {
   const visible = new Set<string>();
   for (const n of graphStore.nodes) {
     if (n.type === 'user_self' || n.type === 'user') {
-      // Keep the selected manager's own node (and self) so the canvas isn't
-      // just a floating cloud of entities.
       if (f.managerUserId === null || n.resourceId === f.managerUserId || n.type === 'user_self') {
         visible.add(n.id);
       }
@@ -266,7 +229,6 @@ const visibleNodeIds = computed<Set<string>>(() => {
       continue;
     }
 
-    // entity
     if (f.workspaceId !== null && n.workspaceId !== f.workspaceId) continue;
     if (managerScopedWsIds && n.workspaceId !== undefined && !managerScopedWsIds.has(n.workspaceId)) continue;
     if (
@@ -290,11 +252,7 @@ const filteredEdges = computed<GraphEdgeDto[]>(() =>
   ),
 );
 
-// ── Filter panel option lists ────────────────────────────────────────────────
 const managerOptions = computed<FilterPanelOption[]>(() => {
-  // Source: org members with `ws_manager` role at least somewhere. Falls back
-  // to "users present in the graph as nodes" when membership data isn't loaded
-  // yet, so the dropdown is never empty on first render.
   const fromMembers = orgStore.members
     .map(m => ({
       label: `${m.firstName} ${m.lastName}`.trim() || m.email,
@@ -328,9 +286,6 @@ const entityTypeOptions = computed<FilterPanelOption[]>(() => {
     .sort((a, b) => a.label.localeCompare(b.label));
 });
 
-// Manager dropdown is gated to ws_admin / ws_analyst (matches the parent
-// task's spec). Org owners/admins implicitly satisfy this since they hold
-// admin-equivalent visibility across workspaces.
 const canManagerFilter = computed(() => {
   const orgRole = orgStore.currentOrg?.userRole;
   if (orgRole === 'org_owner' || orgRole === 'org_admin') return true;
@@ -339,7 +294,6 @@ const canManagerFilter = computed(() => {
   );
 });
 
-// ── Render ───────────────────────────────────────────────────────────────────
 async function render() {
   await nextTick();
   if (!container.value) return;
@@ -402,13 +356,8 @@ async function render() {
   });
 }
 
-// Re-render the canvas whenever the client-side filter set changes, but stay
-// quiet until the initial graph fetch lands (no canvas → render() exits early
-// anyway, but skipping the call keeps Vue's reactivity graph cleaner).
 watch(visibleNodeIds, () => {
   if (graphStore.nodes.length === 0) return;
-  // Drop selection if the previously-selected node is no longer visible —
-  // otherwise the side panel would hover over a filtered-out record.
   if (selectedNode.value && !visibleNodeIds.value.has(selectedNode.value.id)) {
     selectedNode.value = null;
   }
@@ -417,15 +366,14 @@ watch(visibleNodeIds, () => {
 
 function edgeColor(type: string): string {
   switch (type) {
-    case 'user_workspace': return '#93c5fd'; // brand-300
-    case 'workspace_entity': return '#cbd5e1'; // slate-300
-    case 'entity_entity': return '#94a3b8'; // slate-400
-    case 'user_user': return '#bfdbfe'; // brand-200
+    case 'user_workspace': return '#93c5fd';
+    case 'workspace_entity': return '#cbd5e1';
+    case 'entity_entity': return '#94a3b8';
+    case 'user_user': return '#bfdbfe';
     default: return '#e2e8f0';
   }
 }
 
-// ── Load ─────────────────────────────────────────────────────────────────────
 async function loadDealScores() {
   const dealIds = graphStore.nodes
     .filter(n => n.type === 'entity' && n.entityTypeName === 'deal')
@@ -442,8 +390,6 @@ async function loadDealScores() {
     for (const r of results) map.set(r.entity_id, r);
     dealScores.value = map;
   } catch {
-    // Soft-fail: graph is still usable without risk colors. The http layer toasts
-    // the error already; the canvas keeps the type palette as a safe fallback.
     dealScores.value = new Map();
   }
 }
@@ -459,9 +405,6 @@ async function load() {
 }
 
 watch(orgId, () => {
-  // Reset every filter when the org switches — keeping a stale predicate would
-  // silently apply it to a fresh dataset and could render an empty graph for
-  // reasons the user can't see.
   filters.value = {
     risk: null,
     managerUserId: null,
@@ -471,22 +414,17 @@ watch(orgId, () => {
   load();
 });
 
-// Risk re-fetches (server-side filter). The other filters are derived locally
-// from `graphStore.nodes` so they don't pay a round-trip.
 watch(() => filters.value.risk, () => { load(); });
 
 onMounted(() => {
   load();
-  // Background-load org members so the Manager dropdown is populated when an
-  // admin/analyst opens the graph for the first time. We don't await — the
-  // dropdown falls back to graph user nodes until membership arrives.
   if (orgStore.currentOrgId && orgStore.members.length === 0) {
-    orgStore.fetchMembers().catch(() => { /* silently fall back */ });
+    orgStore.fetchMembers().catch(() => {
+ });
   }
-  // Workspace list is needed to gate `canManagerFilter` correctly outside the
-  // workspace-scoped routes (the Graph view is org-level).
   if (orgStore.currentOrgId && wsStore.workspaces.length === 0) {
-    wsStore.fetchWorkspaces(orgStore.currentOrgId).catch(() => { /* ignore */ });
+    wsStore.fetchWorkspaces(orgStore.currentOrgId).catch(() => {
+ });
   }
 });
 
@@ -495,7 +433,6 @@ onUnmounted(() => {
   network.value = null;
 });
 
-// ── Node actions ─────────────────────────────────────────────────────────────
 function typeBadge(node: GraphNodeDto): string {
   if (node.type === 'user_self') return 'You';
   if (node.type === 'user') return 'User';
@@ -503,7 +440,6 @@ function typeBadge(node: GraphNodeDto): string {
   return node.entityTypeName ? formatTypeName(node.entityTypeName) : 'Entity';
 }
 
-// ── Selected-node ML data (deal nodes only) ──────────────────────────────────
 function selectedScore(): DealScoreDto | undefined {
   const n = selectedNode.value;
   if (!n || n.type !== 'entity' || n.entityTypeName !== 'deal') return undefined;
@@ -529,17 +465,12 @@ const selectedIsDeal = computed(() =>
   selectedNode.value?.type === 'entity' && selectedNode.value.entityTypeName === 'deal',
 );
 
-// Tailwind classes for the churn badge. We pick a tone from the same red/amber/emerald
-// risk family so the panel reads consistently with the legend.
 function churnBadgeClass(score: number): string {
   if (score > 70) return 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200';
   if (score >= 40) return 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200';
   return 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200';
 }
 
-// PrimeVue's ProgressBar value prop colors the fill via the primary theme variable, so we
-// recolor it inline to match the closure-score risk tier — keeps the bar legible without
-// needing a custom CSS variable per tier.
 function closureBarColor(score: number): string {
   if (score > 70) return RISK_COLORS.high.fill;
   if (score >= 40) return RISK_COLORS.medium.fill;
@@ -618,7 +549,7 @@ function resetAllFilters() {
   <ConfirmDialog />
   <section class="flex flex-col gap-4 h-[calc(100vh-7rem)]">
 
-    <!-- Header -->
+    
     <div class="flex items-start justify-between gap-4 shrink-0">
       <div>
         <h1 class="text-2xl font-bold text-ink-900">Graph</h1>
@@ -633,7 +564,7 @@ function resetAllFilters() {
       </div>
     </div>
 
-    <!-- Combined filter panel -->
+    
     <FilterPanel
       v-if="orgId"
       v-model="filters"
@@ -646,13 +577,12 @@ function resetAllFilters() {
       :can-manager-filter="canManagerFilter"
     />
 
-    <!-- No org -->
+    
     <Message v-if="!orgId" severity="info" :closable="false" class="!my-0">
       Select an organization to see your graph.
     </Message>
 
-    <!-- Error: graph data could not be loaded. Show retry so the user can recover
-         without reloading the whole page. -->
+    
     <div
       v-else-if="graphStore.error"
       class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
@@ -673,7 +603,7 @@ function resetAllFilters() {
       />
     </div>
 
-    <!-- Loading -->
+    
     <GraphSkeleton
       v-else-if="graphStore.isLoading && !hasGraph"
       class="flex-1"
@@ -681,7 +611,7 @@ function resetAllFilters() {
       label="Loading graph…"
     />
 
-    <!-- Empty -->
+    
     <div
       v-else-if="!graphStore.isLoading && !hasGraph"
       class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
@@ -706,9 +636,7 @@ function resetAllFilters() {
       </p>
     </div>
 
-    <!-- Filtered-empty (graph has data, but all client-side filters together
-         returned zero nodes — the backend risk filter case is already covered
-         above when the server returns zero nodes). -->
+    
     <div
       v-else-if="hasGraph && !hasFilteredGraph"
       class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
@@ -728,12 +656,12 @@ function resetAllFilters() {
       />
     </div>
 
-    <!-- Graph + panel -->
+    
     <div v-else class="flex gap-3 flex-1 min-h-0">
 
-      <!-- Canvas -->
+      
       <div class="flex-1 flex flex-col min-w-0 gap-2">
-        <!-- Legend -->
+        
         <div class="flex flex-wrap items-center gap-x-5 gap-y-2 shrink-0">
           <div class="flex flex-wrap gap-3">
             <div
@@ -779,13 +707,13 @@ function resetAllFilters() {
         />
       </div>
 
-      <!-- Node detail panel -->
+      
       <Transition name="panel">
         <div
           v-if="selectedNode"
           class="w-64 shrink-0 rounded-xl border border-line bg-white p-4 flex flex-col gap-3 overflow-y-auto"
         >
-          <!-- Type badge -->
+          
           <div class="flex items-center justify-between">
             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
               {{ typeBadge(selectedNode) }}
@@ -799,7 +727,7 @@ function resetAllFilters() {
             </button>
           </div>
 
-          <!-- Label + subtitle -->
+          
           <div>
             <p class="text-sm font-semibold text-ink-900 leading-snug">{{ selectedNode.label }}</p>
             <p v-if="selectedNode.subtitle" class="mt-0.5 text-xs text-ink-400 truncate">
@@ -807,7 +735,7 @@ function resetAllFilters() {
             </p>
           </div>
 
-          <!-- ML scores (deals only) -->
+          
           <div
             v-if="selectedIsDeal"
             class="rounded-lg border border-line bg-surface/40 p-3 flex flex-col gap-2.5"
@@ -847,7 +775,7 @@ function resetAllFilters() {
             </p>
           </div>
 
-          <!-- Actions -->
+          
           <div class="flex flex-col gap-2 mt-auto pt-2 border-t border-slate-100">
             <Button
               label="View"

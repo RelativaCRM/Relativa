@@ -27,7 +27,6 @@ const wsStore = useWorkspaceStore();
 const orgStore = useOrganizationStore();
 const auditStore = useAuditStore();
 
-/* ── Role gating ─────────────────────────────────────────── */
 
 const canViewWorkspaceScope = computed(
   () => (wsStore.currentWorkspace?.myPermissions ?? []).includes('view_analytics'),
@@ -39,7 +38,6 @@ const canViewPage = computed(
   () => canViewWorkspaceScope.value || canViewOrgScope.value,
 );
 
-/* ── Filters ─────────────────────────────────────────────── */
 
 type ScopeOption = { label: string; value: AuditScope };
 
@@ -64,10 +62,8 @@ const actionFilter = ref<string>('');
 
 const pageSizeOptions = [10, 20, 50, 100];
 const pageSize = ref(20);
-const pageIndex = ref(1); // 1-based
+const pageIndex = ref(1);
 
-/* If current scope becomes unavailable (e.g. role flips), pick the first
- * available option so we never send an unauthorized request. */
 watch(
   scopeOptions,
   (opts) => {
@@ -78,7 +74,6 @@ watch(
   { immediate: true },
 );
 
-/* ── Fetch ───────────────────────────────────────────────── */
 
 const errorMessage = ref<string | null>(null);
 
@@ -138,7 +133,7 @@ function resetFilters() {
 }
 
 function onPage(event: DataTablePageEvent) {
-  pageIndex.value = event.page + 1; // PrimeVue is 0-based
+  pageIndex.value = event.page + 1;
   pageSize.value = event.rows;
   load();
 }
@@ -150,7 +145,6 @@ watch(scope, () => {
 
 onMounted(load);
 
-/* ── Display helpers ─────────────────────────────────────── */
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
@@ -200,7 +194,6 @@ function stringifyJson(value: unknown): string {
   }
 }
 
-/* ── Per-row JSON collapse state ─────────────────────────── */
 
 const expandedJson = ref<Record<string, { old: boolean; next: boolean }>>({});
 
@@ -241,7 +234,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
       />
     </div>
 
-    <!-- Filters bar -->
+    
     <div
       class="rounded-xl border border-line bg-white p-4 mb-4 flex flex-wrap items-end gap-3"
     >
@@ -304,7 +297,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
       {{ errorMessage }}
     </Message>
 
-    <!-- Table -->
+    
     <div class="rounded-xl border border-line bg-white overflow-hidden">
       <DataTable
         :value="auditStore.rows"

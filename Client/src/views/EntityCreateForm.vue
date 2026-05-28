@@ -41,7 +41,7 @@ const entityStore = useEntityStore();
 const workspaceId = computed(() => Number(route.params.workspaceId));
 
 const types = computed<EntityTypeDto[]>(() => entityStore.types);
-/** Types the user is allowed to create manually (standalone + non-UI-locked). Non-standalone types like notes are only creatable via the entity page "+" button. */
+
 const creatableTypes = computed(() =>
   types.value.filter((t) => t.isStandalone && !isEntityTypeUiLocked(t)),
 );
@@ -105,7 +105,6 @@ const requiredOutgoing = computed(
 const linkPick = reactive<Record<number, number | null>>({});
 const candidatesByRel = ref<Record<number, EntityListItemDto[]>>({});
 
-/** Required link: open dialog to create target row (e.g. Client) and select it. */
 const nestedDialogOpen = ref(false);
 const nestedForRel = ref<OutgoingRelationshipDto | null>(null);
 const nestedValues = ref<Record<number, FieldValue>>({});
