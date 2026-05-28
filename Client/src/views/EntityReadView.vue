@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, reactive } from 'vue';
+import { ref, computed, watch, reactive, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -156,15 +156,31 @@ const linkCandidates = ref<EntityListItemDto[]>([]);
 const linkLoading = ref(false);
 const linkError = ref<string | null>(null);
 const linkSearch = ref('');
+const linkSearchInputRef = ref<{ $el?: HTMLInputElement } | null>(null);
+
+const SEARCHABLE_PROPS = new Set(['name', 'first_name', 'last_name', 'title', 'email']);
 
 const filteredLinkCandidates = computed<EntityListItemDto[]>(() => {
   const query = linkSearch.value.trim().toLowerCase();
   if (!query) return linkCandidates.value;
   return linkCandidates.value.filter((item) => {
     if (String(item.id).includes(query)) return true;
-    return previewLinkLabel(item).toLowerCase().includes(query);
+    return item.propertyValues.some((p) =>
+      SEARCHABLE_PROPS.has(p.propertyName.toLowerCase())
+      && typeof p.value === 'string'
+      && p.value.toLowerCase().includes(query),
+    );
   });
 });
+
+watch(
+  () => [linkModalOpen.value, linkLoading.value, linkCandidates.value.length] as const,
+  async ([open, loading, count]) => {
+    if (!open || loading || count === 0) return;
+    await nextTick();
+    linkSearchInputRef.value?.$el?.focus();
+  },
+);
 
 async function openLinkModal(tab: EdgeRelTab) {
   linkModalTab.value = tab;
@@ -204,6 +220,26 @@ function previewLinkLabel(item: EntityListItemDto): string {
     (p) => ['name', 'first_name', 'title', 'email'].includes(p.propertyName.toLowerCase()),
   );
   return v ? String(v.value ?? '') : `#${item.id}`;
+}
+
+function findStringProp(item: EntityListItemDto, name: string): string | null {
+  const p = item.propertyValues.find((pv) => pv.propertyName.toLowerCase() === name);
+  if (!p || typeof p.value !== 'string') return null;
+  const s = p.value.trim();
+  return s.length > 0 ? s : null;
+}
+
+function candidatePrimary(item: EntityListItemDto): string {
+  const first = findStringProp(item, 'first_name');
+  const last = findStringProp(item, 'last_name');
+  if (first || last) return [first, last].filter(Boolean).join(' ');
+  return findStringProp(item, 'name')
+    ?? findStringProp(item, 'title')
+    ?? `#${item.id}`;
+}
+
+function candidateSecondary(item: EntityListItemDto): string | null {
+  return findStringProp(item, 'email');
 }
 
 async function confirmLink(candidate: EntityListItemDto) {
@@ -1196,14 +1232,23 @@ watch(
       No linkable records found.
     </p>
     <template v-else>
-      <div class="relative mb-3">
+      <div class="relative mb-2">
         <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-400" />
         <InputText
+          ref="linkSearchInputRef"
           v-model="linkSearch"
-          :placeholder="linkModalTab ? `Search ${humanize(linkModalTab.otherEntityTypeName)} by name or id…` : 'Search by name or id…'"
+          :placeholder="linkModalTab ? `Search ${humanize(linkModalTab.otherEntityTypeName)} by name, email or id…` : 'Search by name, email or id…'"
           class="w-full !h-10 !pl-9"
         />
       </div>
+      <p class="text-xs text-ink-500 mb-2">
+        <template v-if="linkSearch.trim()">
+          Showing {{ filteredLinkCandidates.length }} of {{ linkCandidates.length }}
+        </template>
+        <template v-else>
+          {{ linkCandidates.length }} {{ linkCandidates.length === 1 ? 'record' : 'records' }}
+        </template>
+      </p>
       <p v-if="filteredLinkCandidates.length === 0" class="text-sm text-ink-500 py-4">
         No records match your search.
       </p>
@@ -1214,9 +1259,14 @@ watch(
             class="w-full text-left rounded-lg border border-line px-3 py-2 hover:bg-surface/80 transition-colors"
             @click="confirmLink(item)"
           >
-            <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
-            <span class="font-mono text-xs text-ink-600"> #{{ item.id }}</span>
-            <span class="block text-xs text-ink-500 mt-0.5">{{ previewLinkLabel(item) }}</span>
+            <span class="flex items-baseline gap-2">
+              <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
+              <span class="font-mono text-xs text-ink-600">#{{ item.id }}</span>
+            </span>
+            <span class="block text-sm text-ink-900 mt-0.5">{{ candidatePrimary(item) }}</span>
+            <span v-if="candidateSecondary(item)" class="block text-xs text-ink-500">
+              {{ candidateSecondary(item) }}
+            </span>
           </button>
         </li>
       </ul>
