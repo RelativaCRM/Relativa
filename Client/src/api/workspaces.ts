@@ -31,6 +31,23 @@ export interface WorkspaceRoleDto {
   permissions: WorkspacePermissionDto[];
 }
 
+export interface WorkspaceSettingsDto {
+  workspaceId: number;
+  name: string;
+  description: string | null;
+  highRiskThreshold: number;
+  mediumRiskThreshold: number;
+  riskScoringEnabled: boolean;
+}
+
+export interface UpdateWorkspaceSettingsRequest {
+  name: string;
+  description?: string | null;
+  highRiskThreshold: number;
+  mediumRiskThreshold: number;
+  riskScoringEnabled: boolean;
+}
+
 const CORE = '/core/api/v1';
 
 export const workspaceApi = {
@@ -87,6 +104,13 @@ export const workspaceApi = {
 
   listRoles(wsId: number): Promise<WorkspaceRoleDto[]> {
     return api.get<WorkspaceRoleDto[]>(`${CORE}/workspaces/${wsId}/roles`);
+  },
+
+  getSettings(wsId: number): Promise<WorkspaceSettingsDto> {
+    return api.get<WorkspaceSettingsDto>(`${CORE}/workspaces/${wsId}/settings`);
+  },
+  updateSettings(wsId: number, data: UpdateWorkspaceSettingsRequest): Promise<void> {
+    return api.put(`${CORE}/workspaces/${wsId}/settings`, data);
   },
 };
 

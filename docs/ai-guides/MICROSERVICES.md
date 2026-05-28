@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-15 (Graph→ML communication migrated from HTTP to RabbitMQ RPC (`relativa.graph_ml` exchange); ML `run_graph_score_consumer` added; `PropertyAllowedValue` enforced in Core EntityService; error handling hardened.)
+> **Last verified:** 2026-05-29 (Organization settings + expanded workspace settings implemented: 4 new endpoints, `organization_settings` table, `workspace_settings` description + risk_scoring_enabled columns, join-policy enforcement in JoinRequestService, frontend settings views + sidebar links.)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -129,11 +129,13 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
-| POST | `/api/v1/organizations` | JWT | Create organization; creator becomes org_owner |
+| POST | `/api/v1/organizations` | JWT | Create organization; creator becomes org_owner; auto-seeds default `organization_settings` row |
 | GET | `/api/v1/organizations` | JWT | List organizations the user belongs to |
 | GET | `/api/v1/organizations/search?q=...` | JWT | Search organizations by name; returns `{ id, name, memberCount }` for each match |
 | GET | `/api/v1/organizations/{id}` | JWT + org membership | Get organization details |
 | PUT | `/api/v1/organizations/{id}` | JWT + `manage_org_settings` | Update organization |
+| GET | `/api/v1/organizations/{id}/settings` | JWT + org membership | Returns `OrganizationSettingsDto` (`description`, `joinPolicy`, `defaultOrgRoleId`, `defaultOrgRoleName`). Emits `organization_settings_read` audit event. |
+| PUT | `/api/v1/organizations/{id}/settings` | JWT + `manage_org_settings` | Full replace of org settings (`description`, `joinPolicy`, `defaultOrgRoleId`). Validates via FluentValidation; emits `organization_settings_updated` audit + `core.organization.settings_updated` domain event. Returns 204. |
 
 ### Endpoints -- Organization Members
 
@@ -195,6 +197,8 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 | GET | `/api/v1/workspaces/{id}` | JWT + ws membership | Get workspace details |
 | PUT | `/api/v1/workspaces/{id}` | JWT + `manage_ws_settings` | Update workspace name |
 | DELETE | `/api/v1/workspaces/{id}` | JWT + ws_admin role | Archive workspace |
+| GET | `/api/v1/workspaces/{id}/settings` | JWT + ws membership | Returns `WorkspaceSettingsDto` (`description`, `highRiskThreshold`, `mediumRiskThreshold`, `riskScoringEnabled`). Emits `workspace_settings_read` audit event. |
+| PUT | `/api/v1/workspaces/{id}/settings` | JWT + `manage_ws_settings` | Full replace of workspace settings. Validates thresholds (0–1, medium < high), description max 500 chars. Emits `workspace_settings_updated` audit + `core.workspace.settings_updated` domain event. Returns 204. |
 
 ### Endpoints -- Workspace Members
 

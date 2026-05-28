@@ -12,6 +12,7 @@ public sealed class JoinRequestService(
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
     IOrganizationRepository organizationRepository,
+    IOrganizationSettingsRepository organizationSettingsRepository,
     IOutboxWriter? auditOutboxWriter = null) : IJoinRequestService
 {
     public async Task<JoinRequestDto> SubmitAsync(int organizationId, int userId, CreateJoinRequestRequest request, CancellationToken ct = default)
@@ -21,6 +22,10 @@ public sealed class JoinRequestService(
 
         if (organization.IsArchived)
             throw new InvalidOperationException("This organization is archived.");
+
+        var orgSettings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct);
+        if (orgSettings?.JoinPolicy == "invite_only")
+            throw new ForbiddenAccessException("This organization is not accepting join requests.");
 
         var existingMembership = await orgMemberRepository.GetAsync(userId, organizationId, ct);
         if (existingMembership is not null)
@@ -114,11 +119,15 @@ public sealed class JoinRequestService(
             if (existingMembership is not null)
                 throw new InvalidOperationException("The requester is already a member of this organization.");
 
-            var memberRole = ((await orgRoleRepository.GetSystemRolesAsync(ct)) ?? [])
-                .OrderByDescending(r => r.Priority)
-                .ThenBy(r => r.Id)
-                .FirstOrDefault()
-                ?? throw new InvalidOperationException("Default system organization role not found.");
+            var settings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct);
+            var memberRole = settings?.DefaultOrgRoleId.HasValue == true
+                ? await orgRoleRepository.GetByIdAsync(settings.DefaultOrgRoleId.Value, ct)
+                    ?? throw new InvalidOperationException("Configured default org role not found.")
+                : ((await orgRoleRepository.GetSystemRolesAsync(ct)) ?? [])
+                    .OrderByDescending(r => r.Priority)
+                    .ThenBy(r => r.Id)
+                    .FirstOrDefault()
+                    ?? throw new InvalidOperationException("Default system organization role not found.");
 
             var membership = new UserRoleOrganization
             {

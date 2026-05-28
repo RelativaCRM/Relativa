@@ -28,6 +28,14 @@ public class WorkspaceSettingsConfiguration : IEntityTypeConfiguration<Workspace
             .HasDefaultValue(0.4m)
             .ValueGeneratedNever()
             .IsRequired();
+        builder.Property(e => e.Description)
+            .HasColumnName("description")
+            .HasMaxLength(500)
+            .IsRequired(false);
+        builder.Property(e => e.RiskScoringEnabled)
+            .HasColumnName("risk_scoring_enabled")
+            .HasDefaultValue(true)
+            .IsRequired();
         builder.HasIndex(e => e.WorkspaceId)
             .IsUnique()
             .HasDatabaseName("ix_workspace_settings_workspace_id");

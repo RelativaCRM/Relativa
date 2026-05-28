@@ -90,6 +90,10 @@ const canViewAuditLog = computed(() => {
   return orgPermissions.has('manage_org_settings');
 });
 
+const canManageOrgSettings = computed(() =>
+  orgStore.currentOrg?.myPermissions?.includes('manage_org_settings') ?? false,
+);
+
 async function handleOrgChange(orgId: number | null) {
   if (orgId == null) return;
   orgStore.setCurrentOrg(orgId);
@@ -396,10 +400,13 @@ onMounted(async () => {
                 </RouterLink>
               </div>
 
-              <template v-if="canViewAuditLog">
+              <template v-if="canViewAuditLog || canManageOrgSettings">
                 <hr class="border-t border-slate-200 mx-1 my-1" />
-                <RouterLink to="/audit-log" class="nav-link" active-class="nav-link--active">
+                <RouterLink v-if="canViewAuditLog" to="/audit-log" class="nav-link" active-class="nav-link--active">
                   <i class="pi pi-history" />Audit log
+                </RouterLink>
+                <RouterLink v-if="canManageOrgSettings" to="/org-settings" class="nav-link" active-class="nav-link--active">
+                  <i class="pi pi-cog" />Settings
                 </RouterLink>
               </template>
             </div>
@@ -439,6 +446,13 @@ onMounted(async () => {
                 active-class="nav-link--active"
               >
                 <i class="pi pi-users" />Members
+              </RouterLink>
+              <RouterLink
+                :to="{ name: 'workspace-settings', params: { workspaceId: workspaceIdStr } }"
+                class="nav-link"
+                active-class="nav-link--active"
+              >
+                <i class="pi pi-cog" />Settings
               </RouterLink>
             </div>
           </div>

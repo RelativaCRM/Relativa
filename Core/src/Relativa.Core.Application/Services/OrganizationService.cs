@@ -1,4 +1,6 @@
+using System.Text.Json;
 using FluentValidation;
+using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
@@ -12,8 +14,10 @@ public sealed class OrganizationService(
     IOrganizationRepository organizationRepository,
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
+    IOrganizationSettingsRepository organizationSettingsRepository,
     IValidator<CreateOrganizationRequest> createValidator,
     IValidator<UpdateOrganizationRequest> updateValidator,
+    IValidator<UpdateOrganizationSettingsRequest> updateSettingsValidator,
     IOutboxWriter? auditOutboxWriter = null) : IOrganizationService
 {
     public async Task<OrganizationDto> CreateAsync(int userId, CreateOrganizationRequest request, CancellationToken ct = default)
@@ -44,6 +48,12 @@ public sealed class OrganizationService(
 
         await orgMemberRepository.AddAsync(membership, ct);
 
+        await organizationSettingsRepository.AddAsync(new OrganizationSettings
+        {
+            OrganizationId = organization.Id,
+            JoinPolicy = "open"
+        }, ct);
+
         if (auditOutboxWriter is not null)
         {
             await auditOutboxWriter.EnqueueAuditAsync(
@@ -59,7 +69,7 @@ public sealed class OrganizationService(
                 FieldName: null,
                 EntityType: null,
                 OldValueJson: null,
-                NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { organization.Id, organization.Name })),
+                NewValueJson: JsonSerializer.Serialize(new { organization.Id, organization.Name, settings = new { joinPolicy = "open" } })),
             ct);
         }
 
@@ -280,6 +290,121 @@ public sealed class OrganizationService(
                 OldValueJson: null,
                 NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { UserId = targetUserId, RoleId = role.Id })),
             ct);
+        }
+    }
+
+    public async Task<OrganizationSettingsDto> GetSettingsAsync(int organizationId, int userId, CancellationToken ct = default)
+    {
+        await RequireOrgMembership(userId, organizationId, ct);
+
+        var settings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct)
+            ?? throw new KeyNotFoundException("Organization settings not found.");
+
+        var org = await organizationRepository.GetByIdAsync(organizationId, ct)
+            ?? throw new KeyNotFoundException("Organization not found.");
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAuditAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_settings_read",
+                    FieldName: null,
+                    EntityType: null,
+                    OldValueJson: null,
+                    NewValueJson: null),
+                ct);
+        }
+
+        return new OrganizationSettingsDto(
+            settings.OrganizationId,
+            org.Name,
+            settings.Description,
+            settings.JoinPolicy,
+            settings.DefaultOrgRoleId,
+            settings.DefaultOrgRole?.Name);
+    }
+
+    public async Task UpdateSettingsAsync(int organizationId, int userId, UpdateOrganizationSettingsRequest request, CancellationToken ct = default)
+    {
+        await updateSettingsValidator.ValidateAndThrowAsync(request, ct);
+        await RequireOrgPermission(userId, organizationId, OrganizationPermissions.ManageOrgSettings, ct);
+
+        var settings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct)
+            ?? throw new KeyNotFoundException("Organization settings not found.");
+
+        var org = await organizationRepository.GetByIdAsync(organizationId, ct)
+            ?? throw new KeyNotFoundException("Organization not found.");
+
+        if (request.DefaultOrgRoleId.HasValue)
+        {
+            var role = await orgRoleRepository.GetByIdAsync(request.DefaultOrgRoleId.Value, ct);
+            if (role is null)
+                throw new ArgumentException("The specified default org role does not exist.");
+            if (role.OrganizationId.HasValue && role.OrganizationId.Value != organizationId)
+                throw new ArgumentException("The specified default org role does not belong to this organization.");
+        }
+
+        var oldJson = JsonSerializer.Serialize(new
+        {
+            org.Name,
+            settings.Description,
+            settings.JoinPolicy,
+            settings.DefaultOrgRoleId
+        });
+
+        org.Name = request.Name;
+        settings.Description = request.Description;
+        settings.JoinPolicy = request.JoinPolicy;
+        settings.DefaultOrgRoleId = request.DefaultOrgRoleId;
+
+        await organizationRepository.UpdateAsync(org, ct);
+        await organizationSettingsRepository.UpdateAsync(settings, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAuditAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: organizationId,
+                    Action: "organization_settings_updated",
+                    FieldName: null,
+                    EntityType: null,
+                    OldValueJson: oldJson,
+                    NewValueJson: JsonSerializer.Serialize(new
+                    {
+                        request.Name,
+                        request.Description,
+                        request.JoinPolicy,
+                        request.DefaultOrgRoleId
+                    })),
+                ct);
+
+            var sagaId = Guid.NewGuid();
+            await auditOutboxWriter.EnqueueDomainAsync(
+                DomainRouting.RoutingKeyCoreOrganization(DomainRouting.CoreOrganizationVerbSettingsUpdated),
+                new DomainMessageEnvelope(
+                    SchemaVersion: MessagingSchemaVersions.V1,
+                    MessageId: Guid.NewGuid(),
+                    CorrelationId: sagaId,
+                    SagaInstanceId: sagaId,
+                    CausationId: null,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    PayloadTypeName: DomainPayloadTypes.OrganizationSettingsUpdatedV1,
+                    PayloadJson: JsonSerializer.Serialize(new OrganizationSettingsUpdatedPayloadV1(organizationId, userId))),
+                ct);
         }
     }
 

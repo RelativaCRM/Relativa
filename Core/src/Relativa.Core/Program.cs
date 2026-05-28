@@ -56,6 +56,7 @@ try
     builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
     builder.Services.AddScoped<IUserProvisioningService, UserProvisioningService>();
 
+    builder.Services.AddScoped<IOrganizationSettingsRepository, OrganizationSettingsRepository>();
     builder.Services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
     builder.Services.AddScoped<IWorkspaceSettingsRepository, WorkspaceSettingsRepository>();
     builder.Services.AddScoped<IUserRoleWorkspaceRepository, UserRoleWorkspaceRepository>();

@@ -1,6 +1,6 @@
 # Architecture -- Patterns, Layers, and Conventions
 
-> **Last verified:** 2026-05-27 (renamed `OrganizationSettings` entity to `WorkspaceSettings`.)
+> **Last verified:** 2026-05-29 (Added `OrganizationSettings` entity (`organization_settings` table, one-to-one with `Organization`); expanded `WorkspaceSettings` with `description` + `risk_scoring_enabled`; 4 new settings endpoints; join-policy enforcement in `JoinRequestService`; frontend settings views.)
 
 > **Maintenance obligation:** If you change architecture patterns, add or modify a layer, alter the persistence model, change validation or auth flows, or introduce new cross-cutting concerns, update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -123,7 +123,8 @@ Several tables use `is_archived` instead of hard deletes for domain records. For
 | `User` | `users` | Credentials and profile. No `role_id` column (dropped). Partial unique index on `email` where `is_archived = false`. |
 | `Organization` | `organizations` | Top-level tenant boundary. |
 | `Workspace` | `workspaces` | Has `organization_id` FK (direct, no join table). |
-| `WorkspaceSettings` | `workspace_settings` | One-to-one workspace settings with risk thresholds. Unique on `workspace_id`. |
+| `WorkspaceSettings` | `workspace_settings` | One-to-one workspace settings. Columns: `high_risk_threshold`, `medium_risk_threshold`, `description` (varchar 500, nullable), `risk_scoring_enabled` (bool, default true). Unique on `workspace_id`. |
+| `OrganizationSettings` | `organization_settings` | One-to-one org settings. Columns: `description` (varchar 500, nullable), `join_policy` (varchar 12, CHECK `'open'`\|`'invite_only'`, default `'open'`), `default_org_role_id` (nullable FK → `organization_roles`, SET NULL on role delete). Auto-seeded on org create. Unique on `organization_id`. |
 | `OrganizationRole` | `organization_roles` | Org-scoped roles (system + custom). |
 | `OrganizationRolePermission` | `organization_role_permissions` | Join between org roles and permissions. |
 | `UserRoleOrganization` | `user_role_organization` | Org membership: user + org + org role. |
@@ -183,6 +184,7 @@ This matrix defines which service is the **authoritative writer** for each table
 | `organization_invitations` | -- | **Read/Write** |
 | `workspaces` | -- | **Read/Write** |
 | `workspace_settings` | -- | **Read/Write** |
+| `organization_settings` | -- | **Read/Write** |
 | `workspace_roles` | -- | **Read/Write** |
 | `workspace_role_permissions` | -- | **Read/Write** |
 | `user_role_workspace` | -- | **Read/Write** |
