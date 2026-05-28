@@ -33,6 +33,7 @@ export interface WorkspaceRoleDto {
 
 export interface WorkspaceSettingsDto {
   workspaceId: number;
+  name: string;
   description: string | null;
   highRiskThreshold: number;
   mediumRiskThreshold: number;
@@ -40,6 +41,7 @@ export interface WorkspaceSettingsDto {
 }
 
 export interface UpdateWorkspaceSettingsRequest {
+  name: string;
   description?: string | null;
   highRiskThreshold: number;
   mediumRiskThreshold: number;

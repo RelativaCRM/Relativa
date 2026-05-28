@@ -7,6 +7,10 @@ public sealed class UpdateWorkspaceSettingsRequestValidator : AbstractValidator<
 {
     public UpdateWorkspaceSettingsRequestValidator()
     {
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Workspace name is required.")
+            .MaximumLength(100).WithMessage("Workspace name must be 100 characters or fewer.");
+
         RuleFor(x => x.Description)
             .MaximumLength(500).WithMessage("Description must be 500 characters or fewer.")
             .When(x => x.Description is not null);

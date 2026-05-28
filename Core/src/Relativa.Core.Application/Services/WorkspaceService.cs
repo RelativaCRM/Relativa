@@ -263,6 +263,9 @@ public sealed class WorkspaceService(
         var settings = await workspaceSettingsRepository.GetByWorkspaceIdAsync(workspaceId, ct)
             ?? throw new KeyNotFoundException("Workspace settings not found.");
 
+        var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
+            ?? throw new KeyNotFoundException("Workspace not found.");
+
         if (auditOutboxWriter is not null)
         {
             await auditOutboxWriter.EnqueueAuditAsync(
@@ -284,6 +287,7 @@ public sealed class WorkspaceService(
 
         return new WorkspaceSettingsDto(
             settings.WorkspaceId,
+            workspace.Name,
             settings.Description,
             settings.HighRiskThreshold,
             settings.MediumRiskThreshold,
@@ -305,17 +309,20 @@ public sealed class WorkspaceService(
 
         var oldJson = JsonSerializer.Serialize(new
         {
+            workspace.Name,
             settings.Description,
             settings.HighRiskThreshold,
             settings.MediumRiskThreshold,
             settings.RiskScoringEnabled
         });
 
+        workspace.Name = request.Name;
         settings.Description = request.Description;
         settings.HighRiskThreshold = request.HighRiskThreshold;
         settings.MediumRiskThreshold = request.MediumRiskThreshold;
         settings.RiskScoringEnabled = request.RiskScoringEnabled;
 
+        await workspaceRepository.UpdateAsync(workspace, ct);
         await workspaceSettingsRepository.UpdateAsync(settings, ct);
 
         if (auditOutboxWriter is not null)
@@ -335,6 +342,7 @@ public sealed class WorkspaceService(
                     OldValueJson: oldJson,
                     NewValueJson: JsonSerializer.Serialize(new
                     {
+                        request.Name,
                         request.Description,
                         request.HighRiskThreshold,
                         request.MediumRiskThreshold,

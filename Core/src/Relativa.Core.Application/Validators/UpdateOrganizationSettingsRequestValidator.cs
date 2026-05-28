@@ -9,6 +9,10 @@ public sealed class UpdateOrganizationSettingsRequestValidator : AbstractValidat
 
     public UpdateOrganizationSettingsRequestValidator()
     {
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Organization name is required.")
+            .MaximumLength(100).WithMessage("Organization name must be 100 characters or fewer.");
+
         RuleFor(x => x.Description)
             .MaximumLength(500).WithMessage("Description must be 500 characters or fewer.")
             .When(x => x.Description is not null);

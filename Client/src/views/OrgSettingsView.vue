@@ -2,6 +2,7 @@
 import { reactive, ref, computed, onMounted } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
 import Select from 'primevue/select';
 import Message from 'primevue/message';
@@ -38,6 +39,7 @@ const defaultRoleOptions = computed(() => {
 });
 
 const form = reactive({
+  name: '',
   description: '' as string | null,
   joinPolicy: 'open' as 'open' | 'invite_only',
   defaultOrgRoleId: null as number | null,
@@ -46,6 +48,7 @@ const form = reactive({
 function populateForm() {
   const s = orgStore.orgSettings;
   if (!s) return;
+  form.name = s.name;
   form.description = s.description;
   form.joinPolicy = s.joinPolicy;
   form.defaultOrgRoleId = s.defaultOrgRoleId;
@@ -78,6 +81,7 @@ async function handleSave() {
   fieldErrors.value = {};
   try {
     await orgStore.updateSettings({
+      name: form.name,
       description: form.description || null,
       joinPolicy: form.joinPolicy,
       defaultOrgRoleId: form.defaultOrgRoleId,
@@ -128,6 +132,22 @@ async function handleSave() {
       <div class="rounded-xl border border-line bg-white p-6">
         <h2 class="text-sm font-semibold text-ink-900">General</h2>
         <div class="mt-4 flex flex-col gap-1.5">
+          <label for="orgName" class="text-xs font-medium text-ink-600">Organization name</label>
+          <InputText
+            id="orgName"
+            v-model="form.name"
+            :disabled="!canEdit"
+            class="w-full"
+            maxlength="100"
+            placeholder="Organization name"
+            :invalid="!!firstFieldError(fieldErrors, 'name')"
+            @update:model-value="clearField('name')"
+          />
+          <small v-if="firstFieldError(fieldErrors, 'name')" class="text-xs text-danger">
+            <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'name') }}
+          </small>
+        </div>
+        <div class="mt-4 flex flex-col gap-1.5">
           <label for="orgDesc" class="text-xs font-medium text-ink-600">Description</label>
           <Textarea
             id="orgDesc"
@@ -147,6 +167,7 @@ async function handleSave() {
       </div>
 
       <!-- Membership -->
+
       <div class="rounded-xl border border-line bg-white p-6">
         <h2 class="text-sm font-semibold text-ink-900">Membership</h2>
 

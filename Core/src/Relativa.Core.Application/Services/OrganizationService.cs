@@ -300,6 +300,9 @@ public sealed class OrganizationService(
         var settings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct)
             ?? throw new KeyNotFoundException("Organization settings not found.");
 
+        var org = await organizationRepository.GetByIdAsync(organizationId, ct)
+            ?? throw new KeyNotFoundException("Organization not found.");
+
         if (auditOutboxWriter is not null)
         {
             await auditOutboxWriter.EnqueueAuditAsync(
@@ -321,6 +324,7 @@ public sealed class OrganizationService(
 
         return new OrganizationSettingsDto(
             settings.OrganizationId,
+            org.Name,
             settings.Description,
             settings.JoinPolicy,
             settings.DefaultOrgRoleId,
@@ -335,6 +339,9 @@ public sealed class OrganizationService(
         var settings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct)
             ?? throw new KeyNotFoundException("Organization settings not found.");
 
+        var org = await organizationRepository.GetByIdAsync(organizationId, ct)
+            ?? throw new KeyNotFoundException("Organization not found.");
+
         if (request.DefaultOrgRoleId.HasValue)
         {
             var role = await orgRoleRepository.GetByIdAsync(request.DefaultOrgRoleId.Value, ct);
@@ -346,15 +353,18 @@ public sealed class OrganizationService(
 
         var oldJson = JsonSerializer.Serialize(new
         {
+            org.Name,
             settings.Description,
             settings.JoinPolicy,
             settings.DefaultOrgRoleId
         });
 
+        org.Name = request.Name;
         settings.Description = request.Description;
         settings.JoinPolicy = request.JoinPolicy;
         settings.DefaultOrgRoleId = request.DefaultOrgRoleId;
 
+        await organizationRepository.UpdateAsync(org, ct);
         await organizationSettingsRepository.UpdateAsync(settings, ct);
 
         if (auditOutboxWriter is not null)
@@ -374,6 +384,7 @@ public sealed class OrganizationService(
                     OldValueJson: oldJson,
                     NewValueJson: JsonSerializer.Serialize(new
                     {
+                        request.Name,
                         request.Description,
                         request.JoinPolicy,
                         request.DefaultOrgRoleId

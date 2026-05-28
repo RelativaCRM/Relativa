@@ -3,6 +3,7 @@ import { reactive, ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Textarea from 'primevue/textarea';
 import ToggleSwitch from 'primevue/toggleswitch';
@@ -28,6 +29,7 @@ const canEdit = computed(() =>
 );
 
 const form = reactive({
+  name: '',
   description: '' as string | null,
   highRiskThreshold: 0.7,
   mediumRiskThreshold: 0.4,
@@ -37,6 +39,7 @@ const form = reactive({
 function populateForm() {
   const s = wsStore.wsSettings;
   if (!s) return;
+  form.name = s.name;
   form.description = s.description;
   form.highRiskThreshold = s.highRiskThreshold;
   form.mediumRiskThreshold = s.mediumRiskThreshold;
@@ -67,6 +70,7 @@ async function handleSave() {
   fieldErrors.value = {};
   try {
     await wsStore.updateSettings(workspaceId.value, {
+      name: form.name,
       description: form.description || null,
       highRiskThreshold: form.highRiskThreshold,
       mediumRiskThreshold: form.mediumRiskThreshold,
@@ -117,6 +121,22 @@ async function handleSave() {
       <!-- General -->
       <div class="rounded-xl border border-line bg-white p-6">
         <h2 class="text-sm font-semibold text-ink-900">General</h2>
+        <div class="mt-4 flex flex-col gap-1.5">
+          <label for="wsName" class="text-xs font-medium text-ink-600">Workspace name</label>
+          <InputText
+            id="wsName"
+            v-model="form.name"
+            :disabled="!canEdit"
+            class="w-full"
+            maxlength="100"
+            placeholder="Workspace name"
+            :invalid="!!firstFieldError(fieldErrors, 'name')"
+            @update:model-value="clearField('name')"
+          />
+          <small v-if="firstFieldError(fieldErrors, 'name')" class="text-xs text-danger">
+            <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'name') }}
+          </small>
+        </div>
         <div class="mt-4 flex flex-col gap-1.5">
           <label for="wsDesc" class="text-xs font-medium text-ink-600">Description</label>
           <Textarea

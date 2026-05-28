@@ -68,6 +68,7 @@ export interface MyInvitationsDto {
 
 export interface OrganizationSettingsDto {
   organizationId: number;
+  name: string;
   description: string | null;
   joinPolicy: 'open' | 'invite_only';
   defaultOrgRoleId: number | null;
@@ -75,6 +76,7 @@ export interface OrganizationSettingsDto {
 }
 
 export interface UpdateOrganizationSettingsRequest {
+  name: string;
   description?: string | null;
   joinPolicy: 'open' | 'invite_only';
   defaultOrgRoleId?: number | null;
