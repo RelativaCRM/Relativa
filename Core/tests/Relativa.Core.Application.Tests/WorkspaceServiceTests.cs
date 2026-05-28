@@ -22,7 +22,7 @@ public sealed class WorkspaceServiceTests
     private readonly Mock<IValidator<CreateWorkspaceRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateWorkspaceRequest>> _updateValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
-    private readonly Mock<IOrganizationSettingsRepository> _orgSettingsRepo = new();
+    private readonly Mock<IWorkspaceSettingsRepository> _workspaceSettingsRepo = new();
     private readonly WorkspaceService _sut;
 
     public WorkspaceServiceTests()
@@ -39,7 +39,7 @@ public sealed class WorkspaceServiceTests
             _roleRepo.Object,
             _orgMemberRepo.Object,
             _workspaceAccessEvaluator,
-            _orgSettingsRepo.Object,
+            _workspaceSettingsRepo.Object,
             _createValidator.Object,
             _updateValidator.Object,
             _auditOutboxWriter.Object);
@@ -253,7 +253,7 @@ public sealed class WorkspaceServiceTests
         var sut = new WorkspaceService(
             _workspaceRepo.Object, _memberRepo.Object, _roleRepo.Object,
             _orgMemberRepo.Object, _workspaceAccessEvaluator,
-            _orgSettingsRepo.Object, _createValidator.Object, _updateValidator.Object, null);
+            _workspaceSettingsRepo.Object, _createValidator.Object, _updateValidator.Object, null);
 
         SetupValidCreate();
         _orgMemberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberWithPermission(1, 1, "create_workspaces"));
