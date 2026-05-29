@@ -23,4 +23,5 @@ public interface IEntityService
     Task ArchiveAsync(int entityId, int workspaceId, int userId, CancellationToken ct = default);
     Task<EntityRelationshipRefDto> CreateRelationshipAsync(int workspaceId, int userId, CreateEntityRelationshipRequest request, CancellationToken ct = default);
     Task DeleteRelationshipAsync(int workspaceId, int userId, int relationshipId, CancellationToken ct = default);
+    Task<EntityRelationshipRefDto> ReassignRelationshipAsync(int workspaceId, int userId, int relationshipId, ReassignEntityRelationshipRequest request, CancellationToken ct = default);
 }

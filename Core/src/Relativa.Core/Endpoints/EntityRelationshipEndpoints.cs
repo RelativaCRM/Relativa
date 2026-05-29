@@ -42,6 +42,22 @@ public static class EntityRelationshipEndpoints
         .WithSummary("Remove a relationship between two entities (blocked for required relationships)")
         .Produces(StatusCodes.Status204NoContent);
 
+        group.MapPut("/{relationshipId:int}", async (
+            int workspaceId,
+            int relationshipId,
+            ReassignEntityRelationshipRequest request,
+            IEntityService service,
+            HttpContext httpContext,
+            CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            var result = await service.ReassignRelationshipAsync(workspaceId, userId, relationshipId, request, ct);
+            return Results.Ok(result);
+        })
+        .WithName("ReassignEntityRelationship")
+        .WithSummary("Swap the source or target of an existing relationship (safe for required relationships)")
+        .Produces<EntityRelationshipRefDto>(StatusCodes.Status200OK);
+
         return routes;
     }
 }

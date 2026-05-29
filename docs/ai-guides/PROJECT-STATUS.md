@@ -1,6 +1,6 @@
 # Project Status -- What is Done and What is Not
 
-> **Last verified:** 2026-05-29 (Organization settings + expanded workspace settings fully implemented: `organization_settings` table, `WorkspaceSettings` expanded, 4 new settings API endpoints, join-policy enforcement in `JoinRequestService`, frontend `OrgSettingsView` + `WorkspaceSettingsView`, sidebar links.)
+> **Last verified:** 2026-05-29 (Entity relationship reassignment implemented: `PUT /entity-relationships/{id}` endpoint allows switching required or optional relationships without violating the required-constraint guard.)
 
 > **Maintenance obligation:** If you implement a feature that was listed as stub or TODO, move it to the "Implemented" section. If you introduce a new known issue or break something, add it to "Known Issues." Always update the "Last verified" date. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -198,7 +198,7 @@
 - ~~EAV validation service (required properties, typed value parsing).~~ *(done — enforced in EntityService)*
 - ~~Workspace isolation for entity queries.~~ *(done — EntityWorkspace join enforced on every read)*
 - Property management endpoints: list/create/update org-scoped custom properties.
-- Entity relationship management endpoints (`entity_relationship` table exists; API surface deferred).
+- ~~Entity relationship management endpoints (`entity_relationship` table exists; API surface deferred).~~ *(done — `POST`/`DELETE`/`PUT` entity-relationship endpoints implemented; `PUT` supports generic reassignment of required or optional relationships)*
 - Business rules BP-01 through BP-06 (referenced in `Core/README.md`, not defined in code).
 - Domain events published to Audit after entity mutations.
 - Email notifications for invitation sends, join request approvals/rejections. *(Intentionally deferred — see Stubs section; token is returned in the response and surfaced as a copy-link in the UI.)*

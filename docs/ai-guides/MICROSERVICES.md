@@ -1,6 +1,6 @@
 # Microservices -- Service Catalog
 
-> **Last verified:** 2026-05-29 (Organization settings + expanded workspace settings implemented: 4 new endpoints, `organization_settings` table, `workspace_settings` description + risk_scoring_enabled columns, join-policy enforcement in JoinRequestService, frontend settings views + sidebar links.)
+> **Last verified:** 2026-05-29 (Added `PUT /entity-relationships/{id}` endpoint for generic relationship reassignment; also documented existing `POST`/`DELETE` entity-relationship endpoints that were missing from this guide.)
 
 > **Maintenance obligation:** If you add, remove, or change any endpoint or service, update this file and its "Last verified" date before finishing your task. If you add or remove an entire service, also update [DOCKER-SETUP.md](DOCKER-SETUP.md) and [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md). See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -239,6 +239,9 @@ Login, register, profile read/update/delete (`/me`) work end-to-end. Emails are 
 | POST | `/api/v1/workspaces/{workspaceId}/entities` | JWT + `create_entities` | Create entity + optional relationship **links** in one atomic transaction (standalone + readonly + required-outgoing rules enforced server-side). |
 | PATCH | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `edit_entities` | Merge-update writable property values (omitted keys unchanged; readonly properties rejected if changed). |
 | DELETE | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | JWT + `delete_entities` | Soft-delete: sets `is_archived = true`. |
+| POST | `/api/v1/workspaces/{workspaceId}/entity-relationships` | JWT + `edit_entities` | Create a relationship link between two existing entities. Body: `{ sourceEntityId, targetEntityId, relationshipTypeId }`. Cardinality and required-outgoing rules enforced. |
+| DELETE | `/api/v1/workspaces/{workspaceId}/entity-relationships/{relationshipId}` | JWT + `edit_entities` | Remove a relationship link. Blocked for required relationships (`isRequired = true`). |
+| PUT | `/api/v1/workspaces/{workspaceId}/entity-relationships/{relationshipId}` | JWT + `edit_entities` | Reassign an existing relationship to a different entity without deleting it — safe for required relationships. Body: exactly one of `{ newTargetEntityId }` (outgoing swap) or `{ newSourceEntityId }` (inbound swap). Emits audit event (`relationship_reassigned`) and domain event (`core.entity.changed`) via transactional outbox. |
 
 ### Endpoints -- Infrastructure
 

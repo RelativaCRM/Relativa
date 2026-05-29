@@ -23,6 +23,7 @@ import type {
   EntityTypePropertyDto,
   EntityPropertyValueDto,
   EntityListItemDto,
+  ReassignEntityRelationshipRequest,
 } from '@/api/entities';
 import { entityApi } from '@/api/entities';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
@@ -209,7 +210,7 @@ async function openLinkModal(tab: EdgeRelTab) {
     );
     linkCandidates.value = all.filter((e) => !linkedIds.has(e.id));
   } catch (err) {
-    linkError.value = normalizeError(err);
+    linkError.value = normalizeError(err, 'Failed to load candidates.').message;
   } finally {
     linkLoading.value = false;
   }
@@ -250,22 +251,27 @@ async function confirmLink(candidate: EntityListItemDto) {
       const existing = tab.direction === 'out'
         ? outboundLinksForTab(tab)
         : inboundLinksFor(tab.relationshipTypeId);
-      for (const link of existing) {
-        await entityApi.deleteRelationship(props.workspaceId, link.relationshipId);
-      }
+      const link = existing[0];
+      if (!link) return;
+      const body: ReassignEntityRelationshipRequest =
+        tab.direction === 'out'
+          ? { newTargetEntityId: candidate.id }
+          : { newSourceEntityId: candidate.id };
+      await entityApi.reassignRelationship(props.workspaceId, link.relationshipId, body);
+    } else {
+      const sourceId = tab.direction === 'out' ? detail.value.id : candidate.id;
+      const targetId = tab.direction === 'out' ? candidate.id : detail.value.id;
+      await entityApi.createRelationship(props.workspaceId, {
+        sourceEntityId: sourceId,
+        targetEntityId: targetId,
+        relationshipTypeId: tab.relationshipTypeId,
+      });
     }
-    const sourceId = tab.direction === 'out' ? detail.value.id : candidate.id;
-    const targetId = tab.direction === 'out' ? candidate.id : detail.value.id;
-    await entityApi.createRelationship(props.workspaceId, {
-      sourceEntityId: sourceId,
-      targetEntityId: targetId,
-      relationshipTypeId: tab.relationshipTypeId,
-    });
     linkModalOpen.value = false;
     await loadDetail();
     toast.add({ severity: 'success', summary: linkIsReassign.value ? 'Reassigned' : 'Linked', life: 2500 });
   } catch (err) {
-    linkError.value = normalizeError(err);
+    linkError.value = normalizeError(err, 'Failed to link. Please try again.').message;
   }
 }
 
@@ -275,7 +281,7 @@ async function unlinkRelationship(relationshipId: number) {
     await loadDetail();
     toast.add({ severity: 'success', summary: 'Unlinked', life: 2500 });
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: normalizeError(err), life: 4000 });
+    toast.add({ severity: 'error', summary: 'Error', detail: normalizeError(err).message, life: 4000 });
   }
 }
 
@@ -424,7 +430,7 @@ async function submitCreateLink() {
     await loadDetail();
     toast.add({ severity: 'success', summary: `${humanize(targetType.name)} created and linked`, life: 3000 });
   } catch (err) {
-    createLinkError.value = normalizeError(err);
+    createLinkError.value = normalizeError(err, 'Failed to create and link. Please try again.').message;
   } finally {
     createLinkSubmitting.value = false;
   }

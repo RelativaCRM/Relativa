@@ -36,6 +36,8 @@ public interface IEntityRepository
     Task<EntityRelationship?> GetRelationshipByIdAsync(int relationshipId, CancellationToken ct = default);
     Task<EntityRelationship> AddRelationshipAsync(EntityRelationship relationship, CancellationToken ct = default);
     Task RemoveRelationshipAsync(int relationshipId, CancellationToken ct = default);
+    Task UpdateRelationshipSourceAsync(int relationshipId, int newSourceEntityId, CancellationToken ct = default);
+    Task UpdateRelationshipTargetAsync(int relationshipId, int newTargetEntityId, CancellationToken ct = default);
     Task<int> CountRelationshipsBySourceAsync(int sourceEntityId, int relationshipTypeId, CancellationToken ct = default);
     Task<int> CountRelationshipsByTargetAsync(int targetEntityId, int relationshipTypeId, CancellationToken ct = default);
 }

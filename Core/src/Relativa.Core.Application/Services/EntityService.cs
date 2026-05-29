@@ -661,6 +661,117 @@ public sealed class EntityService(
         await entityRepository.RemoveRelationshipAsync(relationshipId, ct);
     }
 
+    public async Task<EntityRelationshipRefDto> ReassignRelationshipAsync(
+        int workspaceId, int userId, int relationshipId,
+        ReassignEntityRelationshipRequest request, CancellationToken ct = default)
+    {
+        await RequirePermission(userId, workspaceId, "edit_entities", ct);
+
+        if ((request.NewSourceEntityId == null) == (request.NewTargetEntityId == null))
+            throw new ArgumentException("Exactly one of NewSourceEntityId or NewTargetEntityId must be provided.");
+
+        var rel = await entityRepository.GetRelationshipByIdAsync(relationshipId, ct)
+            ?? throw new KeyNotFoundException($"Relationship {relationshipId} not found.");
+
+        if (!rel.SourceEntity.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId))
+            throw new ForbiddenAccessException("Relationship does not belong to an entity in this workspace.");
+
+        var relType = rel.RelationshipType;
+        EntityRelationshipRefDto result;
+
+        if (request.NewTargetEntityId.HasValue)
+        {
+            var newTarget = await entityRepository.GetByIdInWorkspaceAsync(request.NewTargetEntityId.Value, workspaceId, ct)
+                ?? throw new ArgumentException($"Target entity {request.NewTargetEntityId.Value} not found in workspace.");
+            if (newTarget.IsArchived)
+                throw new ArgumentException("Cannot link an archived entity.");
+            if (newTarget.EntityTypeId != relType.TargetEntityTypeId)
+                throw new ArgumentException($"Entity type does not match relationship type '{relType.Name}'.");
+            var targetTypeProps = await entityRepository.GetTypePropertiesAsync(newTarget.EntityTypeId, ct);
+            if (targetTypeProps.Count > 0 && targetTypeProps.All(tp => tp.Property.IsReadonly))
+                throw new ArgumentException("Cannot link an entity whose properties are all read-only.");
+            if (relType.RelationshipCardinality == Persistence.Entities.RelationshipCardinality.OneToOne)
+            {
+                if (await entityRepository.CountRelationshipsByTargetAsync(newTarget.Id, relType.Id, ct) > 0)
+                    throw new ArgumentException($"Target entity already has a '{relType.Name}' link (cardinality constraint).");
+            }
+
+            await entityRepository.UpdateRelationshipTargetAsync(relationshipId, newTarget.Id, ct);
+
+            if (auditOutboxWriter is not null)
+            {
+                await auditOutboxWriter.EnqueueAuditAsync(new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeEntity,
+                    TargetId: rel.SourceEntityId,
+                    Action: "relationship_reassigned",
+                    FieldName: relType.Name,
+                    EntityType: relType.SourceEntityTypeId.ToString(CultureInfo.InvariantCulture),
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(rel.TargetEntityId),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(newTarget.Id)), ct);
+
+                await PublishEntityRefreshDomainAsync(
+                    auditOutboxWriter, rel.SourceEntityId, relType.SourceEntityTypeId,
+                    workspaceId, userId, "updated", ct);
+            }
+
+            const int previewCap = 12;
+            result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
+                newTarget.Id, relType.TargetEntityType.Name, MapPreview(newTarget, previewCap));
+        }
+        else
+        {
+            var newSource = await entityRepository.GetByIdInWorkspaceAsync(request.NewSourceEntityId!.Value, workspaceId, ct)
+                ?? throw new ArgumentException($"Source entity {request.NewSourceEntityId.Value} not found in workspace.");
+            if (newSource.IsArchived)
+                throw new ArgumentException("Cannot link an archived entity.");
+            if (newSource.EntityTypeId != relType.SourceEntityTypeId)
+                throw new ArgumentException($"Entity type does not match relationship type '{relType.Name}'.");
+            var sourceTypeProps = await entityRepository.GetTypePropertiesAsync(newSource.EntityTypeId, ct);
+            if (sourceTypeProps.Count > 0 && sourceTypeProps.All(tp => tp.Property.IsReadonly))
+                throw new ArgumentException("Cannot link an entity whose properties are all read-only.");
+            if (relType.RelationshipCardinality == Persistence.Entities.RelationshipCardinality.ManyToOne
+                || relType.RelationshipCardinality == Persistence.Entities.RelationshipCardinality.OneToOne)
+            {
+                if (await entityRepository.CountRelationshipsBySourceAsync(newSource.Id, relType.Id, ct) > 0)
+                    throw new ArgumentException($"Source entity already has a '{relType.Name}' link (cardinality constraint).");
+            }
+
+            await entityRepository.UpdateRelationshipSourceAsync(relationshipId, newSource.Id, ct);
+
+            if (auditOutboxWriter is not null)
+            {
+                await auditOutboxWriter.EnqueueAuditAsync(new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeEntity,
+                    TargetId: rel.TargetEntityId,
+                    Action: "relationship_reassigned",
+                    FieldName: relType.Name,
+                    EntityType: relType.TargetEntityTypeId.ToString(CultureInfo.InvariantCulture),
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(rel.SourceEntityId),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(newSource.Id)), ct);
+
+                await PublishEntityRefreshDomainAsync(
+                    auditOutboxWriter, rel.TargetEntityId, relType.TargetEntityTypeId,
+                    workspaceId, userId, "updated", ct);
+            }
+
+            const int previewCap = 12;
+            result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
+                newSource.Id, relType.SourceEntityType.Name, MapPreview(newSource, previewCap));
+        }
+
+        return result;
+    }
+
     private static Task PublishEntityRefreshDomainAsync(
         IOutboxWriter outboxWriter,
         int entityId,
