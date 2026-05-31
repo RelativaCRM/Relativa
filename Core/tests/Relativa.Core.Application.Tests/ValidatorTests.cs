@@ -542,3 +542,162 @@ public sealed class CreateOrgUserRequestValidatorTests
         _sut.TestValidate(Valid() with { LastName = new string('B', 101) })
             .ShouldHaveValidationErrorFor(x => x.LastName);
 }
+
+public sealed class UpdateOrganizationSettingsRequestValidatorTests
+{
+    private readonly UpdateOrganizationSettingsRequestValidator _sut = new();
+
+    private static UpdateOrganizationSettingsRequest Valid() =>
+        new("Relativa Corp", null, "open", null);
+
+    [Fact]
+    public void Valid_OpenPolicy_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid())
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Fact]
+    public void Valid_InviteOnlyPolicy_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { JoinPolicy = "invite_only" })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyOrWhitespaceName_FailsValidation(string name) =>
+        _sut.TestValidate(Valid() with { Name = name })
+            .ShouldHaveValidationErrorFor(x => x.Name);
+
+    [Fact]
+    public void NameExceedsMaxLength_FailsValidation() =>
+        _sut.TestValidate(Valid() with { Name = new string('A', 101) })
+            .ShouldHaveValidationErrorFor(x => x.Name);
+
+    [Fact]
+    public void NameAtMaxLength_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { Name = new string('A', 100) })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Fact]
+    public void DescriptionExceedsMaxLength_FailsValidation() =>
+        _sut.TestValidate(Valid() with { Description = new string('D', 501) })
+            .ShouldHaveValidationErrorFor(x => x.Description);
+
+    [Fact]
+    public void DescriptionAtMaxLength_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { Description = new string('D', 500) })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Fact]
+    public void NullDescription_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { Description = null })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("admin")]
+    [InlineData("OPEN")]
+    [InlineData("invite")]
+    public void InvalidJoinPolicy_FailsValidation(string policy) =>
+        _sut.TestValidate(Valid() with { JoinPolicy = policy })
+            .ShouldHaveValidationErrorFor(x => x.JoinPolicy);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void ZeroOrNegativeDefaultOrgRoleId_FailsValidation(int roleId) =>
+        _sut.TestValidate(Valid() with { DefaultOrgRoleId = roleId })
+            .ShouldHaveValidationErrorFor(x => x.DefaultOrgRoleId);
+
+    [Fact]
+    public void PositiveDefaultOrgRoleId_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { DefaultOrgRoleId = 3 })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Fact]
+    public void NullDefaultOrgRoleId_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { DefaultOrgRoleId = null })
+            .ShouldNotHaveAnyValidationErrors();
+}
+
+public sealed class UpdateWorkspaceSettingsRequestValidatorTests
+{
+    private readonly UpdateWorkspaceSettingsRequestValidator _sut = new();
+
+    private static UpdateWorkspaceSettingsRequest Valid() =>
+        new("Sales Team", null, 0.7m, 0.4m, false);
+
+    [Fact]
+    public void Valid_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid())
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyOrWhitespaceName_FailsValidation(string name) =>
+        _sut.TestValidate(Valid() with { Name = name })
+            .ShouldHaveValidationErrorFor(x => x.Name);
+
+    [Fact]
+    public void NameExceedsMaxLength_FailsValidation() =>
+        _sut.TestValidate(Valid() with { Name = new string('W', 101) })
+            .ShouldHaveValidationErrorFor(x => x.Name);
+
+    [Fact]
+    public void NameAtMaxLength_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { Name = new string('W', 100) })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Fact]
+    public void DescriptionExceedsMaxLength_FailsValidation() =>
+        _sut.TestValidate(Valid() with { Description = new string('D', 501) })
+            .ShouldHaveValidationErrorFor(x => x.Description);
+
+    [Fact]
+    public void NullDescription_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { Description = null })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Theory]
+    [InlineData(-0.01)]
+    [InlineData(1.01)]
+    public void HighRiskThresholdOutOfRange_FailsValidation(double threshold) =>
+        _sut.TestValidate(Valid() with { HighRiskThreshold = (decimal)threshold })
+            .ShouldHaveValidationErrorFor(x => x.HighRiskThreshold);
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(0.7)]
+    [InlineData(0.5)]
+    public void HighRiskThresholdInRange_ReturnsNoErrors(double threshold) =>
+        _sut.TestValidate(Valid() with { HighRiskThreshold = (decimal)threshold })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Theory]
+    [InlineData(-0.01)]
+    [InlineData(1.01)]
+    public void MediumRiskThresholdOutOfRange_FailsValidation(double threshold) =>
+        _sut.TestValidate(Valid() with { MediumRiskThreshold = (decimal)threshold })
+            .ShouldHaveValidationErrorFor(x => x.MediumRiskThreshold);
+
+    [Fact]
+    public void MediumRiskThresholdEqualToHighRisk_FailsValidation() =>
+        _sut.TestValidate(Valid() with { HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.7m })
+            .ShouldHaveValidationErrorFor(x => x.MediumRiskThreshold);
+
+    [Fact]
+    public void MediumRiskThresholdGreaterThanHighRisk_FailsValidation() =>
+        _sut.TestValidate(Valid() with { HighRiskThreshold = 0.5m, MediumRiskThreshold = 0.8m })
+            .ShouldHaveValidationErrorFor(x => x.MediumRiskThreshold);
+
+    [Fact]
+    public void MediumRiskThresholdLessThanHighRisk_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { HighRiskThreshold = 0.8m, MediumRiskThreshold = 0.5m })
+            .ShouldNotHaveAnyValidationErrors();
+
+    [Fact]
+    public void RiskScoringEnabled_True_ReturnsNoErrors() =>
+        _sut.TestValidate(Valid() with { RiskScoringEnabled = true })
+            .ShouldNotHaveAnyValidationErrors();
+}

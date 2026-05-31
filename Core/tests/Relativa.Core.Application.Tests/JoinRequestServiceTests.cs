@@ -17,6 +17,7 @@ public sealed class JoinRequestServiceTests
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IOrganizationRoleRepository> _orgRoleRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
+    private readonly Mock<IOrganizationSettingsRepository> _orgSettingsRepo = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly JoinRequestService _sut;
 
@@ -27,6 +28,7 @@ public sealed class JoinRequestServiceTests
             _orgMemberRepo.Object,
             _orgRoleRepo.Object,
             _orgRepo.Object,
+            _orgSettingsRepo.Object,
             _auditOutboxWriter.Object);
     }
 

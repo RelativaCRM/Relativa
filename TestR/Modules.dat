@@ -1,0 +1,8 @@
+﻿# id|name|short|path|type|asmids (comma-separated)
+1|Audit Application|audit-application-unit|Audit\tests\Relativa.Audit.Application.Tests|Unit|A
+2|Authentication Application|authentication-application-unit|Authentication\tests\Relativa.Authentication.Application.Tests|Unit|B
+3|Core Application|core-application-unit|Core\tests\Relativa.Core.Application.Tests|Unit|C
+4|Messaging|messaging-unit|Messaging\tests\Relativa.Messaging.Tests|Unit|D
+5|Audit Integration|audit-int|Audit\tests\Relativa.Audit.Integration.Tests|Integration|E
+6|Core Integration|core-int|Core\tests\Relativa.Core.Integration.Tests|Integration|F
+7|Graph Integration|graph-int|Graph\tests\Relativa.Graph.Integration.Tests|Integration|G

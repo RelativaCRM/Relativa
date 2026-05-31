@@ -1,0 +1,13 @@
+# name|display|group|url
+postgres|Postgres|infra|
+rabbitmq|RabbitMQ|infra|http://localhost:15672
+pgadmin|pgAdmin|infra|http://localhost:5050
+mailhog|Mailhog|infra|http://localhost:8025
+migration|Migration|infra|
+auth|Auth|app|
+core|Core|app|
+graph|Graph|app|
+ml|ML|app|
+audit|Audit|app|
+gateway|Gateway|app|http://localhost:8080
+client|Client|app|http://localhost:3000

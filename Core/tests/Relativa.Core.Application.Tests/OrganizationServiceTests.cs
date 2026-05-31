@@ -1,7 +1,9 @@
+using System.Text.Json;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
+using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
@@ -18,8 +20,10 @@ public sealed class OrganizationServiceTests
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IOrganizationRoleRepository> _orgRoleRepo = new();
+    private readonly Mock<IOrganizationSettingsRepository> _orgSettingsRepo = new();
     private readonly Mock<IValidator<CreateOrganizationRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateOrganizationRequest>> _updateValidator = new();
+    private readonly Mock<IValidator<UpdateOrganizationSettingsRequest>> _updateSettingsValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly OrganizationService _sut;
 
@@ -29,8 +33,10 @@ public sealed class OrganizationServiceTests
             _orgRepo.Object,
             _orgMemberRepo.Object,
             _orgRoleRepo.Object,
+            _orgSettingsRepo.Object,
             _createValidator.Object,
             _updateValidator.Object,
+            _updateSettingsValidator.Object,
             _auditOutboxWriter.Object);
 
         _createValidator
@@ -38,6 +44,9 @@ public sealed class OrganizationServiceTests
             .ReturnsAsync(new ValidationResult());
         _updateValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateOrganizationRequest>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+        _updateSettingsValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateOrganizationSettingsRequest>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult());
     }
 
@@ -561,5 +570,377 @@ public sealed class OrganizationServiceTests
         result.Should().HaveCount(2);
         result.Should().Contain(o => o.Id == 1 && o.MemberCount == 2 && o.UserRole == "org_admin");
         result.Should().Contain(o => o.Id == 2 && o.MemberCount == 3 && o.UserRole == "org_viewer");
+    }
+
+    // ── GetSettingsAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetSettingsAsync_UserNotMember_ThrowsForbiddenAccessException()
+    {
+        _orgMemberRepo.Setup(r => r.GetAsync(99, 5, It.IsAny<CancellationToken>())).ReturnsAsync((UserRoleOrganization?)null);
+
+        var act = () => _sut.GetSettingsAsync(5, 99);
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("You are not a member of this organization.");
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_SettingsNotFound_ThrowsKeyNotFoundException()
+    {
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberNoPermissions(1, 5));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync((OrganizationSettings?)null);
+
+        var act = () => _sut.GetSettingsAsync(5, 1);
+
+        await act.Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("Organization settings not found.");
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_OrgNotFound_ThrowsKeyNotFoundException()
+    {
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberNoPermissions(1, 5));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open" });
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync((Organization?)null);
+
+        var act = () => _sut.GetSettingsAsync(5, 1);
+
+        await act.Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("Organization not found.");
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_ValidMember_ReturnsMappedSettingsDto()
+    {
+        var settings = new OrganizationSettings
+        {
+            Id = 1,
+            OrganizationId = 5,
+            JoinPolicy = "invite_only",
+            Description = "Corp org",
+            DefaultOrgRoleId = null
+        };
+        var org = new Organization { Id = 5, Name = "Relativa Corp" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberNoPermissions(1, 5));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var result = await _sut.GetSettingsAsync(5, 1);
+
+        result.OrganizationId.Should().Be(5);
+        result.Name.Should().Be("Relativa Corp");
+        result.JoinPolicy.Should().Be("invite_only");
+        result.Description.Should().Be("Corp org");
+        result.DefaultOrgRoleId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_ValidMember_EnqueuesAuditReadEvent()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open" };
+        var org = new Organization { Id = 5, Name = "Relativa Corp" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberNoPermissions(1, 5));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        await _sut.GetSettingsAsync(5, 1);
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAuditAsync(
+                It.Is<AuditEventContract>(e =>
+                    e.AuditScope == AuditRouting.ScopeOrganization &&
+                    e.Action == "organization_settings_read" &&
+                    e.TargetId == 5 &&
+                    e.ActorUserId == 1),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // ── UpdateSettingsAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateSettingsAsync_UserNotMember_ThrowsForbiddenAccessException()
+    {
+        _orgMemberRepo.Setup(r => r.GetAsync(99, 5, It.IsAny<CancellationToken>())).ReturnsAsync((UserRoleOrganization?)null);
+
+        var act = () => _sut.UpdateSettingsAsync(5, 99, new UpdateOrganizationSettingsRequest("Name", null, "open", null));
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage("You are not a member of this organization.");
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_UserLacksPermission_ThrowsForbiddenAccessException()
+    {
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberNoPermissions(1, 5));
+
+        var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Name", null, "open", null));
+
+        await act.Should().ThrowAsync<ForbiddenAccessException>()
+            .WithMessage($"*{OrganizationPermissions.ManageOrgSettings}*");
+        _orgSettingsRepo.Verify(r => r.UpdateAsync(It.IsAny<OrganizationSettings>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_SettingsNotFound_ThrowsKeyNotFoundException()
+    {
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync((OrganizationSettings?)null);
+
+        var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Name", null, "open", null));
+
+        await act.Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("Organization settings not found.");
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_OrgNotFound_ThrowsKeyNotFoundException()
+    {
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open" });
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync((Organization?)null);
+
+        var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Name", null, "open", null));
+
+        await act.Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("Organization not found.");
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_DefaultRoleDoesNotExist_ThrowsArgumentException()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open" };
+        var org = new Organization { Id = 5, Name = "Old Name" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        _orgRoleRepo.Setup(r => r.GetByIdAsync(99, It.IsAny<CancellationToken>())).ReturnsAsync((OrganizationRole?)null);
+
+        var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("New Name", null, "open", 99));
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("The specified default org role does not exist.");
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_DefaultRoleBelongsToAnotherOrg_ThrowsArgumentException()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open" };
+        var org = new Organization { Id = 5, Name = "Old Name" };
+        var foreignRole = new OrganizationRole { Id = 7, Name = "custom_role", OrganizationId = 99 };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        _orgRoleRepo.Setup(r => r.GetByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(foreignRole);
+
+        var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("New Name", null, "open", 7));
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("The specified default org role does not belong to this organization.");
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidRequest_AppliesAllFieldChanges()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open", Description = null, DefaultOrgRoleId = null };
+        var org = new Organization { Id = 5, Name = "Old Corp" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        await _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("New Corp", "A description", "invite_only", null));
+
+        org.Name.Should().Be("New Corp");
+        settings.Description.Should().Be("A description");
+        settings.JoinPolicy.Should().Be("invite_only");
+        _orgRepo.Verify(r => r.UpdateAsync(org, It.IsAny<CancellationToken>()), Times.Once);
+        _orgSettingsRepo.Verify(r => r.UpdateAsync(settings, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidRequest_EnqueuesAuditEventWithOldAndNewValues()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open", Description = "Old desc", DefaultOrgRoleId = null };
+        var org = new Organization { Id = 5, Name = "Old Corp" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        await _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("New Corp", "New desc", "invite_only", null));
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAuditAsync(
+                It.Is<AuditEventContract>(e =>
+                    e.AuditScope == AuditRouting.ScopeOrganization &&
+                    e.Action == "organization_settings_updated" &&
+                    e.TargetId == 5 &&
+                    e.ActorUserId == 1 &&
+                    e.OldValueJson!.Contains("Old Corp") &&
+                    e.NewValueJson!.Contains("New Corp")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidRequest_EnqueuesDomainSettingsUpdatedEvent()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open" };
+        var org = new Organization { Id = 5, Name = "Corp" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        await _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Corp", null, "open", null));
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueDomainAsync(
+                It.IsAny<string>(),
+                It.Is<DomainMessageEnvelope>(e => e.SourceService == "core"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidationFails_ThrowsValidationExceptionBeforeAnyRepoCall()
+    {
+        _updateSettingsValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateOrganizationSettingsRequest>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FluentValidation.ValidationException(new[] { new ValidationFailure("JoinPolicy", "Invalid.") }));
+
+        var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("", null, "bad", null));
+
+        await act.Should().ThrowAsync<FluentValidation.ValidationException>();
+        _orgSettingsRepo.Verify(r => r.UpdateAsync(It.IsAny<OrganizationSettings>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidGlobalDefaultRole_AssignsRoleAndPersists()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open", DefaultOrgRoleId = null };
+        var org = new Organization { Id = 5, Name = "Corp" };
+        var globalRole = new OrganizationRole { Id = 3, Name = "member", OrganizationId = null };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        _orgRoleRepo.Setup(r => r.GetByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(globalRole);
+
+        await _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Corp", null, "open", 3));
+
+        settings.DefaultOrgRoleId.Should().Be(3);
+        _orgSettingsRepo.Verify(r => r.UpdateAsync(settings, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidOrgOwnedDefaultRole_AssignsRoleAndPersists()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open", DefaultOrgRoleId = null };
+        var org = new Organization { Id = 5, Name = "Corp" };
+        var ownedRole = new OrganizationRole { Id = 8, Name = "custom", OrganizationId = 5 };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        _orgRoleRepo.Setup(r => r.GetByIdAsync(8, It.IsAny<CancellationToken>())).ReturnsAsync(ownedRole);
+
+        await _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Corp", null, "open", 8));
+
+        settings.DefaultOrgRoleId.Should().Be(8);
+        _orgSettingsRepo.Verify(r => r.UpdateAsync(settings, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_DefaultRoleAssigned_MapsRoleNameToDto()
+    {
+        var settings = new OrganizationSettings
+        {
+            Id = 1,
+            OrganizationId = 5,
+            JoinPolicy = "open",
+            DefaultOrgRoleId = 3,
+            DefaultOrgRole = new OrganizationRole { Id = 3, Name = "member", OrganizationId = null }
+        };
+        var org = new Organization { Id = 5, Name = "Corp" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberNoPermissions(1, 5));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var result = await _sut.GetSettingsAsync(5, 1);
+
+        result.DefaultOrgRoleId.Should().Be(3);
+        result.DefaultOrgRoleName.Should().Be("member");
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_NullAuditWriter_PersistsChangesWithoutEnqueue()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open", DefaultOrgRoleId = null };
+        var org = new Organization { Id = 5, Name = "Old Corp" };
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+
+        var sut = new OrganizationService(
+            _orgRepo.Object,
+            _orgMemberRepo.Object,
+            _orgRoleRepo.Object,
+            _orgSettingsRepo.Object,
+            _createValidator.Object,
+            _updateValidator.Object,
+            _updateSettingsValidator.Object,
+            null);
+
+        await sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("New Corp", "Desc", "invite_only", null));
+
+        org.Name.Should().Be("New Corp");
+        settings.JoinPolicy.Should().Be("invite_only");
+        _orgSettingsRepo.Verify(r => r.UpdateAsync(settings, It.IsAny<CancellationToken>()), Times.Once);
+        _auditOutboxWriter.Verify(x => x.EnqueueAuditAsync(It.IsAny<AuditEventContract>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidRequest_DomainPayloadCarriesOrganizationAndActor()
+    {
+        var settings = new OrganizationSettings { Id = 1, OrganizationId = 5, JoinPolicy = "open" };
+        var org = new Organization { Id = 5, Name = "Corp" };
+        DomainMessageEnvelope? captured = null;
+
+        _orgMemberRepo.Setup(r => r.GetAsync(1, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberWithPermission(1, 5, OrganizationPermissions.ManageOrgSettings));
+        _orgSettingsRepo.Setup(r => r.GetByOrganizationIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _orgRepo.Setup(r => r.GetByIdAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(org);
+        _auditOutboxWriter
+            .Setup(x => x.EnqueueDomainAsync(It.IsAny<string>(), It.IsAny<DomainMessageEnvelope>(), It.IsAny<CancellationToken>()))
+            .Callback<string, DomainMessageEnvelope, CancellationToken>((_, env, _) => captured = env);
+
+        await _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Corp", null, "open", null));
+
+        captured.Should().NotBeNull();
+        captured!.PayloadTypeName.Should().Be(DomainPayloadTypes.OrganizationSettingsUpdatedV1);
+        var payload = JsonSerializer.Deserialize<OrganizationSettingsUpdatedPayloadV1>(captured.PayloadJson);
+        payload!.OrganizationId.Should().Be(5);
+        payload.ActorUserId.Should().Be(1);
     }
 }

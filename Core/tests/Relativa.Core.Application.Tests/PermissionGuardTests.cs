@@ -75,7 +75,8 @@ public sealed class PermissionGuardTests
             access,
             new Mock<IWorkspaceSettingsRepository>().Object,
             new Mock<IValidator<CreateWorkspaceRequest>>().Object,
-            updateValidator.Object);
+            updateValidator.Object,
+            new Mock<IValidator<UpdateWorkspaceSettingsRequest>>().Object);
     }
 
     private static WorkspaceMemberService BuildMemberService(
