@@ -59,7 +59,8 @@ public sealed class WorkspaceIsolationTests
             _workspaceAccessEvaluator,
             new Mock<IWorkspaceSettingsRepository>().Object,
             new Mock<IValidator<CreateWorkspaceRequest>>().Object,
-            updateValidator.Object);
+            updateValidator.Object,
+            new Mock<IValidator<UpdateWorkspaceSettingsRequest>>().Object);
 
         _memberSvc = new WorkspaceMemberService(
             _memberRepo.Object,
