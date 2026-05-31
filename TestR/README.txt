@@ -1,0 +1,1 @@
+Simple suit I "wrote" for entire team, notify if you have issues with it. - @kostenuksoft

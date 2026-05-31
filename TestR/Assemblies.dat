@@ -1,0 +1,8 @@
+﻿# id|label|filter
+A|Audit Application|+Relativa.Audit.Application
+B|Authentication Application|+Relativa.Authentication.Application
+C|Core Application|+Relativa.Core.Application
+D|Messaging|+Relativa.Messaging
+E|Audit|+Relativa.Audit
+F|Core|+Relativa.Core
+G|Graph|+Relativa.Graph
