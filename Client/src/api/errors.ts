@@ -96,6 +96,11 @@ export function normalizeError(
       pickPayloadFieldErrors(payload) ??
       (isValidation ? parseValidationDetail(detail) : {});
 
+    // "_" is a form-level sentinel, not a named field — remove it so it doesn't
+    // suppress the human-readable detail message in the logic below.
+    const underscoreErrors = fieldErrors['_'];
+    if (underscoreErrors?.length) delete fieldErrors['_'];
+
     let message = err.message;
     if (!message || message === title || message === detail) {
       message = detail ?? title ?? FRIENDLY_STATUS_MESSAGES[err.status] ?? fallback;

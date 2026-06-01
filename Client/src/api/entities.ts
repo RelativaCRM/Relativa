@@ -68,6 +68,11 @@ export interface CreateEntityRelationshipRequest {
   relationshipTypeId: number;
 }
 
+export interface ReassignEntityRelationshipRequest {
+  newSourceEntityId?: number;
+  newTargetEntityId?: number;
+}
+
 export interface EntityListItemDto {
   id: number;
   entityTypeId: number;
@@ -183,6 +188,16 @@ export const entityApi = {
   deleteRelationship(workspaceId: number, relationshipId: number): Promise<void> {
     return api.del<void>(
       `${CORE}/workspaces/${workspaceId}/entity-relationships/${relationshipId}`,
+    );
+  },
+  reassignRelationship(
+    workspaceId: number,
+    relationshipId: number,
+    body: ReassignEntityRelationshipRequest,
+  ): Promise<EntityRelationshipRefDto> {
+    return api.put<EntityRelationshipRefDto>(
+      `${CORE}/workspaces/${workspaceId}/entity-relationships/${relationshipId}`,
+      body as unknown as Record<string, unknown>,
     );
   },
 };

@@ -286,6 +286,16 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
             .ExecuteDeleteAsync(ct);
     }
 
+    public Task UpdateRelationshipSourceAsync(int relationshipId, int newSourceEntityId, CancellationToken ct = default)
+        => db.EntityRelationships
+            .Where(r => r.Id == relationshipId)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.SourceEntityId, newSourceEntityId), ct);
+
+    public Task UpdateRelationshipTargetAsync(int relationshipId, int newTargetEntityId, CancellationToken ct = default)
+        => db.EntityRelationships
+            .Where(r => r.Id == relationshipId)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.TargetEntityId, newTargetEntityId), ct);
+
     public Task<int> CountRelationshipsBySourceAsync(int sourceEntityId, int relationshipTypeId, CancellationToken ct = default) =>
         db.EntityRelationships
             .CountAsync(r => r.SourceEntityId == sourceEntityId && r.RelationshipTypeId == relationshipTypeId, ct);
