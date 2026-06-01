@@ -302,6 +302,7 @@ const createLinkOtherRequired = computed(() => {
   return t.outgoingRelationships.filter((r) => {
     if (!r.isRequired) return false;
     if (tab?.direction === 'in' && r.relationshipTypeId === tab.relationshipTypeId) return false;
+    if (detail.value && r.targetEntityTypeId === detail.value.entityTypeId) return false;
     return true;
   });
 });
@@ -363,6 +364,7 @@ async function openCreateLinkModal(tab: EdgeRelTab) {
   const otherRequired = targetType.outgoingRelationships.filter((r) => {
     if (!r.isRequired) return false;
     if (tab.direction === 'in' && r.relationshipTypeId === tab.relationshipTypeId) return false;
+    if (detail.value && r.targetEntityTypeId === detail.value.entityTypeId) return false;
     return true;
   });
   for (const r of otherRequired) {
@@ -406,6 +408,11 @@ async function submitCreateLink() {
     const links: { relationshipTypeId: number; targetEntityId: number }[] = [];
     if (tab.direction === 'in') {
       links.push({ relationshipTypeId: tab.relationshipTypeId, targetEntityId: detail.value.id });
+    }
+    for (const r of (createLinkTargetType.value?.outgoingRelationships ?? []).filter(
+      (r) => r.isRequired && r.targetEntityTypeId === detail.value!.entityTypeId,
+    )) {
+      links.push({ relationshipTypeId: r.relationshipTypeId, targetEntityId: detail.value.id });
     }
     for (const r of createLinkOtherRequired.value) {
       const picked = createLinkOtherRelPick[r.relationshipTypeId];
