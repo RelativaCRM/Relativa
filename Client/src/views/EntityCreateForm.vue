@@ -60,11 +60,11 @@ function isPropertyEmpty(prop: EntityTypePropertyDto): boolean {
 }
 
 function isPropertyRequired(prop: EntityTypePropertyDto): boolean {
-  return prop.isRequired || prop.dataType !== 'Bool';
+  return prop.isRequired;
 }
 
 function propertyFieldError(prop: EntityTypePropertyDto): string | null {
-  if (submitAttempted.value && isPropertyEmpty(prop)) {
+  if (submitAttempted.value && isPropertyRequired(prop) && isPropertyEmpty(prop)) {
     return 'This field is required.';
   }
   return (
@@ -193,7 +193,7 @@ async function openNestedCreate(rel: OutgoingRelationshipDto) {
 }
 
 function nestedPropertyFieldError(prop: EntityTypePropertyDto): string | null {
-  if (nestedSubmitAttempted.value && isPropertyEmptyFor(prop, nestedValues.value)) {
+  if (nestedSubmitAttempted.value && isPropertyRequired(prop) && isPropertyEmptyFor(prop, nestedValues.value)) {
     return 'This field is required.';
   }
   return (
@@ -229,7 +229,7 @@ function clearNestedPropertyFieldError(prop: EntityTypePropertyDto) {
 function nestedFormValid(type: EntityTypeDto): boolean {
   if (
     !type.properties
-      .filter((p) => !p.isReadonly)
+      .filter((p) => !p.isReadonly && p.isRequired)
       .every((p) => !isPropertyEmptyFor(p, nestedValues.value))
   ) {
     return false;
@@ -391,7 +391,7 @@ function isEmpty(v: FieldValue): boolean {
 const isFormValid = computed(() => {
   if (!selectedType.value) return false;
   return properties.value
-    .filter((p) => !p.isReadonly)
+    .filter((p) => !p.isReadonly && p.isRequired)
     .every((p) => !isPropertyEmpty(p));
 });
 
