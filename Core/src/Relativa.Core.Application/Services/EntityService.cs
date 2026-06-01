@@ -406,6 +406,7 @@ public sealed class EntityService(
     /// Validates that:
     /// - All submitted property ids belong to the entity type.
     /// - All required properties have a non-null value.
+    /// - Required String properties have a non-empty, non-whitespace value.
     /// - No duplicate property ids are supplied.
     /// </summary>
     private static void ValidatePropertyPayload(
@@ -431,6 +432,20 @@ public sealed class EntityService(
                 .Where(tp => missingRequired.Contains(tp.PropertyId))
                 .Select(tp => $"{tp.Property.Name} (propertyId {tp.PropertyId})");
             throw new ArgumentException($"Required properties are missing: {string.Join(", ", details)}.");
+        }
+
+        var emptyStringIds = typeProperties
+            .Where(tp => tp.IsRequired && tp.Property.DataType == PropertyDataType.String)
+            .Where(tp => submitted.Any(p => p.PropertyId == tp.PropertyId && string.IsNullOrWhiteSpace(p.Value)))
+            .Select(tp => tp.PropertyId)
+            .ToList();
+
+        if (emptyStringIds.Count > 0)
+        {
+            var emptyDetails = typeProperties
+                .Where(tp => emptyStringIds.Contains(tp.PropertyId))
+                .Select(tp => $"{tp.Property.Name} (propertyId {tp.PropertyId})");
+            throw new ArgumentException($"Required string properties cannot be empty or whitespace: {string.Join(", ", emptyDetails)}.");
         }
 
         foreach (var tp in typeProperties.Where(tp => tp.Property.IsReadonly))
