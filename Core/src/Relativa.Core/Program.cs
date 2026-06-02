@@ -11,6 +11,7 @@ using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Core.Endpoints;
+using Relativa.Core.Hubs;
 using Relativa.Core.Infrastructure.Data;
 using Relativa.Core.Infrastructure.Repositories;
 using Relativa.Core.Infrastructure.Messaging;
@@ -86,6 +87,9 @@ try
     builder.Services.AddScoped<IJoinRequestService, JoinRequestService>();
     builder.Services.AddScoped<IOrganizationUserAdminService, OrganizationUserAdminService>();
 
+    builder.Services.AddSignalR();
+    builder.Services.AddScoped<IEntityRelationshipNotifier, EntityRelationshipNotifier>();
+
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();
 
@@ -98,6 +102,7 @@ try
     app.MapScalarApiReference();
 
     app.MapHealthChecks("/health");
+    app.MapHub<CoreHub>("/hubs/core");
     app.MapEntityTypeEndpoints();
     app.MapEntityEndpoints();
     app.MapEntityRelationshipEndpoints();

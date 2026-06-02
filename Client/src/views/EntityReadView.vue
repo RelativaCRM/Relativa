@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, reactive, nextTick } from 'vue';
+import { ref, computed, watch, reactive, nextTick, toRef, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -29,6 +29,7 @@ import { entityApi } from '@/api/entities';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
 import { mlApi, type DealScoreDto } from '@/api/ml';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
+import { useEntityRelationshipsHub } from '@/composables/useEntityRelationshipsHub';
 
 const props = defineProps<{
   workspaceId: number;
@@ -410,7 +411,7 @@ async function submitCreateLink() {
       links.push({ relationshipTypeId: tab.relationshipTypeId, targetEntityId: detail.value.id });
     }
     for (const r of (createLinkTargetType.value?.outgoingRelationships ?? []).filter(
-      (r) => r.isRequired && r.targetEntityTypeId === detail.value!.entityTypeId,
+      (r) => r.isRequired && r.targetEntityTypeId === detail.value!.entityTypeId && r.relationshipTypeId !== tab.relationshipTypeId,
     )) {
       links.push({ relationshipTypeId: r.relationshipTypeId, targetEntityId: detail.value.id });
     }
@@ -860,11 +861,23 @@ function requestDeleteEntity() {
   });
 }
 
+const { start: startHub, stop: stopHub } = useEntityRelationshipsHub(
+  toRef(props, 'workspaceId'),
+  toRef(props, 'entityId'),
+  () => loadDetail(),
+);
+
 watch(
   () => [props.workspaceId, props.entityId] as const,
-  () => loadDetail(),
+  async (_: readonly [number, number], old: readonly [number, number] | undefined) => {
+    if (old) await stopHub();
+    loadDetail();
+    startHub();
+  },
   { immediate: true },
 );
+
+onUnmounted(() => stopHub());
 </script>
 
 <template>

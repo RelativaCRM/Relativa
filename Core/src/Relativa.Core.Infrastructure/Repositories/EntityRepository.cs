@@ -267,6 +267,9 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
         db.EntityRelationships
             .AsNoTracking()
             .Include(r => r.RelationshipType)
+                .ThenInclude(rt => rt.SourceEntityType)
+            .Include(r => r.RelationshipType)
+                .ThenInclude(rt => rt.TargetEntityType)
             .Include(r => r.SourceEntity)
                 .ThenInclude(e => e.EntityWorkspaces)
             .Include(r => r.TargetEntity)

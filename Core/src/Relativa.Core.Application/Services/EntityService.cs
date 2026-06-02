@@ -16,7 +16,8 @@ public sealed class EntityService(
     IUserRoleWorkspaceRepository memberRepository,
     IValidator<CreateEntityRequest> createValidator,
     IValidator<UpdateEntityRequest> updateValidator,
-    IOutboxWriter? auditOutboxWriter = null) : IEntityService
+    IOutboxWriter? auditOutboxWriter = null,
+    IEntityRelationshipNotifier? relationshipNotifier = null) : IEntityService
 {
     public async Task<EntityPagedResult> GetByWorkspaceAsync(
         int workspaceId,
@@ -646,6 +647,9 @@ public sealed class EntityService(
             RelationshipTypeId = relType.Id,
         }, ct);
 
+        if (relationshipNotifier is not null)
+            await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, source.Id, target.Id);
+
         const int previewCap = 12;
         return new EntityRelationshipRefDto(
             rel.Id,
@@ -667,13 +671,24 @@ public sealed class EntityService(
             throw new ForbiddenAccessException("Relationship does not belong to an entity in this workspace.");
 
         if (rel.RelationshipType.IsRequired)
-            throw new ArgumentException($"Cannot delete required relationship '{rel.RelationshipType.Name}'.");
+        {
+            var remaining = await entityRepository.CountRelationshipsBySourceAsync(
+                rel.SourceEntityId, rel.RelationshipTypeId, ct);
+            if (remaining <= 1)
+                throw new ArgumentException(
+                    $"Cannot unlink: the entity requires at least one '{rel.RelationshipType.Name}' link.");
+        }
 
         var targetTypeProps = await entityRepository.GetTypePropertiesAsync(rel.TargetEntity.EntityTypeId, ct);
         if (targetTypeProps.Count > 0 && targetTypeProps.All(tp => tp.Property.IsReadonly))
             throw new ArgumentException("Cannot unlink an entity whose properties are all read-only.");
 
+        var sourceId = rel.SourceEntityId;
+        var targetId = rel.TargetEntityId;
         await entityRepository.RemoveRelationshipAsync(relationshipId, ct);
+
+        if (relationshipNotifier is not null)
+            await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, sourceId, targetId);
     }
 
     public async Task<EntityRelationshipRefDto> ReassignRelationshipAsync(
@@ -734,6 +749,9 @@ public sealed class EntityService(
                     workspaceId, userId, "updated", ct);
             }
 
+            if (relationshipNotifier is not null)
+                await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, rel.SourceEntityId, rel.TargetEntityId, newTarget.Id);
+
             const int previewCap = 12;
             result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
                 newTarget.Id, relType.TargetEntityType.Name, MapPreview(newTarget, previewCap));
@@ -778,6 +796,9 @@ public sealed class EntityService(
                     auditOutboxWriter, rel.TargetEntityId, relType.TargetEntityTypeId,
                     workspaceId, userId, "updated", ct);
             }
+
+            if (relationshipNotifier is not null)
+                await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, rel.SourceEntityId, rel.TargetEntityId, newSource.Id);
 
             const int previewCap = 12;
             result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
