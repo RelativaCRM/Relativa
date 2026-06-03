@@ -683,7 +683,7 @@ watch(
             option-label="label"
             option-value="value"
             :placeholder="`Choose ${formatTypeName(rel.targetEntityTypeName)}`"
-            class="w-full"
+            class="w-full !h-10"
             filter
           />
           <Button
@@ -694,7 +694,7 @@ watch(
             severity="secondary"
             outlined
             size="small"
-            class="w-fit"
+            class="w-fit !h-10"
             @click="openNestedCreate(rel)"
           />
           <p
@@ -737,7 +737,7 @@ watch(
             v-model="values[prop.propertyId] as string"
             :options="prop.allowedValues"
             placeholder="Select..."
-            class="w-full"
+            class="w-full !h-10"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
           />
@@ -757,6 +757,8 @@ watch(
             v-model="values[prop.propertyId] as number"
             :min="0"
             :max-fraction-digits="0"
+            :input-class="'!h-10 w-full'"
+            class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
           />
@@ -768,6 +770,8 @@ watch(
             :min="0"
             :min-fraction-digits="0"
             :max-fraction-digits="2"
+            :input-class="'!h-10 w-full'"
+            class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
           />
@@ -778,6 +782,8 @@ watch(
             v-model="values[prop.propertyId] as Date | null"
             date-format="yy-mm-dd"
             show-icon
+            :input-class="'!h-10 w-full'"
+            class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
           />
@@ -806,12 +812,12 @@ watch(
         {{ errorMessage }}
       </Message>
 
-      <div class="flex justify-end gap-2 pt-2">
+      <div class="flex justify-end gap-3 pt-2">
         <Button
           type="button"
           label="Cancel"
-          severity="secondary"
-          text
+          outlined
+          class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
           @click="handleCancel"
         />
         <Button
@@ -819,6 +825,7 @@ watch(
           label="Create"
           :disabled="submitting"
           :loading="submitting"
+          class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"
         />
       </div>
     </form>
@@ -854,7 +861,7 @@ watch(
               option-label="label"
               option-value="value"
               :placeholder="`Choose ${formatTypeName(ir.targetEntityTypeName)}`"
-              class="w-full"
+              class="w-full !h-10"
               filter
             />
           </div>
@@ -887,6 +894,7 @@ watch(
               :input-id="`np-${prop.propertyId}`"
               v-model="nestedValues[prop.propertyId] as number"
               class="w-full"
+              :input-class="'!h-10 w-full'"
               :min="0"
               :max-fraction-digits="0"
               :invalid="!!nestedPropertyFieldError(prop)"
@@ -898,6 +906,7 @@ watch(
               :input-id="`np-${prop.propertyId}`"
               v-model="nestedValues[prop.propertyId] as number"
               class="w-full"
+              :input-class="'!h-10 w-full'"
               :min="0"
               :min-fraction-digits="0"
               :max-fraction-digits="2"
@@ -912,6 +921,7 @@ watch(
               date-format="yy-mm-dd"
               show-icon
               class="w-full"
+              :input-class="'!h-10 w-full'"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
             />
@@ -939,12 +949,12 @@ watch(
           {{ nestedError }}
         </Message>
 
-        <div class="flex justify-end gap-2 pt-2">
+        <div class="flex justify-end gap-3 pt-2">
           <Button
             label="Cancel"
-            severity="secondary"
-            text
+            outlined
             type="button"
+            class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
             @click="cancelNestedCreate"
           />
           <Button
@@ -953,6 +963,7 @@ watch(
             icon="pi pi-check"
             :loading="nestedSubmitting"
             :disabled="nestedSubmitting"
+            class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"
             @click="submitNestedCreate"
           />
         </div>

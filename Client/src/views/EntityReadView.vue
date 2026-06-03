@@ -897,9 +897,9 @@ watch(
         <template v-if="canEditCurrentEntity && editMode">
           <Button
             label="Cancel"
-            severity="secondary"
-            text
+            outlined
             :disabled="saving"
+            class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
             @click="cancelEdit"
           />
           <Button
@@ -907,6 +907,7 @@ watch(
             icon="pi pi-check"
             :loading="saving"
             :disabled="saving"
+            class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"
             @click="saveEdit"
           />
         </template>
@@ -1036,7 +1037,7 @@ watch(
                     v-if="p.dataType === 'String' && allowedValuesFor(p.propertyId).length > 0"
                     v-model="editValues[p.propertyId] as string"
                     :options="allowedValuesFor(p.propertyId)"
-                    class="w-full"
+                    class="w-full !h-10"
                     :invalid="!!fieldError(p)"
                   />
                   <InputText
@@ -1049,6 +1050,7 @@ watch(
                     v-else-if="p.dataType === 'Int'"
                     v-model="editValues[p.propertyId] as number"
                     class="w-full"
+                    :input-class="'!h-10 w-full'"
                     :min-fraction-digits="0"
                     :max-fraction-digits="0"
                     :invalid="!!fieldError(p)"
@@ -1057,6 +1059,7 @@ watch(
                     v-else-if="p.dataType === 'Decimal'"
                     v-model="editValues[p.propertyId] as number"
                     class="w-full"
+                    :input-class="'!h-10 w-full'"
                     :min-fraction-digits="0"
                     :max-fraction-digits="4"
                     :invalid="!!fieldError(p)"
@@ -1067,6 +1070,7 @@ watch(
                     date-format="yy-mm-dd"
                     show-icon
                     class="w-full"
+                    :input-class="'!h-10 w-full'"
                     :invalid="!!fieldError(p)"
                   />
                   <ToggleSwitch
@@ -1297,7 +1301,7 @@ watch(
             option-label="label"
             option-value="value"
             :placeholder="`Choose ${humanize(r.targetEntityTypeName)}`"
-            class="w-full"
+            class="w-full !h-10"
             filter
           />
         </div>
@@ -1315,7 +1319,7 @@ watch(
             v-model="createLinkValues[p.propertyId] as string"
             :options="p.allowedValues"
             placeholder="Select..."
-            class="w-full"
+            class="w-full !h-10"
             :invalid="!!createLinkPropError(p)"
           />
           <InputText
@@ -1331,6 +1335,7 @@ watch(
             v-model="createLinkValues[p.propertyId] as number"
             :max-fraction-digits="0"
             class="w-full"
+            :input-class="'!h-10 w-full'"
             :invalid="!!createLinkPropError(p)"
           />
           <InputNumber
@@ -1340,6 +1345,7 @@ watch(
             :min-fraction-digits="0"
             :max-fraction-digits="4"
             class="w-full"
+            :input-class="'!h-10 w-full'"
             :invalid="!!createLinkPropError(p)"
           />
           <DatePicker
@@ -1349,6 +1355,7 @@ watch(
             date-format="yy-mm-dd"
             show-icon
             class="w-full"
+            :input-class="'!h-10 w-full'"
             :invalid="!!createLinkPropError(p)"
           />
           <ToggleSwitch
@@ -1364,13 +1371,20 @@ watch(
         {{ createLinkError }}
       </Message>
 
-      <div class="flex justify-end gap-2 pt-2">
-        <Button label="Cancel" severity="secondary" text type="button" @click="createLinkOpen = false" />
+      <div class="flex justify-end gap-3 pt-2">
+        <Button
+          label="Cancel"
+          outlined
+          type="button"
+          class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
+          @click="createLinkOpen = false"
+        />
         <Button
           label="Create & link"
           icon="pi pi-check"
           :loading="createLinkSubmitting"
           :disabled="createLinkSubmitting"
+          class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"
           @click="submitCreateLink"
         />
       </div>

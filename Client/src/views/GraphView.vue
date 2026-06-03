@@ -715,7 +715,7 @@ function resetAllFilters() {
         >
           
           <div class="flex items-center justify-between">
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-50 text-brand-700 border border-brand-100">
               {{ typeBadge(selectedNode) }}
             </span>
             <button
