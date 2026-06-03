@@ -15,13 +15,25 @@ public partial class UnifyDealContractRelationship : EfMigration
     {
         migrationBuilder.Sql(
             """
-            -- Ensure contract_deal links exist for every deal_contract relationship
-            -- (data may have been created with both types; fill any gaps before dropping deal_contract)
+            -- Guard: contract_deal type must exist (seeded by 20260508004359)
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM entity_relationship_type WHERE name = 'contract_deal') THEN
+                    RAISE EXCEPTION 'contract_deal relationship type not found — prerequisite migration 20260508004359_RelationshipCardinalityAndSeeds may not have applied';
+                END IF;
+            END $$;
+
+            -- Mark contract as non-standalone (cannot exist without a parent deal)
+            UPDATE entity_type
+            SET is_standalone = FALSE
+            WHERE name = 'contract';
+
+            -- Mirror every deal_contract link as a contract_deal link (swap source/target)
             INSERT INTO entity_relationship (relationship_type_id, source_entity_id, target_entity_id)
             SELECT
                 cdt.id,
-                dc.target_entity_id,   -- contract was target in deal_contract, becomes source
-                dc.source_entity_id    -- deal was source in deal_contract, becomes target
+                dc.target_entity_id,  -- contract (was target) becomes source
+                dc.source_entity_id   -- deal (was source) becomes target
             FROM entity_relationship dc
             JOIN entity_relationship_type dct ON dc.relationship_type_id = dct.id AND dct.name = 'deal_contract'
             JOIN entity_relationship_type cdt ON cdt.name = 'contract_deal'
@@ -32,13 +44,13 @@ public partial class UnifyDealContractRelationship : EfMigration
                   AND existing.target_entity_id = dc.source_entity_id
             );
 
-            -- Remove all deal_contract relationship rows
+            -- Remove deal_contract rows (FK is RESTRICT — must happen before dropping the type)
             DELETE FROM entity_relationship
-            WHERE relationship_type_id IN (
+            WHERE relationship_type_id = (
                 SELECT id FROM entity_relationship_type WHERE name = 'deal_contract'
             );
 
-            -- Remove the deal_contract relationship type itself
+            -- Drop the deal_contract relationship type
             DELETE FROM entity_relationship_type WHERE name = 'deal_contract';
             """
         );
@@ -48,9 +60,14 @@ public partial class UnifyDealContractRelationship : EfMigration
     {
         migrationBuilder.Sql(
             """
+            -- Restore contract as standalone
+            UPDATE entity_type
+            SET is_standalone = TRUE
+            WHERE name = 'contract';
+
             -- Restore the deal_contract relationship type
             INSERT INTO entity_relationship_type (name, source_entity_type_id, target_entity_type_id, is_required, relationship_cardinality)
-            SELECT 'deal_contract', dt.id, ct.id, TRUE, 'many_to_one'
+            SELECT 'deal_contract', dt.id, ct.id, TRUE, 'one_to_many'
             FROM entity_type dt
             CROSS JOIN entity_type ct
             WHERE dt.name = 'deal' AND ct.name = 'contract'
@@ -58,7 +75,7 @@ public partial class UnifyDealContractRelationship : EfMigration
                 SELECT 1 FROM entity_relationship_type WHERE name = 'deal_contract'
               );
 
-            -- Recreate deal_contract rows from the surviving contract_deal data
+            -- Recreate deal_contract rows from surviving contract_deal data
             INSERT INTO entity_relationship (relationship_type_id, source_entity_id, target_entity_id)
             SELECT dct.id, cd.target_entity_id, cd.source_entity_id
             FROM entity_relationship cd
