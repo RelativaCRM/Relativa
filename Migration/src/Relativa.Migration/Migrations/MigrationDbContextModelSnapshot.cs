@@ -419,7 +419,8 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("SourceEntityId")
                         .HasDatabaseName("ix_er_source_entity_id");
 
-                    b.HasIndex("TargetEntityId");
+                    b.HasIndex("TargetEntityId")
+                        .HasDatabaseName("ix_er_target_entity_id");
 
                     b.ToTable("entity_relationship", (string)null);
                 });
@@ -543,6 +544,9 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("EntityId", "WorkspaceId")
                         .IsUnique()
                         .HasDatabaseName("ix_ew_entity_workspace");
+
+                    b.HasIndex("WorkspaceId")
+                        .HasDatabaseName("ix_ew_workspace_id");
 
                     b.ToTable("entity_workspace", (string)null);
                 });

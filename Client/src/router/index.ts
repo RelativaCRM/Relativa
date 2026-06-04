@@ -239,7 +239,9 @@ router.beforeEach(async (to) => {
     if (!orgStore.currentOrgId) {
       return { name: 'onboarding' };
     }
-    await wsStore.fetchWorkspaces(orgStore.currentOrgId);
+    if (!wsStore.workspaces.length) {
+      await wsStore.fetchWorkspaces(orgStore.currentOrgId);
+    }
     if (!wsStore.workspaces.some((w) => w.id === wsId)) {
       return { name: 'workspaces' };
     }
