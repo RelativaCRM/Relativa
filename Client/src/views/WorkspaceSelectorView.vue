@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -14,6 +15,7 @@ import { normalizeError } from '@/api/errors';
 import type { WorkspaceDto } from '@/api/workspaces';
 import { roleBadgeFullClass } from '@/utils/roleBadge';
 
+const { t } = useI18n();
 const router = useRouter();
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
@@ -56,7 +58,7 @@ async function handleCreate() {
       params: { workspaceId: String(ws.id) },
     });
   } catch (err) {
-    createError.value = normalizeError(err, 'Failed to create workspace.').message;
+    createError.value = normalizeError(err, t('workspace.createError')).message;
   } finally {
     creating.value = false;
   }
@@ -83,7 +85,7 @@ onMounted(async () => {
       return;
     }
   } catch (err) {
-    loadError.value = normalizeError(err, 'Failed to load workspaces.').message;
+    loadError.value = normalizeError(err, t('workspace.loadError')).message;
   } finally {
     loading.value = false;
   }
@@ -91,20 +93,20 @@ onMounted(async () => {
 </script>
 
 <template>
-  <AuthLayout tagline="Choose a workspace to continue">
+  <AuthLayout :tagline="t('wsSelect.tagline')">
     <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">
-      Select a workspace
+      {{ t('wsSelect.title') }}
     </h1>
     <p class="mt-1 text-[13px] text-ink-500">
       <template v-if="orgStore.currentOrg">
-        Pick a workspace in
-        <span class="font-medium text-ink-700">{{
-          orgStore.currentOrg.name
-        }}</span>
-        to continue.
+        <i18n-t keypath="wsSelect.pickInOrg" tag="span" scope="global">
+          <template #org>
+            <span class="font-medium text-ink-700">{{ orgStore.currentOrg.name }}</span>
+          </template>
+        </i18n-t>
       </template>
       <template v-else>
-        Pick a workspace to continue.
+        {{ t('wsSelect.pickGeneric') }}
       </template>
     </p>
 
@@ -129,9 +131,9 @@ onMounted(async () => {
         class="rounded-xl border border-dashed border-line bg-surface p-6 text-center"
       >
         <i class="pi pi-folder-open text-2xl text-ink-400" />
-        <p class="mt-2 text-sm font-medium text-ink-700">No workspaces yet</p>
+        <p class="mt-2 text-sm font-medium text-ink-700">{{ t('wsSelect.noWorkspaces') }}</p>
         <p class="mt-1 text-[13px] text-ink-500">
-          Create your first workspace to get started.
+          {{ t('wsSelect.createFirst') }}
         </p>
       </div>
 
@@ -142,12 +144,12 @@ onMounted(async () => {
       >
         <div class="flex flex-col gap-1.5">
           <label for="wsName" class="text-xs font-medium text-ink-600">
-            Workspace name <span class="text-danger">*</span>
+            {{ t('workspace.nameLabel') }} <span class="text-danger">*</span>
           </label>
           <InputText
             id="wsName"
             v-model="newWorkspaceName"
-            placeholder="e.g. Sales team"
+            :placeholder="t('workspace.namePlaceholder')"
             class="!h-10"
           />
         </div>
@@ -163,7 +165,7 @@ onMounted(async () => {
 
         <Button
           type="submit"
-          label="Create workspace"
+          :label="t('workspace.createTitle')"
           icon="pi pi-plus"
           :disabled="!canCreate"
           :loading="creating"
@@ -189,8 +191,7 @@ onMounted(async () => {
               {{ ws.name }}
             </span>
             <span class="block text-xs text-ink-500">
-              {{ ws.memberCount }}
-              {{ ws.memberCount === 1 ? 'member' : 'members' }}
+              {{ t('workspace.members', ws.memberCount, { named: { n: ws.memberCount } }) }}
             </span>
           </span>
           <span :class="[roleBadgeFullClass(ws.userRole), 'shrink-0']">
@@ -208,7 +209,7 @@ onMounted(async () => {
         class="font-medium text-brand-600 hover:underline"
         @click="handleLogout"
       >
-        Sign out
+        {{ t('wsSelect.signOut') }}
       </button>
     </p>
   </AuthLayout>

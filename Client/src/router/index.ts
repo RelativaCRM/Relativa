@@ -17,6 +17,7 @@ const WorkspaceSelectorView = () =>
 const MembersView = () => import('@/views/MembersView.vue');
 const MemberView = () => import('@/views/MemberView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
+const OrganizationsView = () => import('@/views/OrganizationsView.vue');
 const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
 const UserListView = () => import('@/views/UserListView.vue');
@@ -99,6 +100,12 @@ const router = createRouter({
           name: 'workspaces',
           component: WorkspacesView,
           meta: orgMeta,
+        },
+        {
+          path: 'organizations',
+          name: 'organizations',
+          component: OrganizationsView,
+          meta: { navScope: 'user' as const, skipOrgCheck: true, skipWorkspaceCheck: true },
         },
         {
           path: 'audit-log',

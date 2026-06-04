@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import Skeleton from 'primevue/skeleton';
 
 type Variant = 'table' | 'cards' | 'list' | 'detail' | 'stats';
@@ -10,9 +11,11 @@ const props = withDefaults(
     rows?: number;
     label?: string;
   }>(),
-  { variant: 'list', rows: 4, label: 'Loading…' },
+  { variant: 'list', rows: 4 },
 );
 
+const { t } = useI18n();
+const displayLabel = computed(() => props.label ?? t('common.loading'));
 const repeatCount = computed(() => Math.max(1, props.rows));
 </script>
 
@@ -20,7 +23,7 @@ const repeatCount = computed(() => Math.max(1, props.rows));
   <div
     class="rounded-xl border border-line bg-white overflow-hidden"
     role="status"
-    :aria-label="label"
+    :aria-label="displayLabel"
   >
     
     <template v-if="variant === 'table'">
@@ -100,6 +103,6 @@ const repeatCount = computed(() => Math.max(1, props.rows));
       </div>
     </template>
 
-    <span class="sr-only">{{ label }}</span>
+    <span class="sr-only">{{ displayLabel }}</span>
   </div>
 </template>

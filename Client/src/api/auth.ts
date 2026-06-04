@@ -149,22 +149,22 @@ export const authApi = {
     return api.get<UserEmail[]>(`${AUTH_PREFIX}/me/emails`);
   },
   addEmail(address: string): Promise<void> {
-    return api.post<void>(`${AUTH_PREFIX}/me/emails`, { address });
+    return api.post<void>(`${AUTH_PREFIX}/me/emails`, { address }, { silent: true });
   },
   verifyEmailAddress(address: string, code: string): Promise<void> {
-    return api.post<void>(`${AUTH_PREFIX}/me/emails/verify`, { address, code });
+    return api.post<void>(`${AUTH_PREFIX}/me/emails/verify`, { address, code }, { silent: true });
   },
   resendEmailCode(address: string): Promise<void> {
-    return api.post<void>(`${AUTH_PREFIX}/me/emails/resend`, { address });
+    return api.post<void>(`${AUTH_PREFIX}/me/emails/resend`, { address }, { silent: true });
   },
   setPrimaryEmail(address: string): Promise<void> {
-    return api.post<void>(`${AUTH_PREFIX}/me/emails/primary`, { address });
+    return api.post<void>(`${AUTH_PREFIX}/me/emails/primary`, { address }, { silent: true });
   },
   removeEmail(address: string): Promise<void> {
-    return api.post<void>(`${AUTH_PREFIX}/me/emails/remove`, { address });
+    return api.post<void>(`${AUTH_PREFIX}/me/emails/remove`, { address }, { silent: true });
   },
   linkProvider(provider: string, token: string): Promise<void> {
-    return api.post<void>(`${AUTH_PREFIX}/me/connections/${encodeURIComponent(provider)}`, { token });
+    return api.post<void>(`${AUTH_PREFIX}/me/connections/${encodeURIComponent(provider)}`, { token }, { silent: true });
   },
   validateResetToken(token: string): Promise<void> {
     return api.get<void>(`${AUTH_PREFIX}/reset-password/validate?token=${encodeURIComponent(token)}`);

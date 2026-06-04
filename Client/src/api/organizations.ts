@@ -115,6 +115,9 @@ export const orgApi = {
   get(id: number): Promise<OrganizationDto> {
     return api.get<OrganizationDto>(`${CORE}/organizations/${id}`);
   },
+  update(id: number, name: string): Promise<void> {
+    return api.put<void>(`${CORE}/organizations/${id}`, { name });
+  },
 
   /* Members */
   listMembers(orgId: number): Promise<OrgMemberDto[]> {

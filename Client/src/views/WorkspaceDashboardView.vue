@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import Chart from '@/components/charts/SafeChart.vue';
 import DataTable from 'primevue/datatable';
@@ -9,6 +10,7 @@ import ProgressBar from 'primevue/progressbar';
 import { useWorkspaceDashboardStore } from '@/stores/workspaceDashboard';
 import { useWorkspaceStore } from '@/stores/workspace';
 
+const { t } = useI18n();
 const route   = useRoute();
 const wsStore = useWorkspaceStore();
 const store   = useWorkspaceDashboardStore();
@@ -41,35 +43,35 @@ const kpis = computed(() => {
 
   const cards: Array<{ label: string; value: string; icon: string; color: string; bg: string }> = [
     {
-      label: 'Total Deals',
+      label: t('home.kpiTotalDeals'),
       value: String(s.totalDeals),
       icon: 'pi-briefcase',
       color: 'text-blue-600',
       bg: 'bg-blue-50',
     },
     {
-      label: 'Open Deals',
+      label: t('home.kpiOpenDeals'),
       value: String(s.openDeals),
       icon: 'pi-clock',
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
     },
     {
-      label: 'Won',
+      label: t('wsDash.won'),
       value: String(s.wonDeals),
       icon: 'pi-check-circle',
       color: 'text-green-600',
       bg: 'bg-green-50',
     },
     {
-      label: 'Clients',
+      label: t('wsDash.clients'),
       value: `${s.activeClients} / ${s.totalClients}`,
       icon: 'pi-building',
       color: 'text-amber-600',
       bg: 'bg-amber-50',
     },
     {
-      label: 'Members',
+      label: t('home.members'),
       value: String(s.memberCount),
       icon: 'pi-users',
       color: 'text-violet-600',
@@ -79,7 +81,7 @@ const kpis = computed(() => {
 
   if (s.totalPipelineValue !== null) {
     cards.unshift({
-      label: 'Pipeline Value',
+      label: t('wsDash.pipelineValue'),
       value: formatCurrency(s.totalPipelineValue),
       icon: 'pi-euro',
       color: 'text-sky-600',
@@ -88,7 +90,7 @@ const kpis = computed(() => {
   }
   if (s.winRate !== null) {
     cards.push({
-      label: 'Win Rate',
+      label: t('home.kpiWinRate'),
       value: `${(s.winRate * 100).toFixed(1)}%`,
       icon: 'pi-chart-line',
       color: 'text-teal-600',
@@ -97,7 +99,7 @@ const kpis = computed(() => {
   }
   if (s.tasksOverdue !== null) {
     cards.push({
-      label: 'Overdue Tasks',
+      label: t('home.kpiOverdueTasks'),
       value: String(s.tasksOverdue),
       icon: 'pi-exclamation-triangle',
       color: s.tasksOverdue > 0 ? 'text-red-600' : 'text-slate-500',
@@ -106,7 +108,7 @@ const kpis = computed(() => {
   }
   if (s.dealsClosingThisMonth !== null) {
     cards.push({
-      label: 'Closing This Month',
+      label: t('home.kpiClosingThisMonth'),
       value: String(s.dealsClosingThisMonth),
       icon: 'pi-calendar-clock',
       color: 'text-orange-600',
@@ -121,7 +123,7 @@ const basicStatusChartData = computed(() => {
   const s = store.summary;
   if (!s) return null;
   return {
-    labels: ['Open', 'Won', 'Lost'],
+    labels: [t('wsDash.statusOpen'), t('wsDash.statusWon'), t('wsDash.statusLost')],
     datasets: [{
       data: [s.openDeals, s.wonDeals, s.lostDeals],
       backgroundColor: ['#3b82f6', '#10b981', '#ef4444'],
@@ -146,7 +148,7 @@ const pipelineChartData = computed(() => {
   return {
     labels: p.stages.map((s) => s.name),
     datasets: [{
-      label: 'Deals',
+      label: t('home.dsDeals'),
       data: p.stages.map((s) => s.count),
       backgroundColor: ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981'],
       borderRadius: 4,
@@ -169,7 +171,7 @@ const riskChartData = computed(() => {
   const r = store.riskDistribution;
   if (!r || !r.items.length) return null;
   return {
-    labels: ['High Risk', 'Medium Risk', 'Low Risk'],
+    labels: [t('home.highRisk'), t('home.mediumRisk'), t('home.lowRisk')],
     datasets: [{
       data: [
         r.distribution.high?.count ?? 0,
@@ -192,14 +194,14 @@ const riskChartOptions = {
 };
 
 const trendsChartData = computed(() => {
-  const t = store.trends;
-  if (!t) return null;
+  const tr = store.trends;
+  if (!tr) return null;
   return {
-    labels: t.months.map((m) => m.label),
+    labels: tr.months.map((m) => m.label),
     datasets: [
       {
-        label: 'Pipeline Deals',
-        data: t.months.map((m) => m.newDeals),
+        label: t('home.dsPipelineDeals'),
+        data: tr.months.map((m) => m.newDeals),
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59,130,246,0.08)',
         fill: true,
@@ -207,8 +209,8 @@ const trendsChartData = computed(() => {
         yAxisID: 'y',
       },
       {
-        label: 'Won',
-        data: t.months.map((m) => m.closedWon),
+        label: t('home.dsWon'),
+        data: tr.months.map((m) => m.closedWon),
         borderColor: '#10b981',
         backgroundColor: 'transparent',
         fill: false,
@@ -216,8 +218,8 @@ const trendsChartData = computed(() => {
         yAxisID: 'y',
       },
       {
-        label: 'Lost',
-        data: t.months.map((m) => m.closedLost),
+        label: t('home.dsLost'),
+        data: tr.months.map((m) => m.closedLost),
         borderColor: '#ef4444',
         backgroundColor: 'transparent',
         fill: false,
@@ -225,8 +227,8 @@ const trendsChartData = computed(() => {
         yAxisID: 'y',
       },
       {
-        label: 'Won Revenue (€)',
-        data: t.months.map((m) => m.wonRevenue),
+        label: t('home.dsWonRevenue'),
+        data: tr.months.map((m) => m.wonRevenue),
         borderColor: '#8b5cf6',
         backgroundColor: 'transparent',
         fill: false,
@@ -238,7 +240,7 @@ const trendsChartData = computed(() => {
   };
 });
 
-const trendsChartOptions = {
+const trendsChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: 'index' as const, intersect: false },
@@ -251,7 +253,7 @@ const trendsChartOptions = {
       position: 'left' as const,
       grid: { color: '#f1f5f9' },
       ticks: { color: '#64748b', stepSize: 1 },
-      title: { display: true, text: 'Deals', color: '#94a3b8' },
+      title: { display: true, text: t('home.axisDeals'), color: '#94a3b8' },
     },
     y1: {
       type: 'linear' as const,
@@ -261,11 +263,11 @@ const trendsChartOptions = {
         color: '#8b5cf6',
         callback: (v: number) => `€${(v / 1000).toFixed(0)}k`,
       },
-      title: { display: true, text: 'Revenue', color: '#8b5cf6' },
+      title: { display: true, text: t('home.axisRevenue'), color: '#8b5cf6' },
     },
     x: { grid: { display: false }, ticks: { color: '#64748b' } },
   },
-};
+}));
 
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('de-DE', {
@@ -304,9 +306,9 @@ function scoreBar(score?: number | null) {
     <section class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold text-ink-900">
-          {{ store.summary?.workspaceName ?? wsStore.currentWorkspace?.name ?? 'Workspace' }}
+          {{ store.summary?.workspaceName ?? wsStore.currentWorkspace?.name ?? t('wsMembers.fallbackName') }}
         </h1>
-        <p class="text-sm text-ink-400 mt-0.5">Dashboard overview</p>
+        <p class="text-sm text-ink-400 mt-0.5">{{ t('wsDash.overview') }}</p>
       </div>
       <button
         v-if="isFullAccess && !store.isLoadingSummary"
@@ -315,7 +317,7 @@ function scoreBar(score?: number | null) {
         @click="workspaceId && store.fetchAll(workspaceId)"
       >
         <i class="pi pi-refresh text-xs" />
-        Refresh
+        {{ t('home.refresh') }}
       </button>
     </section>
 
@@ -356,10 +358,10 @@ function scoreBar(score?: number | null) {
     <template v-if="store.summary && !isFullAccess">
       <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-center gap-3 text-sm text-amber-800">
         <i class="pi pi-lock shrink-0" />
-        <span>You have limited analytics access. Contact your workspace admin to see full analytics.</span>
+        <span>{{ t('wsDash.limitedAccess') }}</span>
       </div>
       <div v-if="basicStatusChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
-        <h3 class="text-sm font-semibold text-ink-700 mb-4">Deal Status Distribution</h3>
+        <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('wsDash.dealStatus') }}</h3>
         <div style="height: 160px">
           <Chart type="bar" :data="basicStatusChartData" :options="basicChartOptions" />
         </div>
@@ -375,10 +377,10 @@ function scoreBar(score?: number | null) {
         
         <div class="bg-white rounded-xl border border-line shadow-sm p-5">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-semibold text-ink-700">Deal Pipeline</h3>
+            <h3 class="text-sm font-semibold text-ink-700">{{ t('home.dealPipeline') }}</h3>
             <div v-if="store.pipeline" class="flex items-center gap-3 text-xs text-ink-400">
-              <span>Win rate <strong class="text-emerald-600">{{ (store.pipeline.conversionRate * 100).toFixed(0) }}%</strong></span>
-              <span>Avg close <strong class="text-ink-700">{{ store.pipeline.avgDaysToClose }}d</strong></span>
+              <span>{{ t('home.winRateShort') }} <strong class="text-emerald-600">{{ (store.pipeline.conversionRate * 100).toFixed(0) }}%</strong></span>
+              <span>{{ t('home.avgClose') }} <strong class="text-ink-700">{{ store.pipeline.avgDaysToClose }}d</strong></span>
             </div>
           </div>
           
@@ -407,7 +409,7 @@ function scoreBar(score?: number | null) {
 
         
         <div class="bg-white rounded-xl border border-line shadow-sm p-5">
-          <h3 class="text-sm font-semibold text-ink-700 mb-4">Risk Distribution</h3>
+          <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('wsDash.riskDistribution') }}</h3>
           
           <div v-if="store.isLoadingRisk" class="flex items-center gap-6">
             <div class="w-[180px] h-[180px] rounded-full skeleton-shimmer shrink-0" />
@@ -446,9 +448,9 @@ function scoreBar(score?: number | null) {
               <div class="flex items-center gap-3 px-3 py-2.5 bg-brand-50 border border-brand-100 rounded-lg text-xs text-brand-700">
                 <i class="pi pi-spin pi-spinner shrink-0 text-brand-500" />
                 <div class="flex-1">
-                  <p class="font-medium">Calculating risk scores…</p>
+                  <p class="font-medium">{{ t('wsDash.calculatingRisk') }}</p>
                   <p v-if="store.mlRecalcProgress" class="text-brand-500 mt-0.5">
-                    {{ store.mlRecalcProgress.processedCount }} / {{ store.mlRecalcProgress.totalCount }} deals
+                    {{ t('wsDash.dealsProgress', { processed: store.mlRecalcProgress.processedCount, total: store.mlRecalcProgress.totalCount }) }}
                   </p>
                 </div>
                 <span
@@ -467,14 +469,14 @@ function scoreBar(score?: number | null) {
               />
             </div>
             
-            <p v-else-if="!riskChartData" class="text-xs text-ink-400 italic">No risk score data available.</p>
+            <p v-else-if="!riskChartData" class="text-xs text-ink-400 italic">{{ t('wsDash.noRiskData') }}</p>
           </template>
         </div>
       </div>
 
       
       <div class="bg-white rounded-xl border border-line shadow-sm p-5">
-        <h3 class="text-sm font-semibold text-ink-700 mb-4">6-Month Deal Trends</h3>
+        <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('home.trends6mo') }}</h3>
         
         <div v-if="store.isLoadingTrends" class="space-y-2">
           <div class="flex items-end gap-1 h-44">
@@ -492,7 +494,7 @@ function scoreBar(score?: number | null) {
 
         
         <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
-          <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Deals by Value</h3>
+          <h3 class="text-sm font-semibold text-ink-700 mb-3">{{ t('home.topDeals') }}</h3>
           
           <div v-if="store.isLoadingTopEntities" class="space-y-3">
             <div v-for="i in 5" :key="i" class="flex items-center justify-between gap-4">
@@ -511,7 +513,7 @@ function scoreBar(score?: number | null) {
               class="!text-xs"
               :pt="{ thead: { class: 'hidden' } }"
             >
-              <Column field="title" header="Deal">
+              <Column field="title" :header="t('home.colDeal')">
                 <template #body="{ data }">
                   <div>
                     <p class="font-medium text-ink-800 truncate max-w-[160px]">{{ data.title }}</p>
@@ -519,17 +521,17 @@ function scoreBar(score?: number | null) {
                   </div>
                 </template>
               </Column>
-              <Column field="value" header="Value">
+              <Column field="value" :header="t('home.colValue')">
                 <template #body="{ data }">
                   <span class="font-semibold text-ink-700">{{ formatCurrency(data.value) }}</span>
                 </template>
               </Column>
-              <Column field="stage" header="Stage">
+              <Column field="stage" :header="t('home.colStage')">
                 <template #body="{ data }">
                   <span class="text-ink-500">{{ data.stage ?? '—' }}</span>
                 </template>
               </Column>
-              <Column field="priority" header="Priority">
+              <Column field="priority" :header="t('home.colPriority')">
                 <template #body="{ data }">
                   <Tag
                     v-if="data.priority"
@@ -539,7 +541,7 @@ function scoreBar(score?: number | null) {
                   />
                 </template>
               </Column>
-              <Column field="closureScore" header="Score">
+              <Column field="closureScore" :header="t('home.colScore')">
                 <template #body="{ data }">
                   <div v-if="scoreBar(data.closureScore) != null" class="flex items-center gap-1.5">
                     <ProgressBar
@@ -553,13 +555,13 @@ function scoreBar(score?: number | null) {
                 </template>
               </Column>
             </DataTable>
-            <p v-else class="text-sm text-ink-400 italic">No deal data yet.</p>
+            <p v-else class="text-sm text-ink-400 italic">{{ t('home.noDealData') }}</p>
           </template>
         </div>
 
         
         <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
-          <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Clients by Lifetime Value</h3>
+          <h3 class="text-sm font-semibold text-ink-700 mb-3">{{ t('home.topClients') }}</h3>
           
           <div v-if="store.isLoadingTopEntities" class="space-y-3">
             <div v-for="i in 5" :key="i" class="flex items-center justify-between gap-4">
@@ -578,7 +580,7 @@ function scoreBar(score?: number | null) {
               class="!text-xs"
               :pt="{ thead: { class: 'hidden' } }"
             >
-              <Column field="name" header="Client">
+              <Column field="name" :header="t('home.colClient')">
                 <template #body="{ data }">
                   <div>
                     <p class="font-medium text-ink-800 truncate max-w-[160px]">{{ data.name }}</p>
@@ -586,17 +588,17 @@ function scoreBar(score?: number | null) {
                   </div>
                 </template>
               </Column>
-              <Column field="lifetimeValue" header="LTV">
+              <Column field="lifetimeValue" :header="t('home.colLtv')">
                 <template #body="{ data }">
                   <span class="font-semibold text-ink-700">{{ formatCurrency(data.lifetimeValue) }}</span>
                 </template>
               </Column>
-              <Column field="activeDeals" header="Active">
+              <Column field="activeDeals" :header="t('home.colActive')">
                 <template #body="{ data }">
-                  <Tag :value="`${data.activeDeals} deals`" severity="secondary" class="!text-[10px] !px-1.5 !py-0" />
+                  <Tag :value="t('home.dealsCount', { n: data.activeDeals })" severity="secondary" class="!text-[10px] !px-1.5 !py-0" />
                 </template>
               </Column>
-              <Column field="avgClosureScore" header="Avg Score">
+              <Column field="avgClosureScore" :header="t('home.colAvgScore')">
                 <template #body="{ data }">
                   <div v-if="scoreBar(data.avgClosureScore) != null" class="flex items-center gap-1.5">
                     <ProgressBar
@@ -610,14 +612,14 @@ function scoreBar(score?: number | null) {
                 </template>
               </Column>
             </DataTable>
-            <p v-else class="text-sm text-ink-400 italic">No client data yet.</p>
+            <p v-else class="text-sm text-ink-400 italic">{{ t('home.noClientData') }}</p>
           </template>
         </div>
       </div>
 
       
       <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
-        <h3 class="text-sm font-semibold text-ink-700 mb-3">Member Activity</h3>
+        <h3 class="text-sm font-semibold text-ink-700 mb-3">{{ t('wsDash.memberActivity') }}</h3>
         
         <div v-if="store.isLoadingMemberActivity" class="space-y-3">
           <div v-for="i in 3" :key="i" class="flex items-center gap-4">
@@ -638,7 +640,7 @@ function scoreBar(score?: number | null) {
             class="!text-xs"
             :pt="{ thead: { class: '!text-[11px] !uppercase !tracking-wide !text-ink-400' } }"
           >
-            <Column field="fullName" header="Member">
+            <Column field="fullName" :header="t('wsDash.colMember')">
               <template #body="{ data }">
                 <div>
                   <p class="font-medium text-ink-800">{{ data.fullName }}</p>
@@ -646,22 +648,22 @@ function scoreBar(score?: number | null) {
                 </div>
               </template>
             </Column>
-            <Column field="dealsOwned" header="Deals Owned">
+            <Column field="dealsOwned" :header="t('wsDash.colDealsOwned')">
               <template #body="{ data }">
                 <Tag :value="String(data.dealsOwned)" severity="secondary" class="!text-[10px] !px-1.5 !py-0" />
               </template>
             </Column>
-            <Column field="tasksOwned" header="Tasks">
+            <Column field="tasksOwned" :header="t('wsDash.colTasks')">
               <template #body="{ data }">
                 <span class="text-ink-700">{{ data.tasksOwned }}</span>
               </template>
             </Column>
-            <Column field="tasksDone" header="Done">
+            <Column field="tasksDone" :header="t('wsDash.colDone')">
               <template #body="{ data }">
                 <span class="text-emerald-600 font-medium">{{ data.tasksDone }}</span>
               </template>
             </Column>
-            <Column header="Completion">
+            <Column :header="t('wsDash.colCompletion')">
               <template #body="{ data }">
                 <div v-if="data.tasksOwned > 0" class="flex items-center gap-1.5">
                   <ProgressBar
@@ -677,7 +679,7 @@ function scoreBar(score?: number | null) {
           </DataTable>
         </template>
         <p v-else-if="!store.isLoadingMemberActivity" class="text-sm text-ink-400 italic">
-          No member activity data available.
+          {{ t('wsDash.noMemberData') }}
         </p>
       </div>
 

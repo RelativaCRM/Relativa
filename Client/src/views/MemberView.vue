@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -18,6 +19,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
@@ -139,7 +141,7 @@ async function loadWorkspaceAccess() {
       }),
     );
   } catch (err) {
-    notify(err, { fallback: 'Failed to load workspace access.' });
+    notify(err, { fallback: t('member.loadWsAccessError') });
   } finally {
     workspaceLoading.value = false;
   }
@@ -156,12 +158,12 @@ async function handleSaveProfile() {
     await orgStore.fetchMembers();
     toast.add({
       severity: 'success',
-      summary: 'Profile updated',
-      detail: 'Member details were updated.',
+      summary: t('member.profileUpdated'),
+      detail: t('member.profileUpdatedDetail'),
       life: 4000,
     });
   } catch (err) {
-    notify(err, { fallback: 'Failed to update profile.' });
+    notify(err, { fallback: t('member.profileUpdateError') });
   } finally {
     savingProfile.value = false;
   }
@@ -176,12 +178,12 @@ async function handleSaveOrgRole() {
     await orgStore.changeMemberRole(member.value.userId, selectedOrgRoleId.value);
     toast.add({
       severity: 'success',
-      summary: 'Role updated',
-      detail: 'Organization role has been updated.',
+      summary: t('member.roleUpdated'),
+      detail: t('member.orgRoleUpdatedDetail'),
       life: 4000,
     });
   } catch (err) {
-    notify(err, { fallback: 'Failed to update organization role.' });
+    notify(err, { fallback: t('member.orgRoleUpdateError') });
   } finally {
     savingRole.value = false;
   }
@@ -189,19 +191,19 @@ async function handleSaveOrgRole() {
 
 async function handleRemoveFromOrg() {
   if (!member.value) return;
-  if (!window.confirm('Remove this member from the organization?')) return;
+  if (!window.confirm(t('member.confirmRemove'))) return;
   removing.value = true;
   try {
     await orgStore.removeMember(member.value.userId);
     toast.add({
       severity: 'success',
-      summary: 'Member removed',
-      detail: 'The user was removed from the organization.',
+      summary: t('member.memberRemoved'),
+      detail: t('member.memberRemovedDetail'),
       life: 4000,
     });
     await router.push({ name: 'members' });
   } catch (err) {
-    notify(err, { fallback: 'Failed to remove member.' });
+    notify(err, { fallback: t('member.removeError') });
   } finally {
     removing.value = false;
   }
@@ -209,11 +211,7 @@ async function handleRemoveFromOrg() {
 
 async function handleArchiveAccount() {
   if (!member.value || !orgStore.currentOrgId) return;
-  if (
-    !window.confirm(
-      'Archive this account? This disables login and removes the user from active use.',
-    )
-  ) {
+  if (!window.confirm(t('member.confirmArchive'))) {
     return;
   }
   archiving.value = true;
@@ -221,13 +219,13 @@ async function handleArchiveAccount() {
     await orgStore.deleteOrgUser(member.value.userId);
     toast.add({
       severity: 'success',
-      summary: 'Account archived',
-      detail: 'The user account has been archived.',
+      summary: t('member.accountArchived'),
+      detail: t('member.accountArchivedDetail'),
       life: 4000,
     });
     await router.push({ name: 'members' });
   } catch (err) {
-    notify(err, { fallback: 'Failed to archive account.' });
+    notify(err, { fallback: t('member.archiveError') });
   } finally {
     archiving.value = false;
   }
@@ -237,7 +235,7 @@ async function handleGrantWorkspaceAccess(wsId: number) {
   if (!member.value) return;
   const roleId = selectedWorkspaceRoleId(wsId);
   if (!roleId) {
-    notify(new Error('Please select a workspace role first.'), { fallback: 'Select a role.' });
+    notify(new Error(t('member.selectRoleFirst')), { fallback: t('member.selectRole') });
     return;
   }
   workspaceActionId.value = wsId;
@@ -246,12 +244,12 @@ async function handleGrantWorkspaceAccess(wsId: number) {
     workspaceMembers.value[wsId] = await workspaceApi.listMembers(wsId);
     toast.add({
       severity: 'success',
-      summary: 'Access granted',
-      detail: 'Workspace access has been assigned.',
+      summary: t('member.accessGranted'),
+      detail: t('member.accessGrantedDetail'),
       life: 3000,
     });
   } catch (err) {
-    notify(err, { fallback: 'Failed to grant workspace access.' });
+    notify(err, { fallback: t('member.grantError') });
   } finally {
     workspaceActionId.value = null;
   }
@@ -267,12 +265,12 @@ async function handleChangeWorkspaceRole(wsId: number) {
     workspaceMembers.value[wsId] = await workspaceApi.listMembers(wsId);
     toast.add({
       severity: 'success',
-      summary: 'Role updated',
-      detail: 'Workspace role has been changed.',
+      summary: t('member.roleUpdated'),
+      detail: t('member.wsRoleChangedDetail'),
       life: 3000,
     });
   } catch (err) {
-    notify(err, { fallback: 'Failed to update workspace role.' });
+    notify(err, { fallback: t('member.wsRoleChangeError') });
   } finally {
     workspaceActionId.value = null;
   }
@@ -286,12 +284,12 @@ async function handleRemoveWorkspaceAccess(wsId: number) {
     workspaceMembers.value[wsId] = await workspaceApi.listMembers(wsId);
     toast.add({
       severity: 'success',
-      summary: 'Access removed',
-      detail: 'Workspace access has been removed.',
+      summary: t('member.accessRemoved'),
+      detail: t('member.accessRemovedDetail'),
       life: 3000,
     });
   } catch (err) {
-    notify(err, { fallback: 'Failed to remove workspace access.' });
+    notify(err, { fallback: t('member.removeAccessError') });
   } finally {
     workspaceActionId.value = null;
   }
@@ -320,12 +318,12 @@ onMounted(async () => {
       <div>
         <Button
           icon="pi pi-arrow-left"
-          label="Back to members"
+          :label="t('member.back')"
           text
           class="!px-0 mb-2"
           @click="router.push({ name: 'members' })"
         />
-        <h1 class="text-2xl font-bold text-ink-900">Member</h1>
+        <h1 class="text-2xl font-bold text-ink-900">{{ t('member.title') }}</h1>
         <p v-if="member" class="mt-3 text-sm text-ink-500">
           <span class="font-semibold text-brand-600">
             {{ member.firstName }} {{ member.lastName }}
@@ -341,25 +339,25 @@ onMounted(async () => {
     <LoadingSkeleton v-if="loading" variant="detail" :rows="5" label="Loading member" />
 
     <div v-else-if="!member" class="rounded-xl border border-line bg-white p-6 text-ink-600">
-      Member not found.
+      {{ t('member.notFound') }}
     </div>
 
     <div v-else class="space-y-6">
       <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-lg font-semibold text-ink-900 mb-4">Profile</h2>
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">{{ t('member.profile') }}</h2>
         <div class="grid grid-cols-2 gap-3">
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-ink-600">First name</label>
+            <label class="text-xs font-medium text-ink-600">{{ t('members.firstName') }}</label>
             <InputText v-model="editFirstName" maxlength="100" :disabled="!canEditOtherProfiles || isSelf" />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-ink-600">Last name</label>
+            <label class="text-xs font-medium text-ink-600">{{ t('members.lastName') }}</label>
             <InputText v-model="editLastName" maxlength="100" :disabled="!canEditOtherProfiles || isSelf" />
           </div>
         </div>
         <div class="mt-4 flex justify-end">
           <Button
-            label="Save profile"
+            :label="t('member.saveProfile')"
             :loading="savingProfile"
             :disabled="!canEditOtherProfiles || isSelf || !editFirstName.trim() || !editLastName.trim()"
             @click="handleSaveProfile"
@@ -368,10 +366,10 @@ onMounted(async () => {
       </div>
 
       <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-lg font-semibold text-ink-900 mb-4">Organization access</h2>
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">{{ t('member.orgAccess') }}</h2>
         <div class="grid grid-cols-[1fr_auto] items-end gap-3">
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-ink-600">Role</label>
+            <label class="text-xs font-medium text-ink-600">{{ t('members.role') }}</label>
             <Select
               v-model="selectedOrgRoleId"
               :options="orgRoleOptions"
@@ -381,7 +379,7 @@ onMounted(async () => {
             />
           </div>
           <Button
-            label="Save role"
+            :label="t('member.saveRole')"
             :loading="savingRole"
             :disabled="!canAssignOrgRoles || member.roleName === 'org_owner' || isSelf || !selectedOrgRoleId"
             @click="handleSaveOrgRole"
@@ -390,17 +388,17 @@ onMounted(async () => {
       </div>
 
       <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-lg font-semibold text-ink-900 mb-4">Danger zone</h2>
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">{{ t('member.dangerZone') }}</h2>
         <div class="flex flex-wrap gap-2">
           <Button
-            label="Remove from organization"
+            :label="t('member.removeFromOrg')"
             severity="warning"
             :loading="removing"
             :disabled="!canRemoveOrgMembers || member.roleName === 'org_owner' || isSelf"
             @click="handleRemoveFromOrg"
           />
           <Button
-            label="Archive account"
+            :label="t('member.archiveAccount')"
             severity="danger"
             :loading="archiving"
             :disabled="!canArchiveMember"
@@ -408,14 +406,14 @@ onMounted(async () => {
           />
         </div>
         <p class="mt-2 text-xs text-ink-500">
-          Archive account requires the Delete Org Users permission and a matching email domain.
+          {{ t('member.archiveHint') }}
         </p>
       </div>
 
       <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-lg font-semibold text-ink-900 mb-4">Workspace access</h2>
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">{{ t('member.workspaceAccess') }}</h2>
         <div v-if="!canManageWorkspaceAccess" class="text-sm text-ink-500">
-          You need <code>manage_org_workspace_members</code> to manage workspace access.
+          {{ t('member.needWsPermission') }}
         </div>
         <LoadingSkeleton
           v-else-if="workspaceLoading"
@@ -432,7 +430,7 @@ onMounted(async () => {
             <div class="flex-1 min-w-0">
               <p class="font-medium text-ink-900 truncate">{{ ws.name }}</p>
               <p class="text-xs text-ink-500">
-                {{ workspaceMemberFor(ws.id) ? 'Has access' : 'No access' }}
+                {{ workspaceMemberFor(ws.id) ? t('member.hasAccess') : t('member.noAccess') }}
               </p>
             </div>
             <Select
@@ -444,13 +442,13 @@ onMounted(async () => {
             />
             <Button
               v-if="!workspaceMemberFor(ws.id)"
-              label="Grant access"
+              :label="t('member.grantAccess')"
               :loading="workspaceActionId === ws.id"
               @click="handleGrantWorkspaceAccess(ws.id)"
             />
             <Button
               v-else
-              label="Save role"
+              :label="t('member.saveRole')"
               severity="secondary"
               :loading="workspaceActionId === ws.id"
               @click="handleChangeWorkspaceRole(ws.id)"

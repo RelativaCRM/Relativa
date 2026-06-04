@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, reactive, nextTick, toRef, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -41,6 +42,7 @@ const emit = defineEmits<{
   updated: [];
 }>();
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const wsStore = useWorkspaceStore();
@@ -211,7 +213,7 @@ async function openLinkModal(tab: EdgeRelTab) {
     );
     linkCandidates.value = all.filter((e) => !linkedIds.has(e.id));
   } catch (err) {
-    linkError.value = normalizeError(err, 'Failed to load candidates.').message;
+    linkError.value = normalizeError(err, t('entityRead.loadCandidatesError')).message;
   } finally {
     linkLoading.value = false;
   }
@@ -270,9 +272,9 @@ async function confirmLink(candidate: EntityListItemDto) {
     }
     linkModalOpen.value = false;
     await loadDetail();
-    toast.add({ severity: 'success', summary: linkIsReassign.value ? 'Reassigned' : 'Linked', life: 2500 });
+    toast.add({ severity: 'success', summary: linkIsReassign.value ? t('entityRead.reassigned') : t('entityRead.linked'), life: 2500 });
   } catch (err) {
-    linkError.value = normalizeError(err, 'Failed to link. Please try again.').message;
+    linkError.value = normalizeError(err, t('entityRead.linkError')).message;
   }
 }
 
@@ -280,9 +282,9 @@ async function unlinkRelationship(relationshipId: number) {
   try {
     await entityApi.deleteRelationship(props.workspaceId, relationshipId);
     await loadDetail();
-    toast.add({ severity: 'success', summary: 'Unlinked', life: 2500 });
+    toast.add({ severity: 'success', summary: t('entityRead.unlinked'), life: 2500 });
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: normalizeError(err).message, life: 4000 });
+    toast.add({ severity: 'error', summary: t('settings.errorSummary'), detail: normalizeError(err).message, life: 4000 });
   }
 }
 
@@ -326,7 +328,7 @@ function isCreateLinkPropEmpty(prop: EntityTypePropertyDto): boolean {
 }
 
 function createLinkPropError(prop: EntityTypePropertyDto): string | null {
-  if (createLinkSubmitAttempted.value && isCreateLinkPropEmpty(prop)) return 'Required.';
+  if (createLinkSubmitAttempted.value && isCreateLinkPropEmpty(prop)) return t('entityRead.required');
   return null;
 }
 
@@ -394,7 +396,7 @@ async function submitCreateLink() {
     (r) => createLinkOtherRelPick[r.relationshipTypeId] == null,
   );
   if (hasEmptyRequired || hasEmptyRel) {
-    createLinkError.value = 'Fill in all required fields.';
+    createLinkError.value = t('entityForm.fillRequired');
     return;
   }
 
@@ -436,9 +438,9 @@ async function submitCreateLink() {
 
     createLinkOpen.value = false;
     await loadDetail();
-    toast.add({ severity: 'success', summary: `${targetType.displayName} created and linked`, life: 3000 });
+    toast.add({ severity: 'success', summary: t('entityRead.createdAndLinked', { type: targetType.displayName }), life: 3000 });
   } catch (err) {
-    createLinkError.value = normalizeError(err, 'Failed to create and link. Please try again.').message;
+    createLinkError.value = normalizeError(err, t('entityRead.createLinkError')).message;
   } finally {
     createLinkSubmitting.value = false;
   }
@@ -702,7 +704,7 @@ function serializeValue(
 
 function formatDisplayValue(p: EntityPropertyValueDto): string {
   if (p.value === null || p.value === undefined) return '—';
-  if (typeof p.value === 'boolean') return p.value ? 'Yes' : 'No';
+  if (typeof p.value === 'boolean') return p.value ? t('entityRead.yes') : t('entityRead.no');
   return String(p.value);
 }
 
@@ -747,7 +749,7 @@ async function loadDetail() {
     parseDetailToEditValues(d);
     editMode.value = false;
   } catch (err) {
-    errorMessage.value = normalizeError(err, 'Failed to load entity.').message;
+    errorMessage.value = normalizeError(err, t('entityRead.loadError')).message;
     detail.value = null;
   } finally {
     loading.value = false;
@@ -769,7 +771,7 @@ async function loadScore() {
   } catch (err) {
     if (props.entityId !== targetEntityId) return;
     score.value = null;
-    scoreError.value = normalizeError(err, 'Could not load scores.').message;
+    scoreError.value = normalizeError(err, t('entityRead.loadScoresError')).message;
   } finally {
     if (props.entityId === targetEntityId) {
       scoreLoading.value = false;
@@ -783,12 +785,12 @@ async function refreshScore() {
   if (scoreError.value) {
     toast.add({
       severity: 'error',
-      summary: 'Score refresh failed',
+      summary: t('entityRead.scoreRefreshFailed'),
       detail: scoreError.value,
       life: 4000,
     });
   } else if (score.value && score.value.unavailable_reason === null) {
-    toast.add({ severity: 'success', summary: 'Scores refreshed', life: 2000 });
+    toast.add({ severity: 'success', summary: t('entityRead.scoresRefreshed'), life: 2000 });
   }
 }
 
@@ -822,10 +824,10 @@ async function saveEdit() {
     detail.value = updated;
     parseDetailToEditValues(updated);
     editMode.value = false;
-    toast.add({ severity: 'success', summary: 'Saved', life: 2500 });
+    toast.add({ severity: 'success', summary: t('entityRead.saved'), life: 2500 });
     emit('updated');
   } catch (err) {
-    const normalized = normalizeError(err, 'Failed to save.');
+    const normalized = normalizeError(err, t('entityRead.saveError'));
     fieldErrors.value = normalized.fieldErrors;
     errorMessage.value = normalized.message;
   } finally {
@@ -843,22 +845,21 @@ function fieldError(prop: EntityPropertyValueDto): string | null {
 
 function requestDeleteEntity() {
   confirm.require({
-    message:
-      'Delete this entity? It will be hidden from lists; linked records remain in the workspace.',
-    header: 'Delete entity',
+    message: t('entityRead.confirmDelete'),
+    header: t('entityRead.deleteHeader'),
     icon: 'pi pi-exclamation-triangle',
-    rejectProps: { label: 'Cancel', severity: 'secondary', text: true },
-    acceptProps: { label: 'Delete', severity: 'danger' },
+    rejectProps: { label: t('common.cancel'), severity: 'secondary', text: true },
+    acceptProps: { label: t('entityRead.delete'), severity: 'danger' },
     accept: async () => {
       try {
         await entityStore.archive(props.workspaceId, props.entityId);
-        toast.add({ severity: 'success', summary: 'Entity deleted', life: 2500 });
+        toast.add({ severity: 'success', summary: t('entityRead.entityDeleted'), life: 2500 });
         exitDetail();
       } catch (err) {
         toast.add({
           severity: 'error',
-          summary: 'Delete failed',
-          detail: normalizeError(err, 'Could not delete entity.').message,
+          summary: t('entityRead.deleteFailed'),
+          detail: normalizeError(err, t('entityRead.deleteError')).message,
           life: 5000,
         });
       }
@@ -894,7 +895,7 @@ onUnmounted(() => stopHub());
         <Button
           text
           icon="pi pi-arrow-left"
-          label="Back to list"
+          :label="t('entityRead.back')"
           severity="secondary"
           size="small"
           class="!px-1 !mb-1"
@@ -904,16 +905,16 @@ onUnmounted(() => stopHub());
           <template v-if="detail">
             {{ detail.entityTypeDisplayName }} · #{{ detail.id }}
           </template>
-          <template v-else>Entity</template>
+          <template v-else>{{ t('entityRead.entityFallback') }}</template>
         </h1>
         <p v-if="detail" class="mt-1 text-sm text-ink-500">
-          Workspace record details and relationships.
+          {{ t('entityRead.subtitle') }}
         </p>
       </div>
       <div v-if="detail && (!detail.isArchived || canEditArchived)" class="flex flex-wrap gap-2 shrink-0">
         <Button
           v-if="canEditCurrentEntity && !editMode"
-          label="Edit"
+          :label="t('entityRead.edit')"
           icon="pi pi-pencil"
           severity="secondary"
           outlined
@@ -921,14 +922,14 @@ onUnmounted(() => stopHub());
         />
         <template v-if="canEditCurrentEntity && editMode">
           <Button
-            label="Cancel"
+            :label="t('common.cancel')"
             outlined
             :disabled="saving"
             class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
             @click="cancelEdit"
           />
           <Button
-            label="Save"
+            :label="t('entityRead.save')"
             icon="pi pi-check"
             :loading="saving"
             :disabled="saving"
@@ -938,7 +939,7 @@ onUnmounted(() => stopHub());
         </template>
         <Button
           v-if="canDelete && !editMode && !detail?.isArchived && writableProps.length > 0"
-          label="Delete"
+          :label="t('entityRead.delete')"
           icon="pi pi-trash"
           severity="danger"
           outlined
@@ -966,15 +967,15 @@ onUnmounted(() => stopHub());
         <div class="flex items-start justify-between gap-3 mb-4">
           <div>
             <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide">
-              Scores
+              {{ t('entityRead.scores') }}
             </h2>
             <p class="mt-1 text-xs text-ink-500">
-              Closure and churn likelihood, computed by the ML service from this deal's analysis.
+              {{ t('entityRead.scoresHint') }}
             </p>
           </div>
           <Button
             icon="pi pi-refresh"
-            label="Refresh data"
+            :label="t('entityRead.refreshData')"
             severity="secondary"
             outlined
             size="small"
@@ -988,7 +989,7 @@ onUnmounted(() => stopHub());
           v-if="scoreLoading && !score"
           class="grid gap-4 sm:grid-cols-2"
           role="status"
-          aria-label="Loading scores"
+          :aria-label="t('entityRead.loadingScores')"
         >
           <div
             v-for="i in 2"
@@ -1021,7 +1022,7 @@ onUnmounted(() => stopHub());
         <div v-else-if="score" class="grid gap-4 sm:grid-cols-2">
           <div class="rounded-lg border border-line bg-surface/40 p-4">
             <div class="text-xs font-medium text-ink-500 uppercase tracking-wide">
-              Closure score
+              {{ t('entityRead.closureScore') }}
             </div>
             <div class="mt-1 text-2xl font-bold text-brand-700">
               {{ formatScore(score.closure_score) }}
@@ -1029,7 +1030,7 @@ onUnmounted(() => stopHub());
           </div>
           <div class="rounded-lg border border-line bg-surface/40 p-4">
             <div class="text-xs font-medium text-ink-500 uppercase tracking-wide">
-              Churn score
+              {{ t('entityRead.churnScore') }}
             </div>
             <div class="mt-1 text-2xl font-bold text-brand-700">
               {{ formatScore(score.churn_score) }}
@@ -1038,13 +1039,13 @@ onUnmounted(() => stopHub());
         </div>
 
         <p v-else class="text-sm text-ink-500">
-          Scores have not been requested yet.
+          {{ t('entityRead.scoresNotRequested') }}
         </p>
       </div>
 
       <div class="rounded-xl border border-line bg-white p-6 mb-6">
         <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-4">
-          Properties
+          {{ t('entityRead.properties') }}
         </h2>
         <dl class="grid gap-4 sm:grid-cols-2">
           <template v-for="p in detail.propertyValues" :key="p.propertyId">
@@ -1054,7 +1055,7 @@ onUnmounted(() => stopHub());
                 <span
                   v-if="p.isReadonly"
                   class="ml-2 normal-case text-ink-400 font-normal"
-                >(read-only)</span>
+                >{{ t('entityRead.readOnly') }}</span>
               </dt>
               <dd class="mt-1 text-sm text-ink-900">
                 <template v-if="editMode && !p.isReadonly">
@@ -1121,9 +1122,9 @@ onUnmounted(() => stopHub());
     </div>
 
     <aside v-if="detail && !loading" class="rounded-xl border border-line bg-white p-5 lg:sticky lg:top-6">
-      <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-4">Connections</h2>
+      <h2 class="text-sm font-semibold text-ink-700 uppercase tracking-wide mb-4">{{ t('entityRead.connections') }}</h2>
 
-      <p v-if="!hasRelationshipTabs" class="text-sm text-ink-500">No connections defined.</p>
+      <p v-if="!hasRelationshipTabs" class="text-sm text-ink-500">{{ t('entityRead.noConnections') }}</p>
 
       <div
         v-for="tab in [...outboundRelTabs, ...inboundRelTabs]"
@@ -1141,7 +1142,7 @@ onUnmounted(() => stopHub());
               severity="secondary"
               text
               size="small"
-              title="Reassign"
+              :title="t('entityRead.reassign')"
               @click="openLinkModal(tab)"
             />
             <Button
@@ -1150,7 +1151,7 @@ onUnmounted(() => stopHub());
               severity="secondary"
               text
               size="small"
-              title="Link existing"
+              :title="t('entityRead.linkExisting')"
               @click="openLinkModal(tab)"
             />
             <Button
@@ -1159,7 +1160,7 @@ onUnmounted(() => stopHub());
               severity="secondary"
               text
               size="small"
-              title="Create and link new"
+              :title="t('entityRead.createAndLinkNew')"
               @click="openCreateLinkModal(tab)"
             />
           </div>
@@ -1194,7 +1195,7 @@ onUnmounted(() => stopHub());
                 severity="secondary"
                 text
                 size="small"
-                title="Go to entity"
+                :title="t('entityRead.goToEntity')"
                 @click.stop="goToEntity(r.relatedEntityTypeName, r.relatedEntityId)"
               />
               <Button
@@ -1203,7 +1204,7 @@ onUnmounted(() => stopHub());
                 severity="danger"
                 text
                 size="small"
-                title="Unlink"
+                :title="t('entityRead.unlink')"
                 @click.stop="unlinkRelationship(r.relationshipId)"
               />
             </div>
@@ -1217,7 +1218,7 @@ onUnmounted(() => stopHub());
                 class="flex items-center gap-2 text-xs text-ink-500 py-1"
               >
                 <i class="pi pi-spin pi-spinner text-xs" />
-                <span>Loading…</span>
+                <span>{{ t('entityRead.loading') }}</span>
               </div>
               <dl v-else-if="expandedCache.get(r.relatedEntityId)" class="space-y-1.5">
                 <div
@@ -1229,7 +1230,7 @@ onUnmounted(() => stopHub());
                   <dd class="text-ink-800 break-all">{{ formatDisplayValue(p) }}</dd>
                 </div>
               </dl>
-              <p v-else class="text-xs text-ink-500 py-1">Could not load properties.</p>
+              <p v-else class="text-xs text-ink-500 py-1">{{ t('entityRead.couldNotLoadProperties') }}</p>
             </div>
           </li>
         </ul>
@@ -1242,10 +1243,10 @@ onUnmounted(() => stopHub());
             @click="openCreateLinkModal(tab)"
           >
             <i class="pi pi-plus text-xs" />
-            <span>Add {{ tab.otherEntityTypeDisplayName }}</span>
+            <span>{{ t('entityRead.addOther', { type: tab.otherEntityTypeDisplayName }) }}</span>
           </button>
           <p v-else class="text-xs text-ink-500 mt-1">
-            No {{ tab.otherEntityTypeDisplayName }} for this {{ detail.entityTypeDisplayName }}
+            {{ t('entityRead.noOtherForThis', { type: tab.otherEntityTypeDisplayName, parent: detail.entityTypeDisplayName }) }}
           </p>
         </template>
       </div>
@@ -1254,19 +1255,19 @@ onUnmounted(() => stopHub());
 
   <Dialog
     v-model:visible="linkModalOpen"
-    :header="linkModalTab ? `${linkIsReassign ? 'Reassign' : 'Link'} ${linkModalTab.otherEntityTypeDisplayName}` : 'Link'"
+    :header="linkModalTab ? t('entityRead.linkTitle', { action: linkIsReassign ? t('entityRead.reassign') : t('entityRead.link'), type: linkModalTab.otherEntityTypeDisplayName }) : t('entityRead.linkFallback')"
     modal
     class="w-full max-w-lg"
   >
     <div v-if="linkLoading" class="flex items-center gap-2 py-4 text-sm text-ink-500">
       <i class="pi pi-spin pi-spinner" />
-      <span>Loading…</span>
+      <span>{{ t('entityRead.loading') }}</span>
     </div>
     <Message v-else-if="linkError" severity="error" :closable="false" class="!my-0">
       {{ linkError }}
     </Message>
     <p v-else-if="linkCandidates.length === 0" class="text-sm text-ink-500 py-4">
-      No linkable records found.
+      {{ t('entityRead.noLinkable') }}
     </p>
     <template v-else>
       <div class="relative mb-2">
@@ -1274,20 +1275,20 @@ onUnmounted(() => stopHub());
         <InputText
           ref="linkSearchInputRef"
           v-model="linkSearch"
-          :placeholder="linkModalTab ? `Search ${linkModalTab.otherEntityTypeDisplayName} by name, email or id…` : 'Search by name, email or id…'"
+          :placeholder="linkModalTab ? t('entityRead.searchByPlaceholder', { type: linkModalTab.otherEntityTypeDisplayName }) : t('entityRead.searchGenericPlaceholder')"
           class="w-full !h-10 !pl-9"
         />
       </div>
       <p class="text-xs text-ink-500 mb-2">
         <template v-if="linkSearch.trim()">
-          Showing {{ filteredLinkCandidates.length }} of {{ linkCandidates.length }}
+          {{ t('entityRead.showingOf', { shown: filteredLinkCandidates.length, total: linkCandidates.length }) }}
         </template>
         <template v-else>
-          {{ linkCandidates.length }} {{ linkCandidates.length === 1 ? 'record' : 'records' }}
+          {{ t('entityRead.recordCount', linkCandidates.length, { named: { n: linkCandidates.length } }) }}
         </template>
       </p>
       <p v-if="filteredLinkCandidates.length === 0" class="text-sm text-ink-500 py-4">
-        No records match your search.
+        {{ t('entityRead.noSearchMatch') }}
       </p>
       <ul v-else class="space-y-2 py-2 max-h-80 overflow-y-auto text-sm">
         <li v-for="item in filteredLinkCandidates" :key="item.id">
@@ -1312,7 +1313,7 @@ onUnmounted(() => stopHub());
 
   <Dialog
     v-model:visible="createLinkOpen"
-    :header="createLinkTargetType ? `New ${createLinkTargetType.displayName}` : 'Create & link'"
+    :header="createLinkTargetType ? t('entityForm.nestedTitle', { type: createLinkTargetType.displayName }) : t('entityForm.createAndLink')"
     modal
     class="w-full max-w-lg"
   >
@@ -1327,7 +1328,7 @@ onUnmounted(() => stopHub());
             :options="createLinkRelOptions(r.relationshipTypeId)"
             option-label="label"
             option-value="value"
-            :placeholder="`Choose ${r.targetEntityTypeDisplayName}`"
+            :placeholder="t('entityForm.choose', { target: r.targetEntityTypeDisplayName })"
             class="w-full !h-10"
             filter
           />
@@ -1347,7 +1348,7 @@ onUnmounted(() => stopHub());
             :options="p.allowedValues"
             option-label="displayName"
             option-value="value"
-            placeholder="Select..."
+            :placeholder="t('entityForm.selectPlaceholder')"
             class="w-full !h-10"
             :invalid="!!createLinkPropError(p)"
           />
@@ -1402,14 +1403,14 @@ onUnmounted(() => stopHub());
 
       <div class="flex justify-end gap-3 pt-2">
         <Button
-          label="Cancel"
+          :label="t('common.cancel')"
           outlined
           type="button"
           class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
           @click="createLinkOpen = false"
         />
         <Button
-          label="Create & link"
+          :label="t('entityForm.createAndLink')"
           icon="pi pi-check"
           :loading="createLinkSubmitting"
           :disabled="createLinkSubmitting"

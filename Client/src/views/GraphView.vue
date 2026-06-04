@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -27,6 +28,7 @@ const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
 const confirm = useConfirm();
 const toast = useToast();
+const { t } = useI18n();
 
 const container = ref<HTMLDivElement | null>(null);
 const network = shallowRef<Network | null>(null);
@@ -43,12 +45,27 @@ const filters = ref<FilterPanelState>({
 
 const orgId = computed(() => orgStore.currentOrgId);
 
-const HIGHLIGHT: Record<GraphHighlightTag, { border: string; shadow: string; label: string }> = {
-  best_deal:    { border: '#16a34a', shadow: 'rgba(22,163,74,0.55)',  label: 'Best deal (top 20%)' },
-  worst_deal:   { border: '#dc2626', shadow: 'rgba(220,38,38,0.55)',  label: 'Worst deal (bottom 20%)' },
-  best_client:  { border: '#16a34a', shadow: 'rgba(22,163,74,0.55)',  label: 'Best client (top 20%)' },
-  worst_client: { border: '#dc2626', shadow: 'rgba(220,38,38,0.55)',  label: 'Worst client (bottom 20%)' },
+const HIGHLIGHT: Record<GraphHighlightTag, { border: string; shadow: string }> = {
+  best_deal:    { border: '#16a34a', shadow: 'rgba(22,163,74,0.55)' },
+  worst_deal:   { border: '#dc2626', shadow: 'rgba(220,38,38,0.55)' },
+  best_client:  { border: '#16a34a', shadow: 'rgba(22,163,74,0.55)' },
+  worst_client: { border: '#dc2626', shadow: 'rgba(220,38,38,0.55)' },
 };
+
+const HIGHLIGHT_KEY: Record<GraphHighlightTag, string> = {
+  best_deal: 'bestDeal',
+  worst_deal: 'worstDeal',
+  best_client: 'bestClient',
+  worst_client: 'worstClient',
+};
+
+function highlightLabel(tag: GraphHighlightTag): string {
+  return t(`graph.highlight.${HIGHLIGHT_KEY[tag]}`);
+}
+
+function riskLabel(level: 'high' | 'medium' | 'low'): string {
+  return t(`graph.risk.${level}Risk`);
+}
 
 const TYPE_COLORS: Record<string, string> = {
   user_self: '#1d4ed8',
@@ -75,11 +92,11 @@ const TYPE_BORDER_DARKEN: Record<string, string> = {
 
 type RiskLevel = 'high' | 'medium' | 'low' | 'stale';
 
-const RISK_COLORS: Record<RiskLevel, { fill: string; border: string; label: string }> = {
-  high:   { fill: '#ef4444', border: '#b91c1c', label: 'High risk' },
-  medium: { fill: '#f59e0b', border: '#b45309', label: 'Medium risk' },
-  low:    { fill: '#10b981', border: '#047857', label: 'Low risk' },
-  stale:  { fill: '#94a3b8', border: '#475569', label: 'Score unavailable' },
+const RISK_COLORS: Record<RiskLevel, { fill: string; border: string }> = {
+  high:   { fill: '#ef4444', border: '#b91c1c' },
+  medium: { fill: '#f59e0b', border: '#b45309' },
+  low:    { fill: '#10b981', border: '#047857' },
+  stale:  { fill: '#94a3b8', border: '#475569' },
 };
 
 function classifyRisk(score: DealScoreDto | undefined): RiskLevel | null {
@@ -135,9 +152,9 @@ function nodeColor(node: GraphNodeDto, typeColorMap: Map<string, string>) {
 
 const typeLegendItems = computed(() => {
   const items: { label: string; color: string; border?: string }[] = [
-    { label: 'You', color: TYPE_COLORS.user_self! },
-    { label: 'User', color: TYPE_COLORS.user! },
-    { label: 'Workspace', color: TYPE_COLORS.workspace! },
+    { label: t('graph.nodeType.you'), color: TYPE_COLORS.user_self! },
+    { label: t('graph.nodeType.user'), color: TYPE_COLORS.user! },
+    { label: t('graph.nodeType.workspace'), color: TYPE_COLORS.workspace! },
   ];
   const typeMap = buildEntityTypeColorMap(graphStore.nodes);
   for (const [name, color] of typeMap) {
@@ -150,7 +167,7 @@ const typeLegendItems = computed(() => {
   const addedBorders = new Set<string>();
   for (const tag of ['best_deal', 'worst_deal', 'best_client', 'worst_client'] as const) {
     if (usedTags.has(tag) && !addedBorders.has(HIGHLIGHT[tag].border)) {
-      items.push({ label: HIGHLIGHT[tag].label, color: 'transparent', border: HIGHLIGHT[tag].border });
+      items.push({ label: highlightLabel(tag), color: 'transparent', border: HIGHLIGHT[tag].border });
       addedBorders.add(HIGHLIGHT[tag].border);
     }
   }
@@ -163,15 +180,15 @@ const hasDealNodes = computed(() =>
 
 const riskLegendItems = computed(() => {
   if (!hasDealNodes.value) return [];
-  const levels: RiskLevel[] = ['high', 'medium', 'low'];
-  const items = levels.map(level => ({ label: RISK_COLORS[level].label, color: RISK_COLORS[level].fill }));
+  const levels: Array<'high' | 'medium' | 'low'> = ['high', 'medium', 'low'];
+  const items = levels.map(level => ({ label: riskLabel(level), color: RISK_COLORS[level].fill }));
   const anyStale = [...dealScores.value.values()].some(s => s.unavailable_reason !== null);
-  if (anyStale) items.push({ label: RISK_COLORS.stale.label, color: RISK_COLORS.stale.fill });
+  if (anyStale) items.push({ label: t('graph.risk.scoreUnavailable'), color: RISK_COLORS.stale.fill });
   return items;
 });
 
 function typeDisplayName(name: string): string {
-  return entityStore.types.find(t => t.name === name)?.displayName
+  return entityStore.types.find(et => et.name === name)?.displayName
     ?? name.split('_').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
@@ -435,10 +452,10 @@ onUnmounted(() => {
 });
 
 function typeBadge(node: GraphNodeDto): string {
-  if (node.type === 'user_self') return 'You';
-  if (node.type === 'user') return 'User';
-  if (node.type === 'workspace') return 'Workspace';
-  return node.entityTypeName ? typeDisplayName(node.entityTypeName) : 'Entity';
+  if (node.type === 'user_self') return t('graph.nodeType.you');
+  if (node.type === 'user') return t('graph.nodeType.user');
+  if (node.type === 'workspace') return t('graph.nodeType.workspace');
+  return node.entityTypeName ? typeDisplayName(node.entityTypeName) : t('graph.nodeType.entity');
 }
 
 function selectedScore(): DealScoreDto | undefined {
@@ -506,19 +523,19 @@ function editNode(node: GraphNodeDto) {
 
 function requestDelete(node: GraphNodeDto) {
   confirm.require({
-    message: 'Delete this entity? It will be hidden from lists; linked records remain in the workspace.',
-    header: 'Delete entity',
+    message: t('graph.deleteMessage'),
+    header: t('graph.deleteHeader'),
     icon: 'pi pi-exclamation-triangle',
-    rejectProps: { label: 'Cancel', severity: 'secondary', outlined: true },
-    acceptProps: { label: 'Delete', severity: 'danger' },
+    rejectProps: { label: t('common.cancel'), severity: 'secondary', outlined: true },
+    acceptProps: { label: t('common.delete'), severity: 'danger' },
     accept: async () => {
       try {
         await entityStore.archive(node.workspaceId!, node.resourceId);
-        toast.add({ severity: 'success', summary: 'Entity deleted', life: 2500 });
+        toast.add({ severity: 'success', summary: t('graph.deleted'), life: 2500 });
         selectedNode.value = null;
         await load();
       } catch {
-        toast.add({ severity: 'error', summary: 'Delete failed', detail: 'Could not delete the entity.', life: 4000 });
+        toast.add({ severity: 'error', summary: t('graph.deleteFailed'), detail: t('graph.deleteFailedDetail'), life: 4000 });
       }
     },
   });
@@ -553,15 +570,15 @@ function resetAllFilters() {
     
     <div class="flex items-start justify-between gap-4 shrink-0">
       <div>
-        <h1 class="text-2xl font-bold text-ink-900">Graph</h1>
-        <p class="mt-3 text-sm text-ink-500">
-          Your full relational context in
-          <span class="font-semibold text-brand-600">{{ orgStore.currentOrg?.name ?? 'this organization' }}</span>.
-          Click a node to view or manage it.
-        </p>
+        <h1 class="text-2xl font-bold text-ink-900">{{ t('graph.title') }}</h1>
+        <i18n-t keypath="graph.subtitle" tag="p" class="mt-3 text-sm text-ink-500" scope="global">
+          <template #org>
+            <span class="font-semibold text-brand-600">{{ orgStore.currentOrg?.name ?? t('graph.thisOrg') }}</span>
+          </template>
+        </i18n-t>
       </div>
       <div class="text-xs text-ink-500 shrink-0 pt-1">
-        {{ graphStore.nodeCount }} nodes · {{ graphStore.edgeCount }} edges
+        {{ t('graph.counts', { nodes: graphStore.nodeCount, edges: graphStore.edgeCount }) }}
       </div>
     </div>
 
@@ -580,7 +597,7 @@ function resetAllFilters() {
 
     
     <Message v-if="!orgId" severity="info" :closable="false" class="!my-0">
-      Select an organization to see your graph.
+      {{ t('graph.selectOrg') }}
     </Message>
 
     
@@ -589,12 +606,12 @@ function resetAllFilters() {
       class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
     >
       <i class="pi pi-exclamation-triangle text-3xl text-ink-300" />
-      <p class="mt-3 text-sm font-medium text-ink-700">Graph data is unavailable</p>
+      <p class="mt-3 text-sm font-medium text-ink-700">{{ t('graph.unavailable') }}</p>
       <p class="mt-1 text-xs text-ink-500 max-w-md">
         {{ graphStore.error }}
       </p>
       <Button
-        label="Try again"
+        :label="t('common.retry')"
         icon="pi pi-refresh"
         severity="secondary"
         size="small"
@@ -609,7 +626,7 @@ function resetAllFilters() {
       v-else-if="graphStore.isLoading && !hasGraph"
       class="flex-1"
       fill
-      label="Loading graph…"
+      :label="t('graph.loading')"
     />
 
     
@@ -619,12 +636,12 @@ function resetAllFilters() {
     >
       <i class="pi pi-share-alt text-4xl text-ink-300" />
       <template v-if="hasAnyActiveFilter">
-        <p class="mt-3 text-sm font-medium text-ink-700">No nodes match the active filters.</p>
+        <p class="mt-3 text-sm font-medium text-ink-700">{{ t('graph.noMatchFilters') }}</p>
         <p class="mt-1 text-xs text-ink-500 max-w-md">
-          Clear or relax the filters to see more of the graph.
+          {{ t('graph.relaxFilters') }}
         </p>
         <Button
-          label="Clear all filters"
+          :label="t('graph.clearAllFilters')"
           icon="pi pi-times"
           severity="secondary"
           size="small"
@@ -633,7 +650,7 @@ function resetAllFilters() {
         />
       </template>
       <p v-else class="mt-3 text-sm text-ink-500">
-        No data available yet. Add workspaces and entities to populate the graph.
+        {{ t('graph.noDataYet') }}
       </p>
     </div>
 
@@ -643,12 +660,12 @@ function resetAllFilters() {
       class="flex-1 flex flex-col items-center justify-center rounded-xl border border-line bg-white p-6 text-center"
     >
       <i class="pi pi-filter-slash text-4xl text-ink-300" />
-      <p class="mt-3 text-sm font-medium text-ink-700">No nodes match the active filters.</p>
+      <p class="mt-3 text-sm font-medium text-ink-700">{{ t('graph.noMatchFilters') }}</p>
       <p class="mt-1 text-xs text-ink-500 max-w-md">
-        Try removing a filter or widening the selection. The current combination is too narrow.
+        {{ t('graph.narrowFilters') }}
       </p>
       <Button
-        label="Clear all filters"
+        :label="t('graph.clearAllFilters')"
         icon="pi pi-times"
         severity="secondary"
         size="small"
@@ -686,7 +703,7 @@ function resetAllFilters() {
             class="flex items-center gap-3 pl-5 border-l border-line"
           >
             <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
-              Deal risk
+              {{ t('graph.dealRisk') }}
             </span>
             <div
               v-for="item in riskLegendItems"
@@ -744,7 +761,7 @@ function resetAllFilters() {
             <div v-if="selectedClosure !== null">
               <div class="flex items-center justify-between mb-1">
                 <span class="text-[11px] font-medium text-ink-500 uppercase tracking-wide">
-                  Closure score
+                  {{ t('graph.closureScore') }}
                 </span>
                 <span class="text-xs font-semibold text-ink-800">{{ selectedClosure }}%</span>
               </div>
@@ -758,7 +775,7 @@ function resetAllFilters() {
 
             <div v-if="selectedChurn !== null" class="flex items-center justify-between">
               <span class="text-[11px] font-medium text-ink-500 uppercase tracking-wide">
-                Churn score
+                {{ t('graph.churnScore') }}
               </span>
               <span
                 class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"
@@ -772,14 +789,14 @@ function resetAllFilters() {
               v-if="selectedClosure === null && selectedChurn === null"
               class="text-xs text-ink-400 italic"
             >
-              {{ selectedScoreUnavailable ?? 'Scores not available yet.' }}
+              {{ selectedScoreUnavailable ?? t('graph.scoresUnavailable') }}
             </p>
           </div>
 
           
           <div class="flex flex-col gap-2 mt-auto pt-2 border-t border-slate-100">
             <Button
-              label="View"
+              :label="t('graph.view')"
               icon="pi pi-eye"
               size="small"
               class="w-full"
@@ -787,7 +804,7 @@ function resetAllFilters() {
             />
             <Button
               v-if="selectedNode.permissions.includes('edit')"
-              label="Edit"
+              :label="t('common.edit')"
               icon="pi pi-pencil"
               size="small"
               outlined
@@ -796,7 +813,7 @@ function resetAllFilters() {
             />
             <Button
               v-if="selectedNode.permissions.includes('delete') && selectedNode.type === 'entity'"
-              label="Delete"
+              :label="t('common.delete')"
               icon="pi pi-trash"
               size="small"
               severity="danger"

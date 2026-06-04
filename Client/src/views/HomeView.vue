@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import Chart from '@/components/charts/SafeChart.vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -11,6 +12,7 @@ import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useDashboardStore } from '@/stores/dashboard';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
@@ -71,9 +73,9 @@ onUnmounted(() => {
 
 const greeting = computed(() => {
   const hour = now.value.getHours();
-  if (hour >= 5 && hour < 12) return 'Good morning';
-  if (hour >= 12 && hour < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (hour >= 5 && hour < 12) return t('home.greetingMorning');
+  if (hour >= 12 && hour < 18) return t('home.greetingAfternoon');
+  return t('home.greetingEvening');
 });
 
 const firstName = computed(() => auth.user?.firstName?.trim() ?? '');
@@ -85,21 +87,21 @@ const kpis = computed(() => {
   if (!hasFullAccess.value) {
     return [
       {
-        label: 'Total Deals',
+        label: t('home.kpiTotalDeals'),
         value: String(s.totalDeals),
         icon: 'pi-briefcase',
         color: 'text-emerald-600',
         bg: 'bg-emerald-50',
       },
       {
-        label: 'Active Clients',
+        label: t('home.kpiActiveClients'),
         value: `${s.activeClients} / ${s.totalClients}`,
         icon: 'pi-building',
         color: 'text-amber-600',
         bg: 'bg-amber-50',
       },
       {
-        label: 'Workspaces',
+        label: t('home.workspaces'),
         value: String(s.totalWorkspaces),
         icon: 'pi-folder',
         color: 'text-sky-600',
@@ -110,42 +112,42 @@ const kpis = computed(() => {
 
   const base = [
     {
-      label: 'Total Pipeline Value',
+      label: t('home.kpiTotalPipelineValue'),
       value: formatCurrency(s.totalDealValue),
       icon: 'pi-euro',
       color: 'text-blue-600',
       bg: 'bg-blue-50',
     },
     {
-      label: 'Open Deals',
+      label: t('home.kpiOpenDeals'),
       value: String(s.openDeals),
       icon: 'pi-briefcase',
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
     },
     {
-      label: 'Win Rate',
+      label: t('home.kpiWinRate'),
       value: `${(s.winRate * 100).toFixed(1)}%`,
       icon: 'pi-chart-line',
       color: 'text-violet-600',
       bg: 'bg-violet-50',
     },
     {
-      label: 'Overdue Tasks',
+      label: t('home.kpiOverdueTasks'),
       value: String(s.tasksOverdue),
       icon: 'pi-exclamation-triangle',
       color: s.tasksOverdue > 0 ? 'text-red-600' : 'text-slate-500',
       bg: s.tasksOverdue > 0 ? 'bg-red-50' : 'bg-slate-50',
     },
     {
-      label: 'Active Clients',
+      label: t('home.kpiActiveClients'),
       value: `${s.activeClients} / ${s.totalClients}`,
       icon: 'pi-building',
       color: 'text-amber-600',
       bg: 'bg-amber-50',
     },
     {
-      label: 'Closing This Month',
+      label: t('home.kpiClosingThisMonth'),
       value: String(s.dealsClosingThisMonth),
       icon: 'pi-calendar-clock',
       color: 'text-sky-600',
@@ -155,7 +157,7 @@ const kpis = computed(() => {
 
   if (isFullOrg.value) {
     base.push({
-      label: 'Workspaces',
+      label: t('home.workspaces'),
       value: String(s.totalWorkspaces),
       icon: 'pi-folder',
       color: 'text-indigo-600',
@@ -173,13 +175,13 @@ const workspaceComparisonChartData = computed(() => {
     labels: wc.map((w) => w.workspaceName),
     datasets: [
       {
-        label: 'Pipeline Value (€k)',
+        label: t('home.dsPipelineValueK'),
         data: wc.map((w) => Math.round(w.pipelineValue / 1000)),
         backgroundColor: '#3b82f6',
         borderRadius: 4,
       },
       {
-        label: 'Deal Count',
+        label: t('home.dsDealCount'),
         data: wc.map((w) => w.dealCount),
         backgroundColor: '#8b5cf6',
         borderRadius: 4,
@@ -189,7 +191,7 @@ const workspaceComparisonChartData = computed(() => {
   };
 });
 
-const workspaceComparisonChartOptions = {
+const workspaceComparisonChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: 'index' as const, intersect: false },
@@ -202,18 +204,18 @@ const workspaceComparisonChartOptions = {
       position: 'left' as const,
       grid: { color: '#f1f5f9' },
       ticks: { color: '#64748b', callback: (v: number) => `€${v}k` },
-      title: { display: true, text: 'Pipeline (€k)', color: '#94a3b8' },
+      title: { display: true, text: t('home.axisPipelineK'), color: '#94a3b8' },
     },
     y1: {
       type: 'linear' as const,
       position: 'right' as const,
       grid: { drawOnChartArea: false },
       ticks: { color: '#8b5cf6', stepSize: 1 },
-      title: { display: true, text: 'Deals', color: '#8b5cf6' },
+      title: { display: true, text: t('home.axisDeals'), color: '#8b5cf6' },
     },
     x: { grid: { display: false }, ticks: { color: '#64748b' } },
   },
-};
+}));
 
 const pipelineChartData = computed(() => {
   const p = dashStore.pipeline;
@@ -222,7 +224,7 @@ const pipelineChartData = computed(() => {
     labels: p.stages.map((s) => s.name),
     datasets: [
       {
-        label: 'Deals',
+        label: t('home.dsDeals'),
         data: p.stages.map((s) => s.count),
         backgroundColor: ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981'],
         borderRadius: 4,
@@ -246,7 +248,7 @@ const riskChartData = computed(() => {
   const r = dashStore.riskDistribution;
   if (!r) return null;
   return {
-    labels: ['High Risk', 'Medium Risk', 'Low Risk'],
+    labels: [t('home.highRisk'), t('home.mediumRisk'), t('home.lowRisk')],
     datasets: [
       {
         data: [
@@ -271,14 +273,14 @@ const riskChartOptions = {
 };
 
 const trendsChartData = computed(() => {
-  const t = dashStore.trends;
-  if (!t) return null;
+  const tr = dashStore.trends;
+  if (!tr) return null;
   return {
-    labels: t.months.map((m) => m.label),
+    labels: tr.months.map((m) => m.label),
     datasets: [
       {
-        label: 'Pipeline Deals',
-        data: t.months.map((m) => m.newDeals),
+        label: t('home.dsPipelineDeals'),
+        data: tr.months.map((m) => m.newDeals),
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59,130,246,0.08)',
         fill: true,
@@ -286,8 +288,8 @@ const trendsChartData = computed(() => {
         yAxisID: 'y',
       },
       {
-        label: 'Won',
-        data: t.months.map((m) => m.closedWon),
+        label: t('home.dsWon'),
+        data: tr.months.map((m) => m.closedWon),
         borderColor: '#10b981',
         backgroundColor: 'transparent',
         fill: false,
@@ -295,8 +297,8 @@ const trendsChartData = computed(() => {
         yAxisID: 'y',
       },
       {
-        label: 'Lost',
-        data: t.months.map((m) => m.closedLost),
+        label: t('home.dsLost'),
+        data: tr.months.map((m) => m.closedLost),
         borderColor: '#ef4444',
         backgroundColor: 'transparent',
         fill: false,
@@ -304,8 +306,8 @@ const trendsChartData = computed(() => {
         yAxisID: 'y',
       },
       {
-        label: 'Won Revenue (€)',
-        data: t.months.map((m) => m.wonRevenue),
+        label: t('home.dsWonRevenue'),
+        data: tr.months.map((m) => m.wonRevenue),
         borderColor: '#8b5cf6',
         backgroundColor: 'transparent',
         fill: false,
@@ -317,7 +319,7 @@ const trendsChartData = computed(() => {
   };
 });
 
-const trendsChartOptions = {
+const trendsChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: 'index' as const, intersect: false },
@@ -330,7 +332,7 @@ const trendsChartOptions = {
       position: 'left' as const,
       grid: { color: '#f1f5f9' },
       ticks: { color: '#64748b', stepSize: 1 },
-      title: { display: true, text: 'Deals', color: '#94a3b8' },
+      title: { display: true, text: t('home.axisDeals'), color: '#94a3b8' },
     },
     y1: {
       type: 'linear' as const,
@@ -340,11 +342,11 @@ const trendsChartOptions = {
         color: '#8b5cf6',
         callback: (v: number) => `€${(v / 1000).toFixed(0)}k`,
       },
-      title: { display: true, text: 'Revenue', color: '#8b5cf6' },
+      title: { display: true, text: t('home.axisRevenue'), color: '#8b5cf6' },
     },
     x: { grid: { display: false }, ticks: { color: '#64748b' } },
   },
-};
+}));
 
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('de-DE', {
@@ -438,18 +440,18 @@ function scoreBar(score?: number) {
                 <span class="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
                 <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
               </span>
-              Active
+              {{ t('home.active') }}
             </span>
           </header>
 
           <div class="mt-5 flex items-end gap-3 flex-wrap">
             <dl class="grid grid-cols-2 gap-3 flex-1 min-w-[16rem]">
               <div class="session-card__stat">
-                <dt>Members</dt>
+                <dt>{{ t('home.members') }}</dt>
                 <dd>{{ orgStore.currentOrg?.memberCount ?? '—' }}</dd>
               </div>
               <div class="session-card__stat">
-                <dt>Workspaces</dt>
+                <dt>{{ t('home.workspaces') }}</dt>
                 <dd>{{ workspaceCount }}</dd>
               </div>
             </dl>
@@ -460,7 +462,7 @@ function scoreBar(score?: number) {
               class="session-card__manage-btn shrink-0"
               @click="goToOrgSettings"
             >
-              Manage
+              {{ t('home.manage') }}
             </button>
           </div>
         </article>
@@ -471,8 +473,8 @@ function scoreBar(score?: number) {
     <template v-if="canView">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-base font-semibold text-ink-900">Analytics</h2>
-          <p class="text-sm text-ink-400 mt-0.5">CRM overview for {{ orgStore.currentOrg?.name }}</p>
+          <h2 class="text-base font-semibold text-ink-900">{{ t('home.analytics') }}</h2>
+          <p class="text-sm text-ink-400 mt-0.5">{{ t('home.analyticsSubtitle', { org: orgStore.currentOrg?.name }) }}</p>
         </div>
         <button
           v-if="!dashStore.isLoading"
@@ -481,7 +483,7 @@ function scoreBar(score?: number) {
           @click="orgStore.currentOrgId && dashStore.fetchAll(orgStore.currentOrgId)"
         >
           <i class="pi pi-refresh text-xs" />
-          Refresh
+          {{ t('home.refresh') }}
         </button>
       </div>
 
@@ -511,7 +513,7 @@ function scoreBar(score?: number) {
         
         <div v-if="accessLevel === 'basic'" class="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
           <i class="pi pi-lock shrink-0" />
-          You have limited access. Contact your organization admin to unlock full analytics.
+          {{ t('home.limitedAccess') }}
         </div>
 
         
@@ -533,7 +535,7 @@ function scoreBar(score?: number) {
 
         
         <div v-if="isFullOrg && workspaceComparisonChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
-          <h3 class="text-sm font-semibold text-ink-700 mb-4">Workspace Comparison</h3>
+          <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('home.workspaceComparison') }}</h3>
           <div style="height: 220px">
             <Chart type="bar" :data="workspaceComparisonChartData" :options="workspaceComparisonChartOptions" />
           </div>
@@ -541,13 +543,13 @@ function scoreBar(score?: number) {
             <table class="w-full text-xs text-ink-700">
               <thead>
                 <tr class="text-ink-400 text-[10px] uppercase tracking-wide border-b border-line">
-                  <th class="text-left pb-2 font-medium">Workspace</th>
-                  <th class="text-right pb-2 font-medium">Pipeline</th>
-                  <th class="text-right pb-2 font-medium">Deals</th>
-                  <th class="text-right pb-2 font-medium">Win Rate</th>
-                  <th class="text-right pb-2 font-medium">Clients</th>
-                  <th class="text-right pb-2 font-medium">Members</th>
-                  <th class="text-right pb-2 font-medium">Top Stage</th>
+                  <th class="text-left pb-2 font-medium">{{ t('home.colWorkspace') }}</th>
+                  <th class="text-right pb-2 font-medium">{{ t('home.colPipeline') }}</th>
+                  <th class="text-right pb-2 font-medium">{{ t('home.colDeals') }}</th>
+                  <th class="text-right pb-2 font-medium">{{ t('home.colWinRate') }}</th>
+                  <th class="text-right pb-2 font-medium">{{ t('home.colClients') }}</th>
+                  <th class="text-right pb-2 font-medium">{{ t('home.colMembers') }}</th>
+                  <th class="text-right pb-2 font-medium">{{ t('home.colTopStage') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -578,10 +580,10 @@ function scoreBar(score?: number) {
           
           <div class="bg-white rounded-xl border border-line shadow-sm p-5">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-sm font-semibold text-ink-700">Deal Pipeline</h3>
+              <h3 class="text-sm font-semibold text-ink-700">{{ t('home.dealPipeline') }}</h3>
               <div v-if="dashStore.pipeline" class="flex items-center gap-3 text-xs text-ink-400">
-                <span>Win rate <strong class="text-emerald-600">{{ (dashStore.pipeline.conversionRate * 100).toFixed(0) }}%</strong></span>
-                <span>Avg close <strong class="text-ink-700">{{ dashStore.pipeline.avgDaysToClose }}d</strong></span>
+                <span>{{ t('home.winRateShort') }} <strong class="text-emerald-600">{{ (dashStore.pipeline.conversionRate * 100).toFixed(0) }}%</strong></span>
+                <span>{{ t('home.avgClose') }} <strong class="text-ink-700">{{ dashStore.pipeline.avgDaysToClose }}d</strong></span>
               </div>
             </div>
             <div v-if="pipelineChartData" style="height: 180px">
@@ -601,7 +603,7 @@ function scoreBar(score?: number) {
 
           
           <div class="bg-white rounded-xl border border-line shadow-sm p-5">
-            <h3 class="text-sm font-semibold text-ink-700 mb-4">Risk Distribution (Active Deals)</h3>
+            <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('home.riskDistribution') }}</h3>
             <div v-if="riskChartData" class="flex items-center gap-6">
               <div style="height: 180px; width: 180px; flex-shrink: 0">
                 <Chart type="doughnut" :data="riskChartData" :options="riskChartOptions" />
@@ -622,7 +624,7 @@ function scoreBar(score?: number) {
                   </div>
                 </div>
                 <p v-if="!dashStore.riskDistribution?.items.length" class="text-xs text-ink-400 italic">
-                  ML scores unavailable (no active deals or ML service offline).
+                  {{ t('home.mlUnavailable') }}
                 </p>
               </div>
             </div>
@@ -631,7 +633,7 @@ function scoreBar(score?: number) {
 
         
         <div class="bg-white rounded-xl border border-line shadow-sm p-5">
-          <h3 class="text-sm font-semibold text-ink-700 mb-4">6-Month Deal Trends</h3>
+          <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('home.trends6mo') }}</h3>
           <div v-if="trendsChartData" style="height: 220px">
             <Chart type="line" :data="trendsChartData" :options="trendsChartOptions" />
           </div>
@@ -642,7 +644,7 @@ function scoreBar(score?: number) {
 
           
           <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
-            <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Deals by Value</h3>
+            <h3 class="text-sm font-semibold text-ink-700 mb-3">{{ t('home.topDeals') }}</h3>
             <DataTable
               v-if="dashStore.topEntities?.topDeals.length"
               :value="dashStore.topEntities.topDeals"
@@ -650,7 +652,7 @@ function scoreBar(score?: number) {
               class="!text-xs"
               :pt="{ thead: { class: 'hidden' } }"
             >
-              <Column field="title" header="Deal">
+              <Column field="title" :header="t('home.colDeal')">
                 <template #body="{ data }">
                   <div>
                     <p class="font-medium text-ink-800 truncate max-w-[160px]">{{ data.title }}</p>
@@ -658,17 +660,17 @@ function scoreBar(score?: number) {
                   </div>
                 </template>
               </Column>
-              <Column field="value" header="Value">
+              <Column field="value" :header="t('home.colValue')">
                 <template #body="{ data }">
                   <span class="font-semibold text-ink-700">{{ formatCurrency(data.value) }}</span>
                 </template>
               </Column>
-              <Column field="stage" header="Stage">
+              <Column field="stage" :header="t('home.colStage')">
                 <template #body="{ data }">
                   <span class="text-ink-500">{{ data.stage ?? '—' }}</span>
                 </template>
               </Column>
-              <Column field="priority" header="Priority">
+              <Column field="priority" :header="t('home.colPriority')">
                 <template #body="{ data }">
                   <Tag
                     v-if="data.priority"
@@ -678,7 +680,7 @@ function scoreBar(score?: number) {
                   />
                 </template>
               </Column>
-              <Column field="closureScore" header="Score">
+              <Column field="closureScore" :header="t('home.colScore')">
                 <template #body="{ data }">
                   <div v-if="scoreBar(data.closureScore) != null" class="flex items-center gap-1.5">
                     <ProgressBar
@@ -692,12 +694,12 @@ function scoreBar(score?: number) {
                 </template>
               </Column>
             </DataTable>
-            <p v-else class="text-sm text-ink-400 italic">No deal data yet.</p>
+            <p v-else class="text-sm text-ink-400 italic">{{ t('home.noDealData') }}</p>
           </div>
 
           
           <div class="bg-white rounded-xl border border-line shadow-sm p-5 overflow-hidden">
-            <h3 class="text-sm font-semibold text-ink-700 mb-3">Top Clients by Lifetime Value</h3>
+            <h3 class="text-sm font-semibold text-ink-700 mb-3">{{ t('home.topClients') }}</h3>
             <DataTable
               v-if="dashStore.topEntities?.topClients.length"
               :value="dashStore.topEntities.topClients"
@@ -705,7 +707,7 @@ function scoreBar(score?: number) {
               class="!text-xs"
               :pt="{ thead: { class: 'hidden' } }"
             >
-              <Column field="name" header="Client">
+              <Column field="name" :header="t('home.colClient')">
                 <template #body="{ data }">
                   <div>
                     <p class="font-medium text-ink-800 truncate max-w-[160px]">{{ data.name }}</p>
@@ -713,21 +715,21 @@ function scoreBar(score?: number) {
                   </div>
                 </template>
               </Column>
-              <Column field="lifetimeValue" header="LTV">
+              <Column field="lifetimeValue" :header="t('home.colLtv')">
                 <template #body="{ data }">
                   <span class="font-semibold text-ink-700">{{ formatCurrency(data.lifetimeValue) }}</span>
                 </template>
               </Column>
-              <Column field="activeDeals" header="Active">
+              <Column field="activeDeals" :header="t('home.colActive')">
                 <template #body="{ data }">
                   <Tag
-                    :value="`${data.activeDeals} deals`"
+                    :value="t('home.dealsCount', { n: data.activeDeals })"
                     severity="secondary"
                     class="!text-[10px] !px-1.5 !py-0"
                   />
                 </template>
               </Column>
-              <Column field="avgClosureScore" header="Avg Score">
+              <Column field="avgClosureScore" :header="t('home.colAvgScore')">
                 <template #body="{ data }">
                   <div v-if="scoreBar(data.avgClosureScore) != null" class="flex items-center gap-1.5">
                     <ProgressBar
@@ -741,7 +743,7 @@ function scoreBar(score?: number) {
                 </template>
               </Column>
             </DataTable>
-            <p v-else class="text-sm text-ink-400 italic">No client data yet.</p>
+            <p v-else class="text-sm text-ink-400 italic">{{ t('home.noClientData') }}</p>
           </div>
         </div>
 

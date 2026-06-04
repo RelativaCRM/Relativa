@@ -78,24 +78,28 @@
 }
 
 .p-inputtext,
-.p-password-input {
+.p-password-input,
+.p-textarea {
   border: 1px solid #94a3b8 !important;
 }
 
 .p-inputtext:focus,
 .p-inputtext.p-focused,
+.p-textarea:focus,
 .p-password:has(.p-inputtext:focus) .p-inputtext {
   border-color: #2563eb !important;
   box-shadow: none !important;
   outline: none !important;
 }
 
-.p-inputtext.p-invalid {
+.p-inputtext.p-invalid,
+.p-textarea.p-invalid {
   border-color: #ef4444 !important;
 }
 
 .p-select {
   border: 1px solid #94a3b8 !important;
+  min-height: 2.75rem;
 }
 
 .p-select.p-focused {
@@ -127,20 +131,16 @@
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2563eb !important;
 }
 
+.p-toast {
+  width: 22rem;
+  max-width: calc(100vw - 2rem);
+}
+
 .p-toast-message {
-  border: 1px solid;
-}
-.p-toast-message-success {
-  border-color: #16a34a !important;
-}
-.p-toast-message-info {
-  border-color: #2563eb !important;
-}
-.p-toast-message-warn {
-  border-color: #d97706 !important;
-}
-.p-toast-message-error {
-  border-color: #dc2626 !important;
+  margin-bottom: 0.75rem;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .p-floatlabel:has(.p-invalid) label,

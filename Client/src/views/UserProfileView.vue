@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
@@ -11,6 +12,7 @@ import { useApiErrorHandler } from '@/api/errorToast';
 import { ApiError } from '@/api/http';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
@@ -94,8 +96,8 @@ async function handleSaveRole() {
     if (adminCount <= 1) {
       toast.add({
         severity: 'error',
-        summary: 'Conflict',
-        detail: 'Cannot remove the last workspace administrator.',
+        summary: t('userProfile.conflictSummary'),
+        detail: t('userProfile.lastAdminError'),
         life: 5000,
       });
       return;
@@ -111,12 +113,12 @@ async function handleSaveRole() {
     );
     toast.add({
       severity: 'success',
-      summary: 'Role updated',
-      detail: `User role changed to ${newRole?.displayName ?? newRoleName ?? ''}.`,
+      summary: t('userProfile.roleUpdated'),
+      detail: t('userProfile.roleChangedDetail', { role: newRole?.displayName ?? newRoleName ?? '' }),
       life: 3000,
     });
   } catch (err) {
-    notify(err, { fallback: 'Failed to update role.' });
+    notify(err, { fallback: t('userProfile.roleUpdateError') });
   } finally {
     savingRole.value = false;
   }
@@ -147,7 +149,7 @@ async function loadAll() {
       router.replace({ name: 'workspaces' });
       return;
     }
-    notify(err, { fallback: 'Failed to load user profile.' });
+    notify(err, { fallback: t('userProfile.loadError') });
   } finally {
     loading.value = false;
   }
@@ -176,7 +178,7 @@ onMounted(loadAll);
         <Button
           text
           icon="pi pi-arrow-left"
-          label="Back to users"
+          :label="t('userProfile.back')"
           severity="secondary"
           size="small"
           class="!px-1 !mb-1"
@@ -187,7 +189,7 @@ onMounted(loadAll);
             })
           "
         />
-        <h1 class="text-2xl font-bold text-ink-900">User profile</h1>
+        <h1 class="text-2xl font-bold text-ink-900">{{ t('userProfile.title') }}</h1>
         <p v-if="member" class="mt-1 text-sm text-ink-500">
           {{ member.firstName }} {{ member.lastName }} ({{ member.email }})
         </p>
@@ -205,34 +207,34 @@ onMounted(loadAll);
       v-else-if="!member"
       class="rounded-xl border border-line bg-white p-6 text-ink-600"
     >
-      User not found in this workspace.
+      {{ t('userProfile.notFound') }}
     </div>
 
     <div v-else class="space-y-6">
       <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-lg font-semibold text-ink-900 mb-4">Profile</h2>
+        <h2 class="text-lg font-semibold text-ink-900 mb-4">{{ t('userProfile.profile') }}</h2>
         <dl class="grid grid-cols-2 gap-4 text-sm">
           <div>
             <dt class="text-xs font-medium text-ink-500 uppercase tracking-wider">
-              First name
+              {{ t('members.firstName') }}
             </dt>
             <dd class="mt-1 text-ink-900">{{ member.firstName }}</dd>
           </div>
           <div>
             <dt class="text-xs font-medium text-ink-500 uppercase tracking-wider">
-              Last name
+              {{ t('members.lastName') }}
             </dt>
             <dd class="mt-1 text-ink-900">{{ member.lastName }}</dd>
           </div>
           <div>
             <dt class="text-xs font-medium text-ink-500 uppercase tracking-wider">
-              Email
+              {{ t('members.email') }}
             </dt>
             <dd class="mt-1 text-ink-700">{{ member.email }}</dd>
           </div>
           <div>
             <dt class="text-xs font-medium text-ink-500 uppercase tracking-wider">
-              Joined
+              {{ t('members.colJoined') }}
             </dt>
             <dd class="mt-1 text-ink-700">
               {{ new Date(member.joinedAt).toLocaleDateString() }}
@@ -242,16 +244,16 @@ onMounted(loadAll);
       </div>
 
       <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-lg font-semibold text-ink-900 mb-1">Workspace role</h2>
+        <h2 class="text-lg font-semibold text-ink-900 mb-1">{{ t('userProfile.workspaceRole') }}</h2>
         <p class="text-sm text-ink-500 mb-4">
           <span v-if="isWorkspaceAdmin && !isSelf">
-            Change the role and click Save to apply.
+            {{ t('userProfile.adminHint') }}
           </span>
           <span v-else-if="isSelf">
-            You cannot change your own role.
+            {{ t('userProfile.selfHint') }}
           </span>
           <span v-else>
-            Only workspace administrators can change roles.
+            {{ t('userProfile.nonAdminHint') }}
           </span>
         </p>
 
@@ -260,7 +262,7 @@ onMounted(loadAll);
           class="grid grid-cols-[1fr_auto] items-end gap-3"
         >
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-ink-600">Role</label>
+            <label class="text-xs font-medium text-ink-600">{{ t('members.role') }}</label>
             <Select
               v-model="selectedRoleId"
               :options="roleOptions"
@@ -271,7 +273,7 @@ onMounted(loadAll);
             />
           </div>
           <Button
-            label="Save"
+            :label="t('userProfile.save')"
             icon="pi pi-check"
             :loading="savingRole"
             :disabled="!canSave"
@@ -280,7 +282,7 @@ onMounted(loadAll);
         </div>
 
         <div v-else class="flex items-center gap-3">
-          <span class="text-sm text-ink-500">Current role:</span>
+          <span class="text-sm text-ink-500">{{ t('userProfile.currentRole') }}</span>
           <Tag
             :value="member.roleDisplayName"
             :severity="roleSeverity(member.roleName)"

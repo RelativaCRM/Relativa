@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import DataTable, {
   type DataTablePageEvent,
@@ -22,6 +23,7 @@ import {
 import { ApiError } from '@/api/http';
 import { scopeDisplayName, scopeBadgeFullClass } from '@/utils/auditBadge';
 
+const { t } = useI18n();
 const router = useRouter();
 const wsStore = useWorkspaceStore();
 const orgStore = useOrganizationStore();
@@ -44,14 +46,14 @@ type ScopeOption = { label: string; value: AuditScope };
 const scopeOptions = computed<ScopeOption[]>(() => {
   const opts: ScopeOption[] = [];
   if (canViewWorkspaceScope.value) {
-    opts.push({ label: 'Entities', value: 'entity' });
-    opts.push({ label: 'Workspace', value: 'workspace' });
+    opts.push({ label: t('audit.scopeEntities'), value: 'entity' });
+    opts.push({ label: t('audit.scopeWorkspace'), value: 'workspace' });
   }
   if (canViewOrgScope.value) {
-    opts.push({ label: 'Organization', value: 'organization' });
+    opts.push({ label: t('audit.scopeOrganization'), value: 'organization' });
   }
   if (canViewWorkspaceScope.value || canViewOrgScope.value) {
-    opts.push({ label: 'Users', value: 'user' });
+    opts.push({ label: t('audit.scopeUsers'), value: 'user' });
   }
   return opts;
 });
@@ -108,7 +110,7 @@ function buildQuery(): AuditLogQuery | null {
 async function load() {
   const q = buildQuery();
   if (!q) {
-    errorMessage.value = 'Workspace context is required to view the audit log.';
+    errorMessage.value = t('audit.wsContextRequired');
     return;
   }
   errorMessage.value = null;
@@ -116,7 +118,7 @@ async function load() {
     await auditStore.fetchRows(q);
   } catch (err) {
     errorMessage.value =
-      err instanceof ApiError ? err.message : 'Failed to load audit log.';
+      err instanceof ApiError ? err.message : t('audit.loadError');
   }
 }
 
@@ -232,20 +234,20 @@ function toggle(rowId: string, slot: 'old' | 'next') {
   <section v-if="canViewPage" class="max-w-6xl">
     <div class="flex items-center justify-between mb-6 gap-4">
       <div class="min-w-0">
-        <h1 class="text-2xl font-bold text-ink-900">Audit log</h1>
+        <h1 class="text-2xl font-bold text-ink-900">{{ t('audit.title') }}</h1>
         <p class="mt-3 text-sm text-ink-500">
-          Change history for
+          {{ t('audit.changeHistoryFor') }}
           <span v-if="wsStore.currentWorkspace" class="font-semibold text-brand-600">
             {{ wsStore.currentWorkspace.name }}
           </span>
           <span v-else class="font-semibold text-brand-600">
-            {{ orgStore.currentOrg?.name ?? 'this account' }}
+            {{ orgStore.currentOrg?.name ?? t('audit.thisAccount') }}
           </span>
         </p>
       </div>
       <Button
         icon="pi pi-refresh"
-        label="Refresh"
+        :label="t('audit.refresh')"
         severity="secondary"
         :loading="auditStore.loading"
         @click="load"
@@ -257,7 +259,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
       class="rounded-xl border border-line bg-white p-4 mb-4 flex flex-wrap items-end gap-3"
     >
       <div class="flex flex-col gap-1">
-        <label class="text-xs font-medium text-ink-600">Scope</label>
+        <label class="text-xs font-medium text-ink-600">{{ t('audit.scope') }}</label>
         <Select
           v-model="scope"
           :options="scopeOptions"
@@ -268,22 +270,22 @@ function toggle(rowId: string, slot: 'old' | 'next') {
       </div>
 
       <div class="flex flex-col gap-1">
-        <label class="text-xs font-medium text-ink-600">Date range</label>
+        <label class="text-xs font-medium text-ink-600">{{ t('audit.dateRange') }}</label>
         <DatePicker
           v-model="dateRange"
           selection-mode="range"
           :manual-input="false"
           show-button-bar
-          placeholder="From — To"
+          :placeholder="t('audit.dateRangePlaceholder')"
           class="!h-10 min-w-[260px]"
         />
       </div>
 
       <div class="flex flex-col gap-1">
-        <label class="text-xs font-medium text-ink-600">Action</label>
+        <label class="text-xs font-medium text-ink-600">{{ t('audit.action') }}</label>
         <InputText
           v-model="actionFilter"
-          placeholder="e.g. Entity updated"
+          :placeholder="t('audit.actionPlaceholder')"
           class="!h-10 min-w-[200px]"
           @keydown.enter="applyFilters"
         />
@@ -291,14 +293,14 @@ function toggle(rowId: string, slot: 'old' | 'next') {
 
       <div class="flex gap-2 ml-auto">
         <Button
-          label="Reset"
+          :label="t('audit.reset')"
           severity="secondary"
           text
           :disabled="auditStore.loading"
           @click="resetFilters"
         />
         <Button
-          label="Apply"
+          :label="t('audit.apply')"
           icon="pi pi-filter"
           :loading="auditStore.loading"
           @click="applyFilters"
@@ -333,11 +335,11 @@ function toggle(rowId: string, slot: 'old' | 'next') {
       >
         <template #empty>
           <div class="text-center py-10 text-ink-500">
-            No audit entries match the current filters.
+            {{ t('audit.empty') }}
           </div>
         </template>
 
-        <Column field="changedAt" header="Date" style="width: 180px">
+        <Column field="changedAt" :header="t('audit.colDate')" style="width: 180px">
           <template #body="{ data }">
             <span class="text-ink-700 whitespace-nowrap">
               {{ formatDate(data.changedAt) }}
@@ -345,7 +347,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
           </template>
         </Column>
 
-        <Column field="entity_type" header="Type" style="width: 150px">
+        <Column field="entity_type" :header="t('audit.colType')" style="width: 150px">
           <template #body="{ data }">
             <span :class="scopeBadgeFullClass(data.entity_type)">
               {{ scopeDisplayName(data.entity_type) }}
@@ -353,7 +355,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
           </template>
         </Column>
 
-        <Column field="action" header="Action" style="width: 220px">
+        <Column field="action" :header="t('audit.colAction')" style="width: 220px">
           <template #body="{ data }">
             <span class="text-xs text-ink-700">{{ humanizeAction(data.action) }}</span>
             <div v-if="data.fieldName" class="text-[11px] text-ink-400 mt-0.5">
@@ -362,7 +364,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
           </template>
         </Column>
 
-        <Column field="actor" header="Author" style="width: 220px">
+        <Column field="actor" :header="t('audit.colAuthor')" style="width: 220px">
           <template #body="{ data }">
             <div v-if="data.actor" class="leading-tight">
               <div class="text-sm text-ink-800 truncate">
@@ -379,39 +381,39 @@ function toggle(rowId: string, slot: 'old' | 'next') {
           </template>
         </Column>
 
-        <Column header="Target" style="width: 180px">
+        <Column :header="t('audit.colTarget')" style="width: 180px">
           <template #body="{ data }">
             <button
               v-if="entityIdOf(data) && targetWorkspaceId(data)"
               class="text-brand-600 hover:underline text-sm"
               @click="goToEntity(data)"
             >
-              entity #{{ entityIdOf(data) }}
+              {{ t('audit.targetEntity', { id: entityIdOf(data) }) }}
               <i class="pi pi-arrow-right text-[10px] ml-1" />
             </button>
             <span
               v-else-if="data.workspace?.name"
               class="text-sm text-ink-700"
             >
-              ws: {{ data.workspace.name }}
+              {{ t('audit.targetWorkspace', { name: data.workspace.name }) }}
             </span>
             <span
               v-else-if="data.organization?.name"
               class="text-sm text-ink-700"
             >
-              org: {{ data.organization.name }}
+              {{ t('audit.targetOrganization', { name: data.organization.name }) }}
             </span>
             <span
               v-else-if="data.targetUser?.email"
               class="text-sm text-ink-700"
             >
-              user: {{ data.targetUser.email }}
+              {{ t('audit.targetUser', { email: data.targetUser.email }) }}
             </span>
             <span v-else class="text-ink-400">—</span>
           </template>
         </Column>
 
-        <Column header="Old / New value">
+        <Column :header="t('audit.colOldNew')">
           <template #body="{ data }">
             <div class="flex flex-col gap-1.5">
               <div>
@@ -429,7 +431,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
                         : 'pi-chevron-right',
                     ]"
                   />
-                  <span class="font-medium">old</span>
+                  <span class="font-medium">{{ t('audit.old') }}</span>
                   <span v-if="isEmpty(data.oldValue)" class="text-ink-400">—</span>
                 </button>
                 <pre
@@ -452,7 +454,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
                         : 'pi-chevron-right',
                     ]"
                   />
-                  <span class="font-medium">new</span>
+                  <span class="font-medium">{{ t('audit.new') }}</span>
                   <span v-if="isEmpty(data.newValue)" class="text-ink-400">—</span>
                 </button>
                 <pre
@@ -471,8 +473,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
     <div class="rounded-xl border border-line bg-white p-10 text-center">
       <i class="pi pi-lock text-3xl text-ink-400" />
       <p class="mt-3 text-sm text-ink-500">
-        You need workspace analytics visibility or equivalent organization-level
-        permissions to view the audit log.
+        {{ t('audit.noPermission') }}
       </p>
     </div>
   </section>

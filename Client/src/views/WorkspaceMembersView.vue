@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
@@ -14,6 +15,7 @@ import { useApiErrorHandler } from '@/api/errorToast';
 import { roleBadgeFullClass } from '@/utils/roleBadge';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
@@ -113,7 +115,7 @@ async function openAddMemberDialog() {
     try {
       await orgStore.fetchMembers();
     } catch (err) {
-      notify(err, { fallback: 'Could not load organization members.' });
+      notify(err, { fallback: t('wsMembers.loadOrgMembersError') });
     }
   }
 }
@@ -136,12 +138,12 @@ async function handleAddMember() {
       addMemberUserId.value,
       addMemberRoleId.value,
     );
-    addMemberSuccess.value = 'Member added to workspace.';
+    addMemberSuccess.value = t('wsMembers.memberAdded');
     addMemberUserId.value = null;
     addMemberRoleId.value = null;
     await orgStore.fetchMembers();
   } catch (err) {
-    notify(err, { fallback: 'Failed to add member.' });
+    notify(err, { fallback: t('wsMembers.addMemberError') });
   } finally {
     addMemberSending.value = false;
   }
@@ -169,8 +171,8 @@ async function handleRoleChange(userId: number, newRoleId: number) {
     if (adminCount <= 1) {
       toast.add({
         severity: 'error',
-        summary: 'Conflict',
-        detail: 'Cannot remove the last full-authority workspace member.',
+        summary: t('wsMembers.conflictSummary'),
+        detail: t('wsMembers.lastAdminError'),
         life: 5000,
       });
       await wsStore.fetchMembers(workspaceId.value);
@@ -184,11 +186,11 @@ async function handleRoleChange(userId: number, newRoleId: number) {
     await wsStore.changeMemberRole(workspaceId.value, userId, newRoleId);
     toast.add({
       severity: 'success',
-      summary: 'Role updated',
+      summary: t('wsMembers.roleUpdated'),
       life: 3000,
     });
   } catch (err) {
-    notify(err, { fallback: 'Failed to update role.' });
+    notify(err, { fallback: t('wsMembers.roleUpdateError') });
   } finally {
     await wsStore.fetchMembers(workspaceId.value);
     roleSelectVersion.value++;
@@ -203,7 +205,7 @@ async function handleRemove(userId: number) {
   try {
     await wsStore.removeMember(workspaceId.value, userId);
   } catch (err) {
-    notify(err, { fallback: 'Failed to remove member.' });
+    notify(err, { fallback: t('wsMembers.removeError') });
   } finally {
     removingId.value = null;
   }
@@ -228,7 +230,7 @@ async function loadAll() {
       router.replace({ name: 'workspaces' });
       return;
     }
-    notify(err, { fallback: 'Failed to load workspace.' });
+    notify(err, { fallback: t('wsMembers.loadError') });
   } finally {
     loading.value = false;
   }
@@ -248,21 +250,21 @@ onMounted(loadAll);
         <Button
           text
           icon="pi pi-arrow-left"
-          label="Workspaces"
+          :label="t('nav.workspaces')"
           severity="secondary"
           size="small"
           class="!px-1 !mb-1"
           @click="router.push({ name: 'workspaces' })"
         />
         <h1 class="text-2xl font-bold text-ink-900">
-          {{ wsStore.currentWorkspace?.name ?? 'Workspace' }}
+          {{ wsStore.currentWorkspace?.name ?? t('wsMembers.fallbackName') }}
         </h1>
-        <p class="mt-3 text-sm text-ink-500">Manage workspace members.</p>
+        <p class="mt-3 text-sm text-ink-500">{{ t('wsMembers.subtitle') }}</p>
       </div>
       <div class="flex items-center gap-2">
         <Button
           icon="pi pi-database"
-          label="Entities"
+          :label="t('wsMembers.entities')"
           severity="secondary"
           @click="
             router.push({
@@ -274,7 +276,7 @@ onMounted(loadAll);
         <Button
           v-if="canAddMember"
           icon="pi pi-user-plus"
-          label="Add member"
+          :label="t('wsMembers.addMember')"
           @click="openAddMemberDialog"
         />
       </div>
@@ -288,10 +290,10 @@ onMounted(loadAll);
           <tr
             class="border-b border-line bg-surface text-left text-xs font-medium text-ink-500 uppercase tracking-wider"
           >
-            <th class="px-5 py-3">Name</th>
-            <th class="px-5 py-3">Email</th>
-            <th class="px-5 py-3">Role</th>
-            <th class="px-5 py-3">Joined</th>
+            <th class="px-5 py-3">{{ t('members.colName') }}</th>
+            <th class="px-5 py-3">{{ t('members.colEmail') }}</th>
+            <th class="px-5 py-3">{{ t('members.colRole') }}</th>
+            <th class="px-5 py-3">{{ t('members.colJoined') }}</th>
             <th class="px-5 py-3 w-20"></th>
           </tr>
         </thead>
@@ -343,13 +345,13 @@ onMounted(loadAll);
         v-if="!wsStore.members.length"
         class="py-10 text-center text-sm text-ink-500"
       >
-        No members yet.
+        {{ t('wsMembers.noMembers') }}
       </div>
     </div>
 
     <Dialog
       v-model:visible="showAddMember"
-      header="Add organization member to workspace"
+      :header="t('wsMembers.addDialogTitle')"
       modal
       :style="{ width: '460px' }"
       @hide="closeAddMemberDialog"
@@ -360,20 +362,19 @@ onMounted(loadAll);
         @submit.prevent="handleAddMember"
       >
         <p class="text-xs text-ink-500">
-          Only users who are already in the parent organization can be added.
-          Invite them to the organization first if they are not listed.
+          {{ t('wsMembers.addHint') }}
         </p>
 
         <div class="flex flex-col gap-1.5">
           <label class="text-xs font-medium text-ink-600">
-            Member <span class="text-danger">*</span>
+            {{ t('wsMembers.memberLabel') }} <span class="text-danger">*</span>
           </label>
           <Select
             v-model="addMemberUserId"
             :options="orgMemberOptions"
             option-label="label"
             option-value="value"
-            placeholder="Select user"
+            :placeholder="t('wsMembers.selectUser')"
             class="!h-10"
             :filter="true"
           />
@@ -381,14 +382,14 @@ onMounted(loadAll);
 
         <div class="flex flex-col gap-1.5">
           <label class="text-xs font-medium text-ink-600">
-            Workspace role <span class="text-danger">*</span>
+            {{ t('wsMembers.workspaceRole') }} <span class="text-danger">*</span>
           </label>
           <Select
             v-model="addMemberRoleId"
             :options="roleOptions"
             option-label="label"
             option-value="value"
-            placeholder="Select role"
+            :placeholder="t('wsMembers.selectRole')"
             class="!h-10"
           />
         </div>
@@ -405,14 +406,14 @@ onMounted(loadAll);
         <div class="flex justify-end gap-2">
           <Button
             type="button"
-            label="Close"
+            :label="t('wsMembers.close')"
             severity="secondary"
             text
             @click="closeAddMemberDialog"
           />
           <Button
             type="submit"
-            label="Add to workspace"
+            :label="t('wsMembers.addToWorkspace')"
             :disabled="!canSubmitAdd"
             :loading="addMemberSending"
           />

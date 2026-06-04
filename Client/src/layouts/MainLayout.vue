@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router';
-import Dialog from 'primevue/dialog';
-import InputText from 'primevue/inputtext';
-import Button from 'primevue/button';
-import Message from 'primevue/message';
+import { useRoute, useRouter, RouterLink, RouterView, type RouteLocationRaw } from 'vue-router';
 import BrandMark from '@/components/layout/BrandMark.vue';
 import SettingsDialog from '@/components/layout/SettingsDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
-import { normalizeError } from '@/api/errors';
+import { useLocaleSwitch } from '@/i18n/useLocale';
+import type { AppLocale } from '@/i18n';
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -22,62 +19,14 @@ const entityStore = useEntityStore();
 const route = useRoute();
 const router = useRouter();
 
-const showOrgPanel = ref(false);
-const showWsPanel = ref(false);
 const showProfilePanel = ref(false);
 const showSettings = ref(false);
-const showCreateWs = ref(false);
-const orgExpanded = ref(true);
-const wsExpanded = ref(true);
-const wsListExpanded = ref(false);
-
-
-const newWsName = ref('');
-const creatingWs = ref(false);
-const createWsError = ref<string | null>(null);
-
-function openCreateWs() {
-  showWsPanel.value = false;
-  newWsName.value = '';
-  createWsError.value = null;
-  showCreateWs.value = true;
-}
-
-function closeCreateWs() {
-  showCreateWs.value = false;
-  newWsName.value = '';
-  createWsError.value = null;
-}
-
-async function handleCreateWs() {
-  if (!newWsName.value.trim() || creatingWs.value || !orgStore.currentOrgId) return;
-  creatingWs.value = true;
-  createWsError.value = null;
-  try {
-    const ws = await wsStore.createWorkspace(newWsName.value.trim(), orgStore.currentOrgId);
-    closeCreateWs();
-    router.push({ name: 'workspace-members', params: { workspaceId: String(ws.id) } });
-  } catch (err) {
-    createWsError.value = normalizeError(err, t('workspace.createError')).message;
-  } finally {
-    creatingWs.value = false;
-  }
-}
+const showNotifications = ref(false);
 
 const userInitials = computed(() => {
   if (!auth.user) return '';
   return `${auth.user.firstName?.[0] ?? ''}${auth.user.lastName?.[0] ?? ''}`.toUpperCase();
 });
-
-function selectOrg(orgId: number) {
-  handleOrgChange(orgId);
-  showOrgPanel.value = false;
-}
-
-function selectWorkspace(wsId: number) {
-  handleWorkspaceChange(wsId);
-  showWsPanel.value = false;
-}
 
 const inWorkspaceShell = computed(() => /\/w\/\d+/.test(route.path));
 
@@ -97,32 +46,6 @@ const canViewAuditLog = computed(() => {
 const canManageOrgSettings = computed(() =>
   orgStore.currentOrg?.myPermissions?.includes('manage_org_settings') ?? false,
 );
-
-async function handleOrgChange(orgId: number | null) {
-  if (orgId == null) return;
-  orgStore.setCurrentOrg(orgId);
-  try {
-    await wsStore.fetchWorkspaces(orgId);
-  } catch {
-    return;
-  }
-  const paramWs = Number(route.params.workspaceId);
-  if (
-    Number.isFinite(paramWs) &&
-    !wsStore.workspaces.some((w) => w.id === paramWs)
-  ) {
-    await router.replace({ name: 'workspaces' });
-  }
-}
-
-async function handleWorkspaceChange(wsId: number | null) {
-  if (wsId == null) return;
-  wsStore.setCurrentWorkspace(wsId);
-  await router.push({
-    name: 'workspace-dashboard',
-    params: { workspaceId: String(wsId) },
-  });
-}
 
 function handleLogout() {
   auth.logout();
@@ -146,6 +69,97 @@ function openSettings() {
   showProfilePanel.value = false;
   showSettings.value = true;
 }
+
+const { current: currentLocale, changeLocale, locales } = useLocaleSwitch();
+
+const openSubmenu = ref<'lang' | 'appearance' | null>(null);
+function toggleSubmenu(which: 'lang' | 'appearance') {
+  openSubmenu.value = openSubmenu.value === which ? null : which;
+}
+
+const collapsed = ref(localStorage.getItem('sidebarCollapsed') === '1');
+function toggleCollapsed() {
+  collapsed.value = !collapsed.value;
+  localStorage.setItem('sidebarCollapsed', collapsed.value ? '1' : '0');
+}
+
+type Appearance = 'light' | 'dark' | 'system';
+const appearance = ref<Appearance>(
+  (localStorage.getItem('appearance') as Appearance | null) ?? 'system',
+);
+const appearanceOptions = computed(() => [
+  { value: 'light' as const, label: t('prefs.themeLight') },
+  { value: 'dark' as const, label: t('prefs.themeDark') },
+  { value: 'system' as const, label: t('prefs.themeSystem') },
+]);
+const appearanceLabel = computed(
+  () => appearanceOptions.value.find((o) => o.value === appearance.value)?.label ?? '',
+);
+const localeLabel = computed(() => t(`language.${currentLocale.value}`));
+
+async function selectLanguage(next: AppLocale) {
+  openSubmenu.value = null;
+  if (next !== currentLocale.value) {
+    await changeLocale(next);
+  }
+}
+
+function selectAppearance(next: Appearance) {
+  appearance.value = next;
+  localStorage.setItem('appearance', next);
+  openSubmenu.value = null;
+}
+
+function sectionLabel(name: string): string | null {
+  switch (name) {
+    case 'members':
+    case 'workspace-members':
+      return t('nav.members');
+    case 'workspaces':
+      return t('nav.workspaces');
+    case 'audit-log':
+      return t('nav.auditLog');
+    case 'graph':
+      return t('nav.graph');
+    case 'account':
+      return t('nav.account');
+    case 'org-settings':
+    case 'workspace-settings':
+      return t('nav.settings');
+    case 'workspace-dashboard':
+      return t('nav.dashboard');
+    case 'workspace-entities': {
+      const typeName = route.query.entityType;
+      if (typeof typeName === 'string') {
+        return entityStore.standaloneTypes.find((x) => x.name === typeName)?.displayName ?? typeName;
+      }
+      return t('nav.dashboard');
+    }
+    default:
+      return null;
+  }
+}
+
+const breadcrumbs = computed(() => {
+  const items: Array<{ label: string; to?: RouteLocationRaw }> = [
+    { label: t('nav.home'), to: { name: 'home' } },
+  ];
+  if (orgStore.currentOrg) {
+    items.push({ label: orgStore.currentOrg.name, to: { name: 'home' } });
+  }
+  if (inWorkspaceShell.value) {
+    items.push({ label: t('nav.workspaces'), to: { name: 'workspaces' } });
+    if (wsStore.currentWorkspace) {
+      items.push({
+        label: wsStore.currentWorkspace.name,
+        to: { name: 'workspace-dashboard', params: { workspaceId: workspaceIdStr.value } },
+      });
+    }
+  }
+  const section = sectionLabel(String(route.name ?? ''));
+  if (section) items.push({ label: section });
+  return items;
+});
 
 watch(
   () => orgStore.currentOrgId,
@@ -188,126 +202,24 @@ onMounted(async () => {
 
     
     <div
-      v-if="showOrgPanel || showWsPanel || showProfilePanel"
-      class="fixed inset-0 z-40 bg-black/20"
-      @click="showOrgPanel = false; showWsPanel = false; showProfilePanel = false"
+      v-if="showProfilePanel || showNotifications"
+      class="fixed inset-0 z-40"
+      @click="showProfilePanel = false; showNotifications = false"
     />
 
-
     <div
-      v-if="showOrgPanel"
-      class="fixed left-16 lg:left-[248px] top-24 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
+      v-if="showNotifications"
+      class="fixed right-4 top-[60px] z-50 w-80 max-w-[calc(100vw-2rem)] bg-white shadow-xl border border-line"
     >
-      <div class="px-4 py-2.5 border-b border-line flex items-center justify-between">
-        <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">{{ t('nav.organization') }}</span>
-        <button
-          type="button"
-          class="w-5 h-5 flex items-center justify-center text-brand-600 hover:bg-brand-50"
-          @click="showOrgPanel = false; router.push({ name: 'onboarding' })"
-        >
-          <i class="pi pi-plus text-[10px]" />
-        </button>
+      <div class="flex items-center justify-between px-4 py-3 border-b border-line">
+        <span class="text-sm font-semibold text-ink-900">{{ t('nav.notifications') }}</span>
       </div>
-      <div class="overflow-y-auto max-h-72 divide-y divide-slate-100">
-        <button
-          v-for="org in orgStore.organizations"
-          :key="org.id"
-          type="button"
-          :class="[
-            'w-full text-left px-4 py-2.5 text-sm hover:bg-surface flex items-center justify-between gap-2',
-            org.id === orgStore.currentOrgId ? 'text-brand-700 font-medium bg-brand-50' : 'text-ink-700',
-          ]"
-          @click="selectOrg(org.id)"
-        >
-          <span class="truncate">{{ org.name }}</span>
-          <i v-if="org.id === orgStore.currentOrgId" class="pi pi-check text-xs text-brand-600 shrink-0" />
-        </button>
+      <div class="px-4 py-10 text-center text-sm text-ink-400">
+        <i class="pi pi-bell-slash text-2xl block mb-2 text-ink-300" />
+        {{ t('notifications.empty') }}
       </div>
     </div>
 
-
-    <div
-      v-if="showWsPanel"
-      class="fixed left-16 lg:left-[248px] top-44 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
-    >
-      <div class="px-4 py-2.5 border-b border-line flex items-center justify-between">
-        <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">{{ t('nav.workspace') }}</span>
-        <button
-          type="button"
-          class="w-5 h-5 flex items-center justify-center text-brand-600 hover:bg-brand-50"
-          @click="openCreateWs"
-        >
-          <i class="pi pi-plus text-[10px]" />
-        </button>
-      </div>
-      <div class="overflow-y-auto max-h-64 divide-y divide-slate-100">
-        <button
-          v-for="ws in wsStore.workspaces"
-          :key="ws.id"
-          type="button"
-          :class="[
-            'w-full text-left px-4 py-2.5 text-sm hover:bg-surface flex items-center justify-between gap-2',
-            ws.id === wsStore.currentWorkspaceId ? 'text-brand-700 font-medium bg-brand-50' : 'text-ink-700',
-          ]"
-          @click="selectWorkspace(ws.id)"
-        >
-          <span class="truncate">{{ ws.name }}</span>
-          <i v-if="ws.id === wsStore.currentWorkspaceId" class="pi pi-check text-xs text-brand-600 shrink-0" />
-        </button>
-      </div>
-    </div>
-
-
-    <div
-      v-if="showProfilePanel"
-      class="fixed left-16 lg:left-[248px] bottom-4 z-50 w-64 bg-white shadow-xl border border-line overflow-hidden"
-    >
-      <div class="flex items-center gap-3 px-4 py-4 border-b border-line">
-        <div class="w-10 h-10 rounded-full bg-brand-600 text-white text-sm font-semibold flex items-center justify-center shrink-0">
-          {{ userInitials }}
-        </div>
-        <div class="min-w-0 flex-1">
-          <p class="text-sm font-semibold text-ink-900 truncate leading-tight">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</p>
-          <p class="text-xs text-ink-400 truncate leading-tight">{{ auth.user?.email }}</p>
-        </div>
-        <div class="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            class="w-8 h-8 flex items-center justify-center text-ink-500 hover:bg-brand-50 hover:text-brand-700 transition-colors"
-            :title="t('nav.account')"
-            :aria-label="t('nav.account')"
-            @click="openAccount"
-          >
-            <i class="pi pi-user text-sm" />
-          </button>
-          <button
-            type="button"
-            class="w-8 h-8 flex items-center justify-center text-ink-500 hover:bg-brand-50 hover:text-brand-700 transition-colors"
-            :title="t('nav.settings')"
-            :aria-label="t('nav.settings')"
-            @click="openSettings"
-          >
-            <i class="pi pi-cog text-sm" />
-          </button>
-        </div>
-      </div>
-      <div class="py-1">
-        <button
-          type="button"
-          class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left text-ink-700 hover:bg-brand-50 hover:text-brand-700 transition-colors"
-          @click="switchAccount"
-        >
-          <i class="pi pi-sync text-ink-400 text-xs" />{{ t('nav.switchAccount') }}
-        </button>
-        <button
-          type="button"
-          class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left text-ink-700 hover:bg-brand-50 hover:text-brand-700 transition-colors"
-          @click="handleLogout"
-        >
-          <i class="pi pi-sign-out text-ink-400 text-xs" />{{ t('nav.signOut') }}
-        </button>
-      </div>
-    </div>
 
     <header
       class="h-16 border-b border-line bg-white/95 backdrop-blur-sm flex items-center px-6 gap-4 sticky top-0 z-30"
@@ -338,16 +250,31 @@ onMounted(async () => {
 
       <button
         type="button"
-        class="ml-auto w-9 h-9 flex items-center justify-center rounded-lg text-ink-500 hover:bg-brand-50 hover:text-brand-700 transition-colors"
-        :aria-label="t('settings.title')"
-        @click="showSettings = true"
+        class="ml-auto relative w-9 h-9 flex items-center justify-center border border-line text-ink-600 hover:bg-brand-50 hover:text-brand-700 hover:border-brand-200 transition-colors"
+        :class="{ 'bg-brand-50 text-brand-700 border-brand-200': showNotifications }"
+        :title="t('nav.notifications')"
+        :aria-label="t('nav.notifications')"
+        @click="showNotifications = !showNotifications"
       >
-        <i class="pi pi-cog text-base" />
+        <i class="pi pi-bell text-base" />
       </button>
     </header>
 
     <div class="flex-1 flex">
-      <aside class="sidebar w-14 lg:w-60 shrink-0 border-r border-line bg-white py-4 px-1.5 lg:px-3 flex flex-col sticky top-16 h-[calc(100vh-4rem)] overflow-hidden">
+      <aside
+        class="sidebar w-14 lg:w-60 shrink-0 border-r border-line bg-white py-4 px-1.5 lg:px-3 flex flex-col sticky top-16 h-[calc(100vh-4rem)] overflow-hidden z-40"
+        :class="{ 'sidebar--collapsed': collapsed }"
+      >
+        <button
+          type="button"
+          class="sidebar-toggle"
+          :class="collapsed ? 'self-center' : 'self-end'"
+          :title="collapsed ? t('nav.expand') : t('nav.collapse')"
+          :aria-label="collapsed ? t('nav.expand') : t('nav.collapse')"
+          @click="toggleCollapsed"
+        >
+          <i :class="['pi text-sm', collapsed ? 'pi-bars' : 'pi-angle-left']" />
+        </button>
 
         <nav class="nav flex flex-col text-sm text-ink-700 flex-1 overflow-y-auto">
 
@@ -358,145 +285,67 @@ onMounted(async () => {
 
 
           <div class="flex flex-col">
-            <div v-if="orgStore.currentOrg" class="relative flex items-stretch nav-entry" :class="{ 'nav-entry--active': showOrgPanel }">
-              <button
-                type="button"
-                class="group nav-entry-main flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
-                :title="orgStore.currentOrg.name"
-                @click="orgExpanded = !orgExpanded"
-              >
-                <span class="relative flex items-center justify-center w-4 h-4 shrink-0">
-                  <i class="pi pi-briefcase text-[13px] absolute group-hover:opacity-0 transition-opacity" />
-                  <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', orgExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
-                </span>
-                <span class="nav-label truncate font-medium">{{ orgStore.currentOrg.name }}</span>
-              </button>
-              <button
-                type="button"
-                :class="['nav-label flex items-center px-2 shrink-0 transition-colors', showOrgPanel ? 'bg-brand-50 text-brand-600' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600']"
-                @click="showOrgPanel = true"
-              >
-                <i class="pi pi-chevron-right text-[10px]" />
-              </button>
-            </div>
+            <RouterLink
+              v-if="orgStore.currentOrg"
+              :to="{ name: 'organizations' }"
+              class="nav-link"
+              active-class="nav-link--active"
+              :title="orgStore.currentOrg.name"
+            >
+              <i class="pi pi-building" /><span class="nav-label truncate font-medium">{{ orgStore.currentOrg.name }}</span>
+            </RouterLink>
 
-            <div v-if="orgExpanded" class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
+            <div class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
               <RouterLink to="/members" class="nav-link" active-class="nav-link--active" :title="t('nav.members')">
                 <i class="pi pi-users" /><span class="nav-label">{{ t('nav.members') }}</span>
               </RouterLink>
               <RouterLink to="/graph" class="nav-link" active-class="nav-link--active" :title="t('nav.graph')">
                 <i class="pi pi-share-alt" /><span class="nav-label">{{ t('nav.graph') }}</span>
               </RouterLink>
-              <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
-
-
-              <div class="relative flex items-stretch nav-entry" :class="{ 'nav-entry--active': showWsPanel }">
-                <button
-                  type="button"
-                  class="group nav-entry-main flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
-                  title="Workspaces"
-                  @click="wsStore.workspaces.length ? (wsListExpanded = !wsListExpanded) : undefined"
-                >
-                  <span class="relative flex items-center justify-center w-4 h-4 shrink-0">
-                    <i class="pi pi-folder text-[13px] absolute group-hover:opacity-0 transition-opacity" />
-                    <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', wsListExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
-                  </span>
-                  <span class="nav-label truncate">{{ t('nav.workspaces') }}</span>
-                </button>
-                <button
-                  type="button"
-                  :class="['nav-label flex items-center px-2 shrink-0 transition-colors', showWsPanel ? 'bg-brand-50 text-brand-600' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600']"
-                  @click="showWsPanel = true"
-                >
-                  <i class="pi pi-chevron-right text-[10px]" />
-                </button>
-              </div>
-
-              <RouterLink
-                v-if="!wsStore.workspaces.length"
-                to="/workspaces"
-                class="nav-label flex items-center gap-2 px-3 py-1.5 text-xs text-ink-500 hover:text-brand-600 hover:bg-brand-50"
-              >
-                <i class="pi pi-plus text-[10px]" />
-                {{ t('nav.addWorkspace') }}
-              </RouterLink>
-
-              <div
-                v-if="wsListExpanded && wsStore.workspaces.length"
-                class="nav-scroll nav-label ml-4 flex flex-col border-l border-slate-200 pl-2 max-h-48 overflow-y-auto mb-1"
-              >
-                <button
-                  v-for="ws in wsStore.workspaces"
-                  :key="ws.id"
-                  type="button"
-                  :class="[
-                    'flex items-center gap-2.5 px-2 py-1.5 text-xs text-left w-full transition-colors hover:bg-brand-50',
-                    inWorkspaceShell && ws.id === wsStore.currentWorkspaceId ? 'text-brand-700 font-medium' : 'text-ink-500 hover:text-brand-700',
-                  ]"
-                  @click="selectWorkspace(ws.id)"
-                >
-                  <span :class="['w-1.5 h-1.5 rounded-full shrink-0', inWorkspaceShell && ws.id === wsStore.currentWorkspaceId ? 'bg-brand-500' : 'bg-slate-300']" />
-                  <span class="truncate">{{ ws.name }}</span>
-                </button>
-                <RouterLink
-                  to="/workspaces"
-                  :class="[
-                    'flex items-center gap-2.5 px-2 py-1.5 text-xs w-full transition-colors hover:bg-brand-50',
-                    route.path === '/workspaces' ? 'text-brand-700 font-medium' : 'text-ink-400 hover:text-brand-600',
-                  ]"
-                >
-                  <span :class="['w-1.5 h-1.5 rounded-full shrink-0', route.path === '/workspaces' ? 'bg-brand-500' : 'bg-slate-200']" />
-                  <span>{{ t('nav.viewMore') }}</span>
-                </RouterLink>
-              </div>
-
-              <template v-if="canViewAuditLog || canManageOrgSettings">
-                <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
-                <RouterLink v-if="canViewAuditLog" to="/audit-log" class="nav-link" active-class="nav-link--active" :title="t('nav.auditLog')">
-                  <i class="pi pi-history" /><span class="nav-label">{{ t('nav.auditLog') }}</span>
-                </RouterLink>
-                <RouterLink v-if="canManageOrgSettings" to="/org-settings" class="nav-link" active-class="nav-link--active" :title="t('nav.settings')">
-                  <i class="pi pi-cog" /><span class="nav-label">{{ t('nav.settings') }}</span>
-                </RouterLink>
-              </template>
             </div>
+
+            <RouterLink to="/workspaces" class="nav-link" active-class="nav-link--active" :title="t('nav.workspaces')">
+              <i class="pi pi-folder" /><span class="nav-label">{{ t('nav.workspaces') }}</span>
+            </RouterLink>
+
+            <template v-if="canViewAuditLog || canManageOrgSettings">
+              <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
+              <RouterLink v-if="canViewAuditLog" to="/audit-log" class="nav-link" active-class="nav-link--active" :title="t('nav.auditLog')">
+                <i class="pi pi-history" /><span class="nav-label">{{ t('nav.auditLog') }}</span>
+              </RouterLink>
+              <RouterLink v-if="canManageOrgSettings" to="/org-settings" class="nav-link" active-class="nav-link--active" :title="t('nav.orgSettings')">
+                <i class="pi pi-cog" /><span class="nav-label">{{ t('nav.settings') }}</span>
+              </RouterLink>
+            </template>
           </div>
 
 
           <div v-if="inWorkspaceShell && workspaceIdStr" class="flex flex-col mt-3 pt-3 border-t border-slate-200">
-            <div class="relative flex items-stretch nav-entry">
-              <button
-                type="button"
-                class="group nav-entry-main flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
-                :title="wsStore.currentWorkspace?.name ?? 'Workspace'"
-                @click="wsExpanded = !wsExpanded"
-              >
-                <span class="relative flex items-center justify-center w-4 h-4 shrink-0">
-                  <i class="pi pi-folder-open text-[13px] absolute group-hover:opacity-0 transition-opacity" />
-                  <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', wsExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
-                </span>
-                <span class="nav-label truncate font-medium">{{ wsStore.currentWorkspace?.name ?? t('workspace.fallbackName') }}</span>
-              </button>
-            </div>
+            <RouterLink
+              :to="{ name: 'workspace-dashboard', params: { workspaceId: workspaceIdStr } }"
+              class="nav-link"
+              active-class=""
+              exact-active-class="nav-link--active"
+              :title="wsStore.currentWorkspace?.name ?? t('workspace.fallbackName')"
+            >
+              <i class="pi pi-folder-open" /><span class="nav-label truncate font-medium">{{ wsStore.currentWorkspace?.name ?? t('workspace.fallbackName') }}</span>
+            </RouterLink>
 
-            <div v-if="wsExpanded" class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
-
+            <div class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
               <RouterLink
                 :to="{ name: 'workspace-dashboard', params: { workspaceId: workspaceIdStr } }"
                 class="nav-link"
                 active-class=""
                 exact-active-class="nav-link--active"
-                title="Dashboard"
+                :title="t('nav.dashboard')"
               >
                 <i class="pi pi-th-large" /><span class="nav-label">{{ t('nav.dashboard') }}</span>
               </RouterLink>
-
-              <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
               <RouterLink
                 :to="{ name: 'workspace-members', params: { workspaceId: workspaceIdStr } }"
                 class="nav-link"
                 active-class="nav-link--active"
-                title="Members"
+                :title="t('nav.members')"
               >
                 <i class="pi pi-users" /><span class="nav-label">{{ t('nav.members') }}</span>
               </RouterLink>
@@ -504,9 +353,9 @@ onMounted(async () => {
                 :to="{ name: 'workspace-settings', params: { workspaceId: workspaceIdStr } }"
                 class="nav-link"
                 active-class="nav-link--active"
-                title="Settings"
+                :title="t('nav.workspaceSettings')"
               >
-                <i class="pi pi-cog" /><span class="nav-label">{{ t('nav.settings') }}</span>
+                <i class="pi pi-sliders-h" /><span class="nav-label">{{ t('nav.settings') }}</span>
               </RouterLink>
             </div>
           </div>
@@ -514,13 +363,91 @@ onMounted(async () => {
         </nav>
 
 
-        <div class="pt-3 mt-3 border-t border-slate-200 shrink-0">
+        <div class="relative pt-3 mt-3 border-t border-slate-200 shrink-0">
+          <div
+            v-if="showProfilePanel"
+            class="fixed bottom-2 left-2 lg:left-3 z-50 w-60 bg-white shadow-xl border border-line"
+          >
+            <div class="px-4 py-3 border-b border-line">
+              <p class="text-sm font-semibold text-ink-900 truncate leading-tight">
+                {{ auth.user?.firstName }} {{ auth.user?.lastName }}
+              </p>
+              <p class="text-xs text-ink-400 truncate leading-tight">{{ auth.user?.email }}</p>
+            </div>
+
+            <div class="py-1">
+              <button type="button" class="profile-item" @click="openAccount">
+                <i class="pi pi-user" /><span class="flex-1">{{ t('nav.account') }}</span>
+              </button>
+              <button type="button" class="profile-item" @click="openSettings">
+                <i class="pi pi-cog" /><span class="flex-1">{{ t('nav.settings') }}</span>
+              </button>
+            </div>
+
+            <div class="py-1 border-t border-line">
+              <div class="relative">
+                <button type="button" class="profile-item" @click="toggleSubmenu('lang')">
+                  <i class="pi pi-globe" /><span class="flex-1">{{ t('nav.language') }}</span>
+                  <span class="text-xs text-ink-400">{{ localeLabel }}</span>
+                  <i :class="['pi text-[10px] text-ink-400', openSubmenu === 'lang' ? 'pi-chevron-left' : 'pi-chevron-right']" />
+                </button>
+                <div
+                  v-if="openSubmenu === 'lang'"
+                  class="absolute left-full top-0 ml-1 z-10 w-44 bg-white shadow-xl border border-line py-1"
+                >
+                  <button
+                    v-for="code in locales"
+                    :key="code"
+                    type="button"
+                    class="profile-item"
+                    @click="selectLanguage(code)"
+                  >
+                    <span class="flex-1">{{ t(`language.${code}`) }}</span>
+                    <i v-if="code === currentLocale" class="pi pi-check text-brand-600 text-xs" />
+                  </button>
+                </div>
+              </div>
+
+              <div class="relative">
+                <button type="button" class="profile-item" @click="toggleSubmenu('appearance')">
+                  <i class="pi pi-palette" /><span class="flex-1">{{ t('nav.appearance') }}</span>
+                  <span class="text-xs text-ink-400">{{ appearanceLabel }}</span>
+                  <i :class="['pi text-[10px] text-ink-400', openSubmenu === 'appearance' ? 'pi-chevron-left' : 'pi-chevron-right']" />
+                </button>
+                <div
+                  v-if="openSubmenu === 'appearance'"
+                  class="absolute left-full top-0 ml-1 z-10 w-44 bg-white shadow-xl border border-line py-1"
+                >
+                  <button
+                    v-for="opt in appearanceOptions"
+                    :key="opt.value"
+                    type="button"
+                    class="profile-item"
+                    @click="selectAppearance(opt.value)"
+                  >
+                    <span class="flex-1">{{ opt.label }}</span>
+                    <i v-if="opt.value === appearance" class="pi pi-check text-brand-600 text-xs" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="py-1 border-t border-line">
+              <button type="button" class="profile-item" @click="switchAccount">
+                <i class="pi pi-sync" /><span class="flex-1">{{ t('nav.switchAccount') }}</span>
+              </button>
+              <button type="button" class="profile-item" @click="handleLogout">
+                <i class="pi pi-sign-out" /><span class="flex-1">{{ t('nav.signOut') }}</span>
+              </button>
+            </div>
+          </div>
+
           <button
             v-if="auth.user"
             type="button"
             class="profile-trigger w-full flex items-center gap-3 px-2 py-2 hover:bg-surface text-left"
             :title="`${auth.user.firstName} ${auth.user.lastName}`"
-            @click="showProfilePanel = true"
+            @click="showProfilePanel = !showProfilePanel"
           >
             <div class="w-8 h-8 rounded-full bg-brand-600 text-white text-xs font-semibold flex items-center justify-center shrink-0">
               {{ userInitials }}
@@ -534,52 +461,34 @@ onMounted(async () => {
         </div>
       </aside>
 
-      <main class="flex-1 p-6 min-w-0">
-        <RouterView />
+      <main class="flex-1 min-w-0 flex flex-col">
+        <nav
+          class="flex items-center gap-1.5 px-6 h-11 shrink-0 border-b border-line bg-white/95 backdrop-blur-sm text-[13px] sticky top-16 z-20 overflow-x-auto"
+          aria-label="Breadcrumb"
+        >
+          <template v-for="(crumb, i) in breadcrumbs" :key="i">
+            <RouterLink
+              v-if="crumb.to && i < breadcrumbs.length - 1"
+              :to="crumb.to"
+              class="text-ink-500 hover:text-brand-700 transition-colors truncate max-w-[200px] shrink-0"
+            >
+              {{ crumb.label }}
+            </RouterLink>
+            <span v-else class="text-ink-900 font-medium truncate max-w-[220px] shrink-0">
+              {{ crumb.label }}
+            </span>
+            <i
+              v-if="i < breadcrumbs.length - 1"
+              class="pi pi-angle-right text-[9px] text-ink-300 shrink-0"
+            />
+          </template>
+        </nav>
+        <div class="p-6 flex-1 min-w-0">
+          <RouterView />
+        </div>
       </main>
     </div>
 
-    
-    <Dialog
-      v-model:visible="showCreateWs"
-      :header="t('workspace.createTitle')"
-      modal
-      :style="{ width: '420px' }"
-      @hide="closeCreateWs"
-    >
-      <form class="flex flex-col gap-4" novalidate @submit.prevent="handleCreateWs">
-        <div class="flex flex-col gap-1.5">
-          <label for="sidebarWsName" class="text-xs font-medium text-ink-600">
-            {{ t('workspace.nameLabel') }} <span class="text-danger">*</span>
-          </label>
-          <InputText
-            id="sidebarWsName"
-            v-model="newWsName"
-            :placeholder="t('workspace.namePlaceholder')"
-            class="!h-10"
-          />
-        </div>
-        <Message v-if="createWsError" severity="error" :closable="false" class="!my-0">
-          {{ createWsError }}
-        </Message>
-        <div class="flex justify-end gap-3">
-          <Button
-            type="button"
-            :label="t('common.cancel')"
-            outlined
-            class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
-            @click="closeCreateWs"
-          />
-          <Button
-            type="submit"
-            :label="t('common.create')"
-            :disabled="!newWsName.trim() || creatingWs"
-            :loading="creatingWs"
-            class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"
-          />
-        </div>
-      </form>
-    </Dialog>
 
     <SettingsDialog v-model:visible="showSettings" />
   </div>
@@ -643,6 +552,32 @@ onMounted(async () => {
   background-color: rgb(37 99 235);
 }
 
+.profile-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  text-align: left;
+  color: rgb(51 65 85);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.profile-item > i:first-child {
+  width: 1rem;
+  display: inline-flex;
+  justify-content: center;
+  font-size: 0.8125rem;
+  color: rgb(148 163 184);
+}
+.profile-item:hover {
+  background-color: rgb(239 246 255);
+  color: rgb(29 78 216);
+}
+.profile-item:hover > i:first-child {
+  color: rgb(37 99 235);
+}
+
 .nav-link--logout {
   color: rgb(71 85 105);
   cursor: pointer;
@@ -694,5 +629,52 @@ onMounted(async () => {
     padding-left: 0;
     padding-right: 0;
   }
+}
+
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-bottom: 0.5rem;
+  color: rgb(148 163 184);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.sidebar-toggle:hover {
+  background-color: rgb(239 246 255);
+  color: rgb(37 99 235);
+}
+
+.sidebar--collapsed {
+  width: 3.5rem !important;
+}
+.sidebar--collapsed .nav-label,
+.sidebar--collapsed .nav-scroll {
+  display: none !important;
+}
+.sidebar--collapsed .nav-sub {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+.sidebar--collapsed .nav-link,
+.sidebar--collapsed .nav-entry-main {
+  justify-content: center;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  gap: 0;
+}
+.sidebar--collapsed .nav-divider {
+  margin-left: 0.625rem;
+  margin-right: 0.625rem;
+}
+.sidebar--collapsed .nav-link--active::before {
+  left: -0.375rem;
+}
+.sidebar--collapsed .profile-trigger {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 </style>

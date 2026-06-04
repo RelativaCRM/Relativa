@@ -1,6 +1,5 @@
 import { useAuthStore } from '@/stores/auth';
 import { useWorkspaceStore } from '@/stores/workspace';
-import { notifyGlobal } from '@/api/errorToast';
 import { HttpStatus } from '@/api/httpStatus';
 
 export { HttpStatus };
@@ -53,17 +52,6 @@ export async function gatewayFetch(
   );
 }
 
-const TOAST_STATUSES: ReadonlySet<number> = new Set([
-  HttpStatus.BadRequest,
-  HttpStatus.Forbidden,
-  HttpStatus.Conflict,
-  HttpStatus.UnprocessableEntity,
-  HttpStatus.InternalServerError,
-  HttpStatus.BadGateway,
-  HttpStatus.ServiceUnavailable,
-  HttpStatus.GatewayTimeout,
-]);
-
 async function parseResponse<T>(res: Response, silent = false): Promise<T> {
   const text = await res.text();
   const body = text ? safeJson(text) : undefined;
@@ -99,11 +87,6 @@ async function parseResponse<T>(res: Response, silent = false): Promise<T> {
     }
 
     const apiError = new ApiError(res.status, message, body);
-
-    if (!silent && TOAST_STATUSES.has(res.status)) {
-      notifyGlobal(apiError);
-    }
-
     throw apiError;
   }
 
