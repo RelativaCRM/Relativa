@@ -30,7 +30,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_PersistsNormalizedEmail()
     {
-        var request = new RegisterRequestDto("Taras", "Melnyk", "Melnyk@Relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Taras", "Melnyk", "Melnyk@Relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
 
         _registerValidator
             .Setup(v => v.ValidateAsync(
@@ -55,7 +55,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_DuplicateEmailNormalized_ThrowsInvalidOperationException()
     {
-        var request = new RegisterRequestDto("A", "B", "DUPLICATE@Relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("A", "B", "DUPLICATE@Relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
 
         _registerValidator
             .Setup(v => v.ValidateAsync(
@@ -74,7 +74,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_WhenRepositoryReportsEmailFree_AllowsCreate()
     {
-        var request = new RegisterRequestDto("Olena", "Koval", "Olena@Relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Olena", "Koval", "Olena@Relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
 
         _registerValidator
             .Setup(v => v.ValidateAsync(
@@ -101,7 +101,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_WithAuditWriter_NullActor_EnqueuesWithNewUserIdAsActor()
     {
-        var request = new RegisterRequestDto("Ivan", "Franko", "ivan@relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Ivan", "Franko", "ivan@relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
         var auditWriter = new Mock<IOutboxWriter>();
 
         var sut = new UserProvisioningService(
@@ -125,7 +125,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_WithAuditWriter_ActorProvided_EnqueuesProvisionedAction()
     {
-        var request = new RegisterRequestDto("Lesya", "Ukrainka", "lesya@relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Lesya", "Ukrainka", "lesya@relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
         var auditWriter = new Mock<IOutboxWriter>();
 
         var sut = new UserProvisioningService(

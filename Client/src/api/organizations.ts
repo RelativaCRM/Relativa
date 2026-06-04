@@ -11,6 +11,15 @@ export interface OrganizationDto {
   myPermissions?: string[];
 }
 
+export type JoinPolicy = 'open' | 'invite_only';
+
+export interface OrgSearchResultDto {
+  id: number;
+  name: string;
+  memberCount: number;
+  joinPolicy: JoinPolicy;
+}
+
 export interface OrgMemberDto {
   userId: number;
   firstName: string;
@@ -94,10 +103,10 @@ export const orgApi = {
   list(): Promise<OrganizationDto[]> {
     return api.get<OrganizationDto[]>(`${CORE}/organizations`);
   },
-  search(query: string): Promise<OrganizationDto[]> {
-    return api.get<OrganizationDto[]>(
-      `${CORE}/organizations/search?q=${encodeURIComponent(query)}`,
-    );
+  search(query = ''): Promise<OrgSearchResultDto[]> {
+    const trimmed = query.trim();
+    const suffix = trimmed ? `?q=${encodeURIComponent(trimmed)}` : '';
+    return api.get<OrgSearchResultDto[]>(`${CORE}/organizations/search${suffix}`);
   },
   get(id: number): Promise<OrganizationDto> {
     return api.get<OrganizationDto>(`${CORE}/organizations/${id}`);
@@ -170,6 +179,9 @@ export const orgApi = {
   acceptOrgInvitation(token: string): Promise<void> {
     return api.post(`${CORE}/invitations/accept-org`, { token });
   },
+  declineOrgInvitation(token: string): Promise<void> {
+    return api.post(`${CORE}/invitations/decline-org`, { token });
+  },
 
   /* Join requests */
   submitJoinRequest(orgId: number, message: string): Promise<JoinRequestDto> {
@@ -194,6 +206,9 @@ export const orgApi = {
   },
   myJoinRequests(): Promise<JoinRequestDto[]> {
     return api.get<JoinRequestDto[]>(`${CORE}/join-requests/mine`);
+  },
+  cancelMyJoinRequest(requestId: number): Promise<void> {
+    return api.del(`${CORE}/join-requests/mine/${requestId}`);
   },
 
   /* Roles */

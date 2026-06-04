@@ -86,6 +86,12 @@ services:
       Smtp__FromName: "${SMTP_FROM_NAME:-Relativa}"
       Smtp__UseSsl: "${SMTP_USE_SSL:-false}"
       App__FrontendBaseUrl: "${APP_FRONTEND_BASE_URL:-http://localhost:3000}"
+      Support__DevEmail: "${SUPPORT_DEV_EMAIL:-}"
+      Sms__Provider: "${SMS_PROVIDER:-smtp}"
+      Sms__SinkEmail: "${SMS_SINK_EMAIL:-sms@relativa.local}"
+      Sms__Endpoint: "${SMS_ENDPOINT:-}"
+      Sms__AuthToken: "${SMS_AUTH_TOKEN:-}"
+      Sms__From: "${SMS_FROM:-}"
     ports:
       - "8081:8081"
     depends_on:

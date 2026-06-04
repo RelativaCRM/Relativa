@@ -8,4 +8,5 @@ public interface IJoinRequestService
     Task<List<JoinRequestDto>> GetByOrganizationAsync(int organizationId, int callerUserId, CancellationToken ct = default);
     Task ReviewAsync(int organizationId, int requestId, int callerUserId, ReviewJoinRequestRequest request, CancellationToken ct = default);
     Task<List<JoinRequestDto>> GetMyRequestsAsync(int userId, CancellationToken ct = default);
+    Task CancelMineAsync(int requestId, int userId, CancellationToken ct = default);
 }

@@ -197,7 +197,7 @@ export const entityApi = {
   ): Promise<EntityRelationshipRefDto> {
     return api.put<EntityRelationshipRefDto>(
       `${CORE}/workspaces/${workspaceId}/entity-relationships/${relationshipId}`,
-      body as unknown as Record<string, unknown>,
+      body,
     );
   },
 };

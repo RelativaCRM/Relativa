@@ -170,7 +170,7 @@ public sealed class OrganizationService(
     {
         var hits = await organizationRepository.SearchAsync(query, ct);
         return hits
-            .Select(h => new OrganizationSearchResultDto(h.Id, h.Name, h.MemberCount))
+            .Select(h => new OrganizationSearchResultDto(h.Id, h.Name, h.MemberCount, h.JoinPolicy))
             .ToList();
     }
 

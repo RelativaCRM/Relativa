@@ -10,6 +10,10 @@ public static class PersistenceModelBuilderExtensions
     public static ModelBuilder ApplyAuthEntityConfigurations(this ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new UserConfiguration());
+        modelBuilder.ApplyConfiguration(new UserSettingsConfiguration());
+        modelBuilder.ApplyConfiguration(new UserExternalLoginConfiguration());
+        modelBuilder.ApplyConfiguration(new UserBackupCodeConfiguration());
+        modelBuilder.ApplyConfiguration(new UserEmailConfiguration());
         modelBuilder.ApplyConfiguration(new UserAuditLogConfiguration());
         modelBuilder.ApplyConfiguration(new AuditOutboxMessageConfiguration());
 
@@ -26,6 +30,10 @@ public static class PersistenceModelBuilderExtensions
     public static ModelBuilder ApplyAllEntityConfigurations(this ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new UserConfiguration());
+        modelBuilder.ApplyConfiguration(new UserSettingsConfiguration());
+        modelBuilder.ApplyConfiguration(new UserExternalLoginConfiguration());
+        modelBuilder.ApplyConfiguration(new UserBackupCodeConfiguration());
+        modelBuilder.ApplyConfiguration(new UserEmailConfiguration());
         modelBuilder.ApplyConfiguration(new PermissionConfiguration());
 
         modelBuilder.ApplyConfiguration(new OrganizationConfiguration());

@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
 import BrandMark from '@/components/layout/BrandMark.vue';
+import SettingsDialog from '@/components/layout/SettingsDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import { normalizeError } from '@/api/errors';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
@@ -22,6 +25,7 @@ const router = useRouter();
 const showOrgPanel = ref(false);
 const showWsPanel = ref(false);
 const showProfilePanel = ref(false);
+const showSettings = ref(false);
 const showCreateWs = ref(false);
 const orgExpanded = ref(true);
 const wsExpanded = ref(true);
@@ -54,7 +58,7 @@ async function handleCreateWs() {
     closeCreateWs();
     router.push({ name: 'workspace-members', params: { workspaceId: String(ws.id) } });
   } catch (err) {
-    createWsError.value = normalizeError(err, 'Failed to create workspace.').message;
+    createWsError.value = normalizeError(err, t('workspace.createError')).message;
   } finally {
     creatingWs.value = false;
   }
@@ -136,6 +140,21 @@ function handleLogout() {
   router.push({ name: 'login' });
 }
 
+function switchAccount() {
+  showProfilePanel.value = false;
+  handleLogout();
+}
+
+function openAccount() {
+  showProfilePanel.value = false;
+  router.push('/account');
+}
+
+function openSettings() {
+  showProfilePanel.value = false;
+  showSettings.value = true;
+}
+
 watch(
   () => orgStore.currentOrgId,
   async (id) => {
@@ -188,7 +207,7 @@ onMounted(async () => {
       class="fixed left-[248px] top-24 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
     >
       <div class="px-4 py-2.5 border-b border-line flex items-center justify-between">
-        <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Organization</span>
+        <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">{{ t('nav.organization') }}</span>
         <button
           type="button"
           class="w-5 h-5 flex items-center justify-center text-brand-600 hover:bg-brand-50"
@@ -220,7 +239,7 @@ onMounted(async () => {
       class="fixed left-[248px] top-44 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
     >
       <div class="px-4 py-2.5 border-b border-line flex items-center justify-between">
-        <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">Workspace</span>
+        <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">{{ t('nav.workspace') }}</span>
         <button
           type="button"
           class="w-5 h-5 flex items-center justify-center text-brand-600 hover:bg-brand-50"
@@ -249,22 +268,51 @@ onMounted(async () => {
     
     <div
       v-if="showProfilePanel"
-      class="fixed left-[248px] bottom-4 z-50 w-52 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
+      class="fixed left-[248px] bottom-4 z-50 w-64 bg-white shadow-xl border border-line overflow-hidden"
     >
-      <div class="divide-y divide-slate-100">
-        <RouterLink
-          to="/account"
-          class="flex items-center gap-2.5 px-4 py-3 text-sm text-ink-700 hover:bg-surface"
-          @click="showProfilePanel = false"
-        >
-          <i class="pi pi-user text-ink-400 text-xs" />Account
-        </RouterLink>
+      <div class="flex items-center gap-3 px-4 py-4 border-b border-line">
+        <div class="w-10 h-10 rounded-full bg-brand-600 text-white text-sm font-semibold flex items-center justify-center shrink-0">
+          {{ userInitials }}
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-semibold text-ink-900 truncate leading-tight">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</p>
+          <p class="text-xs text-ink-400 truncate leading-tight">{{ auth.user?.email }}</p>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            class="w-8 h-8 flex items-center justify-center text-ink-500 hover:bg-brand-50 hover:text-brand-700 transition-colors"
+            :title="t('nav.account')"
+            :aria-label="t('nav.account')"
+            @click="openAccount"
+          >
+            <i class="pi pi-user text-sm" />
+          </button>
+          <button
+            type="button"
+            class="w-8 h-8 flex items-center justify-center text-ink-500 hover:bg-brand-50 hover:text-brand-700 transition-colors"
+            :title="t('nav.settings')"
+            :aria-label="t('nav.settings')"
+            @click="openSettings"
+          >
+            <i class="pi pi-cog text-sm" />
+          </button>
+        </div>
+      </div>
+      <div class="py-1">
         <button
           type="button"
-          class="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left text-red-600 hover:bg-red-50"
+          class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left text-ink-700 hover:bg-brand-50 hover:text-brand-700 transition-colors"
+          @click="switchAccount"
+        >
+          <i class="pi pi-sync text-ink-400 text-xs" />{{ t('nav.switchAccount') }}
+        </button>
+        <button
+          type="button"
+          class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left text-ink-700 hover:bg-brand-50 hover:text-brand-700 transition-colors"
           @click="handleLogout"
         >
-          <i class="pi pi-sign-out text-xs" />Sign out
+          <i class="pi pi-sign-out text-ink-400 text-xs" />{{ t('nav.signOut') }}
         </button>
       </div>
     </div>
@@ -295,6 +343,15 @@ onMounted(async () => {
           </RouterLink>
         </div>
       </Transition>
+
+      <button
+        type="button"
+        class="ml-auto w-9 h-9 flex items-center justify-center rounded-lg text-ink-500 hover:bg-brand-50 hover:text-brand-700 transition-colors"
+        :aria-label="t('settings.title')"
+        @click="showSettings = true"
+      >
+        <i class="pi pi-cog text-base" />
+      </button>
     </header>
 
     <div class="flex-1 flex">
@@ -304,7 +361,7 @@ onMounted(async () => {
 
           
           <RouterLink to="/" class="nav-link" active-class="" exact-active-class="nav-link--active">
-            <i class="pi pi-home" />Home
+            <i class="pi pi-home" />{{ t('nav.home') }}
           </RouterLink>
           <hr class="border-t border-slate-200 mx-1 my-1" />
 
@@ -333,10 +390,10 @@ onMounted(async () => {
 
             <div v-if="orgExpanded" class="ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
               <RouterLink to="/members" class="nav-link" active-class="nav-link--active">
-                <i class="pi pi-users" />Members
+                <i class="pi pi-users" />{{ t('nav.members') }}
               </RouterLink>
               <RouterLink to="/graph" class="nav-link" active-class="nav-link--active">
-                <i class="pi pi-share-alt" />Graph
+                <i class="pi pi-share-alt" />{{ t('nav.graph') }}
               </RouterLink>
               <hr class="border-t border-slate-200 mx-1 my-1" />
 
@@ -351,7 +408,7 @@ onMounted(async () => {
                     <i class="pi pi-folder text-[13px] absolute group-hover:opacity-0 transition-opacity" />
                     <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', wsListExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
                   </span>
-                  <span class="truncate">Workspaces</span>
+                  <span class="truncate">{{ t('nav.workspaces') }}</span>
                 </button>
                 <button
                   type="button"
@@ -368,7 +425,7 @@ onMounted(async () => {
                 class="flex items-center gap-2 px-3 py-1.5 text-xs text-ink-500 hover:text-brand-600 hover:bg-brand-50"
               >
                 <i class="pi pi-plus text-[10px]" />
-                Add workspace
+                {{ t('nav.addWorkspace') }}
               </RouterLink>
 
               <div
@@ -396,17 +453,17 @@ onMounted(async () => {
                   ]"
                 >
                   <span :class="['w-1.5 h-1.5 rounded-full shrink-0', route.path === '/workspaces' ? 'bg-brand-500' : 'bg-slate-200']" />
-                  <span>View more...</span>
+                  <span>{{ t('nav.viewMore') }}</span>
                 </RouterLink>
               </div>
 
               <template v-if="canViewAuditLog || canManageOrgSettings">
                 <hr class="border-t border-slate-200 mx-1 my-1" />
                 <RouterLink v-if="canViewAuditLog" to="/audit-log" class="nav-link" active-class="nav-link--active">
-                  <i class="pi pi-history" />Audit log
+                  <i class="pi pi-history" />{{ t('nav.auditLog') }}
                 </RouterLink>
                 <RouterLink v-if="canManageOrgSettings" to="/org-settings" class="nav-link" active-class="nav-link--active">
-                  <i class="pi pi-cog" />Settings
+                  <i class="pi pi-cog" />{{ t('nav.settings') }}
                 </RouterLink>
               </template>
             </div>
@@ -424,7 +481,7 @@ onMounted(async () => {
                   <i class="pi pi-folder-open text-[13px] absolute group-hover:opacity-0 transition-opacity" />
                   <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', wsExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
                 </span>
-                <span class="truncate font-medium">{{ wsStore.currentWorkspace?.name ?? 'Workspace' }}</span>
+                <span class="truncate font-medium">{{ wsStore.currentWorkspace?.name ?? t('workspace.fallbackName') }}</span>
               </button>
             </div>
 
@@ -436,7 +493,7 @@ onMounted(async () => {
                 active-class=""
                 exact-active-class="nav-link--active"
               >
-                <i class="pi pi-th-large" />Dashboard
+                <i class="pi pi-th-large" />{{ t('nav.dashboard') }}
               </RouterLink>
 
               <hr class="border-t border-slate-200 mx-1 my-1" />
@@ -445,14 +502,14 @@ onMounted(async () => {
                 class="nav-link"
                 active-class="nav-link--active"
               >
-                <i class="pi pi-users" />Members
+                <i class="pi pi-users" />{{ t('nav.members') }}
               </RouterLink>
               <RouterLink
                 :to="{ name: 'workspace-settings', params: { workspaceId: workspaceIdStr } }"
                 class="nav-link"
                 active-class="nav-link--active"
               >
-                <i class="pi pi-cog" />Settings
+                <i class="pi pi-cog" />{{ t('nav.settings') }}
               </RouterLink>
             </div>
           </div>
@@ -487,7 +544,7 @@ onMounted(async () => {
     
     <Dialog
       v-model:visible="showCreateWs"
-      header="Create workspace"
+      :header="t('workspace.createTitle')"
       modal
       :style="{ width: '420px' }"
       @hide="closeCreateWs"
@@ -495,12 +552,12 @@ onMounted(async () => {
       <form class="flex flex-col gap-4" novalidate @submit.prevent="handleCreateWs">
         <div class="flex flex-col gap-1.5">
           <label for="sidebarWsName" class="text-xs font-medium text-ink-600">
-            Workspace name <span class="text-danger">*</span>
+            {{ t('workspace.nameLabel') }} <span class="text-danger">*</span>
           </label>
           <InputText
             id="sidebarWsName"
             v-model="newWsName"
-            placeholder="e.g. Sales team"
+            :placeholder="t('workspace.namePlaceholder')"
             class="!h-10"
           />
         </div>
@@ -508,16 +565,18 @@ onMounted(async () => {
           {{ createWsError }}
         </Message>
         <div class="flex justify-end gap-2">
-          <Button type="button" label="Cancel" severity="secondary" text @click="closeCreateWs" />
+          <Button type="button" :label="t('common.cancel')" severity="secondary" text @click="closeCreateWs" />
           <Button
             type="submit"
-            label="Create"
+            :label="t('common.create')"
             :disabled="!newWsName.trim() || creatingWs"
             :loading="creatingWs"
           />
         </div>
       </form>
     </Dialog>
+
+    <SettingsDialog v-model:visible="showSettings" />
   </div>
 </template>
 

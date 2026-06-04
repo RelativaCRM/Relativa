@@ -8,6 +8,8 @@ namespace Relativa.Migration.Data;
 public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<UserSettings> UserSettings => Set<UserSettings>();
+    public DbSet<UserExternalLogin> UserExternalLogins => Set<UserExternalLogin>();
     public DbSet<Permission> Permissions => Set<Permission>();
 
     public DbSet<Organization> Organizations => Set<Organization>();

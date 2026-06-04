@@ -1,20 +1,9 @@
 import { useAuthStore } from '@/stores/auth';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { notifyGlobal } from '@/api/errorToast';
+import { HttpStatus } from '@/api/httpStatus';
 
-export const HttpStatus = {
-  BadRequest: 400,
-  Unauthorized: 401,
-  Forbidden: 403,
-  NotFound: 404,
-  Conflict: 409,
-  UnprocessableEntity: 422,
-  TooManyRequests: 429,
-  InternalServerError: 500,
-  BadGateway: 502,
-  ServiceUnavailable: 503,
-  GatewayTimeout: 504,
-} as const;
+export { HttpStatus };
 
 function gatewayBase(): string {
   return (import.meta.env.VITE_GATEWAY_URL ?? 'http://localhost:8080').replace(
@@ -33,8 +22,6 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
-
-type Json = Record<string, unknown> | Array<unknown>;
 
 /**
  * Per-request options understood by the api helpers. Extends RequestInit
@@ -148,7 +135,7 @@ export const api = {
       parseResponse<T>(r, silent),
     );
   },
-  post<T>(path: string, body?: Json | undefined, init?: ApiRequestInit): Promise<T> {
+  post<T>(path: string, body?: object, init?: ApiRequestInit): Promise<T> {
     const { silent, rest } = splitInit(init);
     return gatewayFetch(path, {
       ...rest,
@@ -157,7 +144,7 @@ export const api = {
       body: body === undefined ? undefined : JSON.stringify(body),
     }).then((r) => parseResponse<T>(r, silent));
   },
-  put<T>(path: string, body?: Json | undefined, init?: ApiRequestInit): Promise<T> {
+  put<T>(path: string, body?: object, init?: ApiRequestInit): Promise<T> {
     const { silent, rest } = splitInit(init);
     return gatewayFetch(path, {
       ...rest,
@@ -166,7 +153,7 @@ export const api = {
       body: body === undefined ? undefined : JSON.stringify(body),
     }).then((r) => parseResponse<T>(r, silent));
   },
-  patch<T>(path: string, body?: Json | undefined, init?: ApiRequestInit): Promise<T> {
+  patch<T>(path: string, body?: object, init?: ApiRequestInit): Promise<T> {
     const { silent, rest } = splitInit(init);
     return gatewayFetch(path, {
       ...rest,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -12,6 +13,7 @@ import { useApiErrorHandler } from '@/api/errorToast';
 import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
+const { t } = useI18n();
 const router = useRouter();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
@@ -42,7 +44,7 @@ async function handleCreate() {
       params: { workspaceId: String(ws.id) },
     });
   } catch (err) {
-    createError.value = normalizeError(err, 'Failed to create workspace.').message;
+    createError.value = normalizeError(err, t('workspace.createError')).message;
   } finally {
     creating.value = false;
   }
@@ -76,7 +78,7 @@ onMounted(async () => {
   try {
     await wsStore.fetchWorkspaces(orgStore.currentOrgId ?? undefined);
   } catch (err) {
-    notify(err, { fallback: 'Failed to load workspaces.' });
+    notify(err, { fallback: t('workspace.loadError') });
   } finally {
     loading.value = false;
   }
@@ -87,17 +89,18 @@ onMounted(async () => {
   <section class="max-w-4xl">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-bold text-ink-900">Workspaces</h1>
-        <p class="mt-3 text-sm text-ink-500">
-          Workspaces in
-          <span class="font-semibold text-brand-600">{{
-            orgStore.currentOrg?.name ?? 'your organization'
-          }}</span>
-        </p>
+        <h1 class="text-2xl font-bold text-ink-900">{{ t('nav.workspaces') }}</h1>
+        <i18n-t keypath="workspace.inOrg" tag="p" class="mt-3 text-sm text-ink-500" scope="global">
+          <template #org>
+            <span class="font-semibold text-brand-600">{{
+              orgStore.currentOrg?.name ?? t('workspace.yourOrg')
+            }}</span>
+          </template>
+        </i18n-t>
       </div>
       <Button
         icon="pi pi-plus"
-        label="New workspace"
+        :label="t('workspace.new')"
         @click="showCreate = true"
       />
     </div>
@@ -110,12 +113,12 @@ onMounted(async () => {
     >
       <i class="pi pi-folder-open text-3xl text-ink-400" />
       <p class="mt-3 text-sm text-ink-500">
-        No workspaces yet. Create one to get started.
+        {{ t('workspace.emptyHint') }}
       </p>
       <Button
         class="mt-4"
         icon="pi pi-plus"
-        label="Create workspace"
+        :label="t('workspace.createTitle')"
         @click="showCreate = true"
       />
     </div>
@@ -136,8 +139,7 @@ onMounted(async () => {
                 {{ ws.name }}
               </p>
               <p class="text-xs text-ink-500 mt-1">
-                {{ ws.memberCount }}
-                {{ ws.memberCount === 1 ? 'member' : 'members' }}
+                {{ t('workspace.members', ws.memberCount, { named: { n: ws.memberCount } }) }}
               </p>
             </div>
             <span :class="[roleBadgeFullClass(ws.userRole), 'shrink-0']">
@@ -150,13 +152,13 @@ onMounted(async () => {
             class="text-brand-600 font-medium hover:underline"
             @click="openWorkspace(ws.id)"
           >
-            Manage members <i class="pi pi-arrow-right ml-1 text-[10px]" />
+            {{ t('workspace.manageMembers') }} <i class="pi pi-arrow-right ml-1 text-[10px]" />
           </button>
           <button
             class="text-brand-600 font-medium hover:underline"
             @click="openEntities(ws.id)"
           >
-            <i class="pi pi-database mr-1 text-[10px]" />Entities
+            <i class="pi pi-database mr-1 text-[10px]" />{{ t('workspace.entities') }}
           </button>
         </div>
       </div>

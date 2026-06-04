@@ -905,10 +905,28 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("date_of_birth");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("email");
+
+                    b.Property<string>("EmailVerificationToken")
+                        .HasColumnType("text")
+                        .HasColumnName("email_verification_token");
+
+                    b.Property<DateTime?>("EmailVerificationTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("email_verification_token_expires_at");
+
+                    b.Property<bool>("EmailVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("email_verified");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -927,7 +945,6 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("last_name");
 
                     b.Property<string>("Password")
-                        .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("password");
 
@@ -939,6 +956,27 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("password_reset_token_expires_at");
 
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone");
+
+                    b.Property<bool>("TwoFactorEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("two_factor_enabled");
+
+                    b.Property<string>("TwoFactorMasterCodeHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("two_factor_master_code_hash");
+
+                    b.Property<string>("TwoFactorSecret")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("two_factor_secret");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
@@ -946,6 +984,135 @@ namespace Relativa.Migration.Migrations
                         .HasFilter("\"is_archived\" = FALSE");
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserBackupCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_user_backup_codes_user_id");
+
+                    b.ToTable("user_backup_codes", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserEmail", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("address");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_verified");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("source");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("VerificationToken")
+                        .HasColumnType("text")
+                        .HasColumnName("verification_token");
+
+                    b.Property<DateTime?>("VerificationTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verification_token_expires_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Address")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_emails_address");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_emails", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserExternalLogin", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("subject");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Provider", "Subject")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_external_logins_provider_subject");
+
+                    b.ToTable("user_external_logins", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.UserRoleOrganization", b =>
@@ -1036,6 +1203,36 @@ namespace Relativa.Migration.Migrations
                         .HasDatabaseName("ix_urw_workspace_active");
 
                     b.ToTable("user_role_workspace", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("en")
+                        .HasColumnName("locale");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_settings_user_id");
+
+                    b.ToTable("user_settings", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.Workspace", b =>
@@ -1533,6 +1730,42 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserBackupCode", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithMany("BackupCodes")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_backup_codes_user");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserEmail", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithMany("Emails")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_emails_user");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserExternalLogin", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithMany("ExternalLogins")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_external_logins_user");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.UserRoleOrganization", b =>
                 {
                     b.HasOne("Relativa.Persistence.Entities.OrganizationRole", "Role")
@@ -1591,6 +1824,18 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("User");
 
                     b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserSettings", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithOne("Settings")
+                        .HasForeignKey("Relativa.Persistence.Entities.UserSettings", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_settings_user");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.Workspace", b =>
@@ -1725,9 +1970,17 @@ namespace Relativa.Migration.Migrations
 
             modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>
                 {
+                    b.Navigation("BackupCodes");
+
                     b.Navigation("CreatedEntities");
 
+                    b.Navigation("Emails");
+
+                    b.Navigation("ExternalLogins");
+
                     b.Navigation("OrganizationMemberships");
+
+                    b.Navigation("Settings");
 
                     b.Navigation("WorkspaceMemberships");
                 });

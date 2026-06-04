@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
 import Password from 'primevue/password';
 import Button from 'primevue/button';
 import AuthLayout from '@/layouts/AuthLayout.vue';
+import FormError from '@/components/feedback/FormError.vue';
 import { authApi } from '@/api/auth';
 import { normalizeError } from '@/api/errors';
 
+const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 
@@ -52,7 +55,7 @@ async function handleSubmit() {
     await authApi.resetPassword(token.value, newPassword.value);
     await router.push({ name: 'login', query: { reset: 'success' } });
   } catch (err) {
-    const normalized = normalizeError(err, 'Something went wrong. Please try again.');
+    const normalized = normalizeError(err);
     if (normalized.isValidation) {
       expired.value = true;
     } else {
@@ -143,9 +146,7 @@ async function handleSubmit() {
           </small>
         </div>
 
-        <p v-if="serverError" class="text-xs text-danger flex items-start gap-1.5">
-          <i class="pi pi-exclamation-circle mt-0.5 shrink-0" />{{ serverError }}
-        </p>
+        <FormError v-if="serverError" :message="serverError" />
 
         <Button
           type="submit"

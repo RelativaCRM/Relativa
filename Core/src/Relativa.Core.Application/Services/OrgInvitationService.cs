@@ -201,6 +201,29 @@ public sealed class OrgInvitationService(
             ct);
     }
 
+    public async Task DeclineAsync(int userId, string userEmail, string token, CancellationToken ct = default)
+    {
+        var invitation = await invitationRepository.GetByTokenAsync(token, ct)
+            ?? throw new KeyNotFoundException("Invitation not found or has expired.");
+
+        if (!string.Equals(invitation.Email, userEmail, StringComparison.OrdinalIgnoreCase))
+            throw new ForbiddenAccessException("This invitation was sent to a different email address.");
+
+        if (invitation.Status != "Pending")
+            throw new InvalidOperationException($"Invitation is no longer pending (status: {invitation.Status}).");
+
+        invitation.Status = "Declined";
+        await invitationRepository.UpdateAsync(invitation, ct);
+        await EnqueueAuditAsync(
+            userId,
+            invitation.OrganizationId,
+            action: "organization_invitation_declined",
+            field: "organization_invitations.status",
+            oldJson: new { Status = "Pending", invitation.Email },
+            newJson: new { Status = "Declined", invitation.Email },
+            ct);
+    }
+
     public async Task<List<OrgInvitationDto>> GetMyPendingInvitationsAsync(string userEmail, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(userEmail))

@@ -17,7 +17,7 @@ public sealed class RegisterRequestValidator : AbstractValidator<RegisterRequest
 
         RuleFor(x => x.Email)
             .NotEmpty().WithMessage("Email is required.")
-            .EmailAddress().WithMessage("A valid email address is required.");
+            .Matches(EmailValidation.Pattern).WithMessage(EmailValidation.Message);
 
         RuleFor(x => x.Password)
             .NotEmpty().WithMessage("Password is required.")

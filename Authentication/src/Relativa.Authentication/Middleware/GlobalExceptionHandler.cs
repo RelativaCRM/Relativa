@@ -24,6 +24,12 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
         {
             ValidationException ve => (StatusCodes.Status400BadRequest, "Validation Failed",
                 string.Join("; ", ve.Errors.Select(e => e.ErrorMessage))),
+            EmailNotVerifiedException env => (StatusCodes.Status403Forbidden, "Forbidden", env.Message),
+            TwoFactorRequiredException tfr => (StatusCodes.Status403Forbidden, "Forbidden", tfr.Message),
+            InvalidTwoFactorCodeException itf => (StatusCodes.Status400BadRequest, "Bad Request", itf.Message),
+            EmailAddressTakenException eat => (StatusCodes.Status409Conflict, "Conflict", eat.Message),
+            InvalidVerificationCodeException ivc => (StatusCodes.Status400BadRequest, "Bad Request", ivc.Message),
+            RateLimitExceededException rle => (StatusCodes.Status429TooManyRequests, "Too Many Requests", rle.Message),
             UnauthorizedAccessException ue => (StatusCodes.Status401Unauthorized, "Unauthorized", ue.Message),
             KeyNotFoundException knf => (StatusCodes.Status404NotFound, "Not Found", knf.Message),
             InvalidOperationException ioe => (StatusCodes.Status409Conflict, "Conflict", ioe.Message),
@@ -42,12 +48,33 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
         else
             logger.LogWarning(exception, "Handled exception: {Title}", title);
 
+        object? errors = exception is ValidationException vex
+            ? vex.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(e => new { code = e.ErrorCode, message = e.ErrorMessage }))
+            : null;
+
+        var code = exception switch
+        {
+            EmailNotVerifiedException => "email_not_verified",
+            TwoFactorRequiredException => "two_factor_required",
+            InvalidTwoFactorCodeException => "invalid_two_factor_code",
+            EmailAddressTakenException => "email_address_taken",
+            InvalidVerificationCodeException => "invalid_verification_code",
+            RateLimitExceededException => "rate_limit_exceeded",
+            _ => null
+        };
+
         httpContext.Response.StatusCode = statusCode;
         await httpContext.Response.WriteAsJsonAsync(new
         {
             status = statusCode,
             title,
-            detail
+            detail,
+            code,
+            errors
         }, cancellationToken);
 
         return true;

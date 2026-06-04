@@ -4,4 +4,7 @@ public sealed record RegisterRequestDto(
     string FirstName,
     string LastName,
     string Email,
-    string Password);
+    string Password,
+    string? Phone = null,
+    DateOnly? DateOfBirth = null,
+    string? Locale = null);

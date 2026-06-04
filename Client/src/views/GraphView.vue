@@ -96,7 +96,7 @@ function buildEntityTypeColorMap(nodes: GraphNodeDto[]): Map<string, string> {
   let idx = 0;
   for (const n of nodes) {
     if (n.type === 'entity' && n.entityTypeName && !map.has(n.entityTypeName)) {
-      map.set(n.entityTypeName, ENTITY_PALETTE[idx % ENTITY_PALETTE.length]);
+      map.set(n.entityTypeName, ENTITY_PALETTE[idx % ENTITY_PALETTE.length]!);
       idx++;
     }
   }
@@ -135,9 +135,9 @@ function nodeColor(node: GraphNodeDto, typeColorMap: Map<string, string>) {
 
 const typeLegendItems = computed(() => {
   const items: { label: string; color: string; border?: string }[] = [
-    { label: 'You', color: TYPE_COLORS.user_self },
-    { label: 'User', color: TYPE_COLORS.user },
-    { label: 'Workspace', color: TYPE_COLORS.workspace },
+    { label: 'You', color: TYPE_COLORS.user_self! },
+    { label: 'User', color: TYPE_COLORS.user! },
+    { label: 'Workspace', color: TYPE_COLORS.workspace! },
   ];
   const typeMap = buildEntityTypeColorMap(graphStore.nodes);
   for (const [name, color] of typeMap) {

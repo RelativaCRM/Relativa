@@ -22,6 +22,17 @@ public static class InvitationEndpoints
         .WithSummary("Accept an organization invitation by token")
         .Produces(StatusCodes.Status200OK);
 
+        invGroup.MapPost("/decline-org", async (AcceptOrgInvitationRequest request, IOrgInvitationService orgService, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            var email = WorkspaceEndpoints.GetUserEmail(httpContext);
+            await orgService.DeclineAsync(userId, email, request.Token, ct);
+            return Results.Ok(new { message = "Organization invitation declined." });
+        })
+        .WithName("DeclineOrgInvitation")
+        .WithSummary("Decline an organization invitation by token")
+        .Produces(StatusCodes.Status200OK);
+
         invGroup.MapGet("/mine", async (IOrgInvitationService orgService, HttpContext httpContext, CancellationToken ct) =>
         {
             var email = WorkspaceEndpoints.GetUserEmail(httpContext);

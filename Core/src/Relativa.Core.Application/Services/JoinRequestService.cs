@@ -206,6 +206,41 @@ public sealed class JoinRequestService(
             .ToList();
     }
 
+    public async Task CancelMineAsync(int requestId, int userId, CancellationToken ct = default)
+    {
+        var joinRequest = await joinRequestRepository.GetByIdAsync(requestId, ct)
+            ?? throw new KeyNotFoundException("Join request not found.");
+
+        if (joinRequest.UserId != userId)
+            throw new ForbiddenAccessException("You can only cancel your own join requests.");
+
+        if (joinRequest.Status != "Pending")
+            throw new InvalidOperationException($"Join request is no longer pending (status: {joinRequest.Status}).");
+
+        joinRequest.Status = "Cancelled";
+        joinRequest.ReviewedAt = DateTime.UtcNow;
+        await joinRequestRepository.UpdateAsync(joinRequest, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAuditAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: joinRequest.OrganizationId,
+                    Action: "organization_join_request_cancelled",
+                    FieldName: "organization_join_requests.status",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending" }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Cancelled", joinRequest.UserId })),
+                ct);
+        }
+    }
+
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)
     {
         return await orgMemberRepository.GetAsync(userId, orgId, ct)

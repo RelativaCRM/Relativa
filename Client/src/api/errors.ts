@@ -1,9 +1,12 @@
-import { ApiError, HttpStatus } from '@/api/http';
+import { ApiError } from '@/api/http';
+import { HttpStatus } from '@/api/httpStatus';
+import { i18n } from '@/i18n';
 
 export type FieldErrors = Record<string, string[]>;
 
 export interface NormalizedError {
   status: number | null;
+  code: string | null;
   title: string | null;
   message: string;
   detail: string | null;
@@ -17,19 +20,30 @@ export interface NormalizedError {
   isServer: boolean;
 }
 
-const FRIENDLY_STATUS_MESSAGES: Record<number, string> = {
-  [HttpStatus.BadRequest]: 'The request is invalid. Please check the highlighted fields.',
-  [HttpStatus.Unauthorized]: 'Your session has expired. Please sign in again.',
-  [HttpStatus.Forbidden]: 'You do not have permission to perform this action.',
-  [HttpStatus.NotFound]: 'The requested resource was not found.',
-  [HttpStatus.Conflict]: 'This conflicts with existing data.',
-  [HttpStatus.UnprocessableEntity]: 'The request could not be processed.',
-  [HttpStatus.TooManyRequests]: 'Too many requests. Please try again in a moment.',
-  [HttpStatus.InternalServerError]: 'The server encountered an unexpected error. Please try again later.',
-  [HttpStatus.BadGateway]: 'The server is temporarily unavailable. Please try again later.',
-  [HttpStatus.ServiceUnavailable]: 'The service is unavailable. Please try again later.',
-  [HttpStatus.GatewayTimeout]: 'The server took too long to respond. Please try again later.',
+const STATUS_KEY: Record<number, string> = {
+  [HttpStatus.BadRequest]: 'badRequest',
+  [HttpStatus.Unauthorized]: 'unauthorized',
+  [HttpStatus.Forbidden]: 'forbidden',
+  [HttpStatus.NotFound]: 'notFound',
+  [HttpStatus.Conflict]: 'conflict',
+  [HttpStatus.UnprocessableEntity]: 'unprocessable',
+  [HttpStatus.TooManyRequests]: 'tooManyRequests',
+  [HttpStatus.InternalServerError]: 'server',
+  [HttpStatus.BadGateway]: 'badGateway',
+  [HttpStatus.ServiceUnavailable]: 'serviceUnavailable',
+  [HttpStatus.GatewayTimeout]: 'gatewayTimeout',
 };
+
+function statusMessage(status: number): string | null {
+  const key = STATUS_KEY[status];
+  return key ? i18n.global.t(`errors.status.${key}`) : null;
+}
+
+function codeMessage(code: string | null): string | null {
+  if (!code) return null;
+  const key = `errors.${code}`;
+  return i18n.global.te(key) ? i18n.global.t(key) : null;
+}
 
 function lowerFirst(value: string): string {
   if (value.length === 0) return value;
@@ -62,6 +76,17 @@ export function parseValidationDetail(detail: string | null | undefined): FieldE
   return map;
 }
 
+function resolveFieldItem(item: unknown): string | null {
+  if (typeof item === 'string') return item;
+  if (item && typeof item === 'object') {
+    const obj = item as Record<string, unknown>;
+    const code = typeof obj.code === 'string' ? obj.code : null;
+    const message = typeof obj.message === 'string' ? obj.message : null;
+    return codeMessage(code) ?? message;
+  }
+  return null;
+}
+
 function pickPayloadFieldErrors(payload: unknown): FieldErrors | null {
   if (!payload || typeof payload !== 'object') return null;
   const errorsRaw = (payload as Record<string, unknown>).errors;
@@ -70,10 +95,12 @@ function pickPayloadFieldErrors(payload: unknown): FieldErrors | null {
   for (const [field, value] of Object.entries(errorsRaw)) {
     if (Array.isArray(value)) {
       for (const item of value) {
-        if (typeof item === 'string') pushField(out, field, item);
+        const resolved = resolveFieldItem(item);
+        if (resolved) pushField(out, field, resolved);
       }
-    } else if (typeof value === 'string') {
-      pushField(out, field, value);
+    } else {
+      const resolved = resolveFieldItem(value);
+      if (resolved) pushField(out, field, resolved);
     }
   }
   return Object.keys(out).length > 0 ? out : null;
@@ -81,13 +108,14 @@ function pickPayloadFieldErrors(payload: unknown): FieldErrors | null {
 
 export function normalizeError(
   err: unknown,
-  fallback = 'Something went wrong. Please try again.',
+  fallback = i18n.global.t('errors.unknown'),
 ): NormalizedError {
   if (err instanceof ApiError) {
     const payload =
       err.payload && typeof err.payload === 'object'
         ? (err.payload as Record<string, unknown>)
         : null;
+    const code = payload && typeof payload.code === 'string' ? payload.code : null;
     const title = payload && typeof payload.title === 'string' ? payload.title : null;
     const detail = payload && typeof payload.detail === 'string' ? payload.detail : null;
 
@@ -101,20 +129,27 @@ export function normalizeError(
     const underscoreErrors = fieldErrors['_'];
     if (underscoreErrors?.length) delete fieldErrors['_'];
 
-    let message = err.message;
-    if (!message || message === title || message === detail) {
-      message = detail ?? title ?? FRIENDLY_STATUS_MESSAGES[err.status] ?? fallback;
-    }
-    if (
-      isValidation &&
-      Object.keys(fieldErrors).length > 0 &&
-      (!detail || message === detail)
-    ) {
-      message = title ?? FRIENDLY_STATUS_MESSAGES[HttpStatus.BadRequest] ?? fallback;
+    const localizedCode = codeMessage(code);
+    let message: string;
+    if (localizedCode) {
+      message = localizedCode;
+    } else {
+      message = err.message;
+      if (!message || message === title || message === detail) {
+        message = detail ?? title ?? statusMessage(err.status) ?? fallback;
+      }
+      if (
+        isValidation &&
+        Object.keys(fieldErrors).length > 0 &&
+        (!detail || message === detail)
+      ) {
+        message = title ?? statusMessage(HttpStatus.BadRequest) ?? fallback;
+      }
     }
 
     return {
       status: err.status,
+      code,
       title,
       message,
       detail,
@@ -137,11 +172,12 @@ export function normalizeError(
 
   return {
     status: null,
+    code: null,
     title: null,
     message: isAbort
-      ? 'Request was cancelled.'
+      ? i18n.global.t('errors.cancelled')
       : isNetwork
-        ? 'Network error. Please check your connection and try again.'
+        ? i18n.global.t('errors.network')
         : err instanceof Error && err.message
           ? err.message
           : fallback,

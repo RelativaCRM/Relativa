@@ -15,6 +15,7 @@ import {
   saveJson,
   saveString,
 } from '@/api/persistence';
+import { setLocale, currentLocale, consumeLocalePending } from '@/i18n';
 
 const STORAGE_KEY = 'relativa_jwt';
 const EXPIRY_KEY = 'relativa_jwt_expires_at';
@@ -65,12 +66,39 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value;
   }
 
+  async function syncLocale() {
+    if (consumeLocalePending()) {
+      const chosen = currentLocale();
+      await authApi.updateMySettings({ locale: chosen });
+      return chosen;
+    }
+    const settings = await authApi.mySettings();
+    if (settings.locale && settings.locale !== currentLocale()) {
+      setLocale(settings.locale);
+    }
+    return settings.locale;
+  }
+
   async function login(payload: LoginRequest, rememberMe = false) {
     const res = await authApi.login(payload);
     setToken(res.accessToken, rememberMe ? null : res.expiresAt, rememberMe);
     setWorkspace('');
     try {
       await fetchProfile();
+      await syncLocale();
+    } catch {
+      user.value = null;
+    }
+    return res;
+  }
+
+  async function oauthLogin(provider: string, token: string, rememberMe = true) {
+    const res = await authApi.oauthLogin(provider, token);
+    setToken(res.accessToken, rememberMe ? null : res.expiresAt, rememberMe);
+    setWorkspace('');
+    try {
+      await fetchProfile();
+      await syncLocale();
     } catch {
       user.value = null;
     }
@@ -78,7 +106,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(payload: RegisterRequest) {
-    return authApi.register(payload);
+    return authApi.register({ ...payload, locale: payload.locale ?? currentLocale() });
   }
 
   async function updateProfile(payload: UpdateProfilePayload) {
@@ -118,9 +146,11 @@ export const useAuthStore = defineStore('auth', () => {
     setRoles,
     clearSession,
     fetchProfile,
+    syncLocale,
     updateProfile,
     deleteAccount,
     login,
+    oauthLogin,
     register,
     logout,
   };

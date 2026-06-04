@@ -54,6 +54,16 @@ public static class JoinRequestEndpoints
         .WithSummary("Get all join requests submitted by the authenticated user")
         .Produces<List<JoinRequestDto>>();
 
+        myGroup.MapDelete("/mine/{requestId:int}", async (int requestId, IJoinRequestService service, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            await service.CancelMineAsync(requestId, userId, ct);
+            return Results.NoContent();
+        })
+        .WithName("CancelMyJoinRequest")
+        .WithSummary("Cancel a pending join request submitted by the authenticated user")
+        .Produces(StatusCodes.Status204NoContent);
+
         return orgGroup;
     }
 }

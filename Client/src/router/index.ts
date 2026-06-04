@@ -195,6 +195,8 @@ const router = createRouter({
   ],
 });
 
+let localeRevalidated = false;
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const orgStore = useOrganizationStore();
@@ -217,6 +219,11 @@ router.beforeEach(async (to) => {
       const query = to.fullPath !== '/' ? { redirect: to.fullPath } : {};
       return { name: 'login', query };
     }
+  }
+
+  if (auth.isAuthenticated && !localeRevalidated) {
+    localeRevalidated = true;
+    void auth.syncLocale().catch(() => undefined);
   }
 
   if (auth.isAuthenticated && !to.meta.public && !to.meta.skipOrgCheck) {
