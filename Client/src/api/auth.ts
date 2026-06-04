@@ -43,7 +43,7 @@ export const authApi = {
     return api.post<RegisterResponse>(`${AUTH_PREFIX}/register`, { ...payload });
   },
   login(payload: LoginRequest): Promise<LoginResponse> {
-    return api.post<LoginResponse>(`${AUTH_PREFIX}/login`, { ...payload });
+    return api.post<LoginResponse>(`${AUTH_PREFIX}/login`, { ...payload }, { silent: true });
   },
   me(): Promise<UserProfile> {
     return api.get<UserProfile>(`${AUTH_PREFIX}/me`);

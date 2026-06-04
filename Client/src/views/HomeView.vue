@@ -5,15 +5,42 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
 import ProgressBar from 'primevue/progressbar';
+import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useDashboardStore } from '@/stores/dashboard';
+import { roleDisplayName } from '@/utils/roleBadge';
 
 const auth = useAuthStore();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
 const dashStore = useDashboardStore();
+const router = useRouter();
+
+const fullName = computed(() => {
+  const u = auth.user;
+  if (!u) return '';
+  return `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
+});
+
+const userInitials = computed(() => {
+  const u = auth.user;
+  if (!u) return '';
+  const f = (u.firstName?.[0] ?? '').toUpperCase();
+  const l = (u.lastName?.[0] ?? '').toUpperCase();
+  return `${f}${l}` || (u.email?.[0] ?? '').toUpperCase();
+});
+
+const workspaceCount = computed(() => wsStore.workspaces.length);
+
+const canManageOrg = computed(() =>
+  orgStore.currentOrg?.myPermissions?.includes('manage_org_settings') ?? false,
+);
+
+function goToOrgSettings() {
+  router.push({ name: 'org-settings' });
+}
 
 const now = ref(new Date());
 let tickHandle: ReturnType<typeof setInterval> | null = null;
@@ -51,14 +78,6 @@ const greeting = computed(() => {
 });
 
 const firstName = computed(() => auth.user?.firstName?.trim() ?? '');
-
-function displayOrgRole(roleName: string | null | undefined): string {
-  if (!roleName) return '—';
-  if (roleName === 'org_owner') return 'Owner';
-  if (roleName === 'org_admin') return 'Admin';
-  if (roleName === 'org_member') return 'Member';
-  return roleName;
-}
 
 const kpis = computed(() => {
   const s = dashStore.summary;
@@ -383,28 +402,69 @@ function scoreBar(score?: number) {
         </div>
       </div>
 
-      <div class="mt-6 grid gap-4 sm:grid-cols-2">
-        <div class="rounded-xl border border-line bg-white p-5">
-          <h2 class="text-sm font-semibold text-ink-900">Session</h2>
-          <dl class="mt-3 text-sm text-ink-700 grid grid-cols-[auto,1fr] gap-x-6 gap-y-2">
-            <dt class="text-ink-500">Email</dt>
-            <dd>{{ auth.user?.email ?? '—' }}</dd>
-            <dt class="text-ink-500">Token expiry</dt>
-            <dd>{{ auth.expiresAt ? new Date(auth.expiresAt).toLocaleString() : '—' }}</dd>
-          </dl>
-        </div>
+      <div v-if="auth.user" class="mt-6">
+        <article class="session-card rounded border border-line bg-white px-6 py-5">
+          <header class="flex items-start justify-between gap-4">
+            <div class="flex items-center gap-4 min-w-0">
+              <div class="session-card__avatar shrink-0">
+                <span>{{ userInitials }}</span>
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap min-w-0">
+                  <p class="text-base font-semibold text-ink-900 truncate">
+                    {{ fullName || auth.user.email }}
+                  </p>
+                  <span
+                    v-if="orgStore.currentOrg"
+                    class="text-ink-300 select-none"
+                    aria-hidden="true"
+                  >·</span>
+                  <p
+                    v-if="orgStore.currentOrg"
+                    class="text-sm text-ink-700 truncate"
+                  >{{ orgStore.currentOrg.name }}</p>
+                  <span
+                    v-if="orgStore.currentOrg?.userRole"
+                    class="session-card__role-badge"
+                  >
+                    {{ roleDisplayName(orgStore.currentOrg.userRole) }}
+                  </span>
+                </div>
+                <p class="mt-0.5 text-sm text-ink-500 truncate">{{ auth.user.email }}</p>
+              </div>
+            </div>
 
-        <div class="rounded-xl border border-line bg-white p-5">
-          <h2 class="text-sm font-semibold text-ink-900">Organization</h2>
-          <dl class="mt-3 text-sm text-ink-700 grid grid-cols-[auto,1fr] gap-x-6 gap-y-2">
-            <dt class="text-ink-500">Name</dt>
-            <dd>{{ orgStore.currentOrg?.name ?? '—' }}</dd>
-            <dt class="text-ink-500">Role</dt>
-            <dd>{{ displayOrgRole(orgStore.currentOrg?.userRole) }}</dd>
-            <dt class="text-ink-500">Members</dt>
-            <dd>{{ orgStore.currentOrg?.memberCount ?? '—' }}</dd>
-          </dl>
-        </div>
+            <span class="session-card__active-pill shrink-0">
+              <span class="relative flex h-1.5 w-1.5">
+                <span class="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              </span>
+              Active
+            </span>
+          </header>
+
+          <div class="mt-5 flex items-end gap-3 flex-wrap">
+            <dl class="grid grid-cols-2 gap-3 flex-1 min-w-[16rem]">
+              <div class="session-card__stat">
+                <dt>Members</dt>
+                <dd>{{ orgStore.currentOrg?.memberCount ?? '—' }}</dd>
+              </div>
+              <div class="session-card__stat">
+                <dt>Workspaces</dt>
+                <dd>{{ workspaceCount }}</dd>
+              </div>
+            </dl>
+
+            <button
+              v-if="canManageOrg"
+              type="button"
+              class="session-card__manage-btn shrink-0"
+              @click="goToOrgSettings"
+            >
+              Manage
+            </button>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -691,3 +751,110 @@ function scoreBar(score?: number) {
     </template>
   </div>
 </template>
+
+<style scoped>
+.session-card {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.session-card:hover {
+  border-color: rgb(203 213 225);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.session-card__avatar {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background-color: rgb(37 99 235);
+}
+
+.session-card__role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  border-radius: 0.25rem;
+  background-color: rgb(37 99 235);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.session-card__active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgb(167 243 208);
+  background-color: #ffffff;
+  color: rgb(4 120 87);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.session-card__stat {
+  padding: 0.875rem 1rem;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.25rem;
+  background-color: rgb(248 250 252);
+}
+
+.session-card__stat dt {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgb(100 116 139);
+}
+
+.session-card__stat dd {
+  margin-top: 0.25rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: rgb(15 23 42);
+}
+
+.session-card__manage-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.25rem;
+  padding: 0 1.25rem;
+  border-radius: 0.25rem;
+  background-color: rgb(37 99 235);
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1px solid rgb(37 99 235);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  min-width: 6rem;
+}
+
+.session-card__manage-btn:hover {
+  background-color: rgb(29 78 216);
+  border-color: rgb(29 78 216);
+}
+
+.session-card__manage-btn:active {
+  background-color: rgb(30 64 175);
+  border-color: rgb(30 64 175);
+}
+
+.session-card__manage-btn:focus-visible {
+  outline: 2px solid rgb(37 99 235);
+  outline-offset: 2px;
+}
+</style>
