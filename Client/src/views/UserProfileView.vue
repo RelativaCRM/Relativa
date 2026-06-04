@@ -45,16 +45,8 @@ const isWorkspaceAdmin = computed(
 const roleOptions = computed(() =>
   ROLE_ORDER.map((name) => wsStore.roles.find((r) => r.name === name))
     .filter((r): r is NonNullable<typeof r> => !!r)
-    .map((r) => ({ label: displayRole(r.name), value: r.id })),
+    .map((r) => ({ label: r.displayName, value: r.id })),
 );
-
-function displayRole(roleName: string): string {
-  if (roleName === 'ws_admin') return 'Admin';
-  if (roleName === 'ws_manager') return 'Manager';
-  if (roleName === 'ws_analyst') return 'Analyst';
-  if (roleName === 'ws_member') return 'Member';
-  return roleName;
-}
 
 function roleSeverity(roleName: string): string {
   if (roleName === 'ws_admin') return 'info';
@@ -89,9 +81,8 @@ const canSave = computed(
 async function handleSaveRole() {
   if (!canSave.value || !member.value || selectedRoleId.value == null) return;
 
-  const newRoleName = wsStore.roles.find(
-    (r) => r.id === selectedRoleId.value,
-  )?.name;
+  const newRole = wsStore.roles.find((r) => r.id === selectedRoleId.value);
+  const newRoleName = newRole?.name;
 
   if (
     member.value.roleName === 'ws_admin' &&
@@ -121,7 +112,7 @@ async function handleSaveRole() {
     toast.add({
       severity: 'success',
       summary: 'Role updated',
-      detail: `User role changed to ${displayRole(newRoleName ?? '')}.`,
+      detail: `User role changed to ${newRole?.displayName ?? newRoleName ?? ''}.`,
       life: 3000,
     });
   } catch (err) {
@@ -203,7 +194,7 @@ onMounted(loadAll);
       </div>
       <Tag
         v-if="member"
-        :value="displayRole(member.roleName)"
+        :value="member.roleDisplayName"
         :severity="roleSeverity(member.roleName)"
       />
     </div>
@@ -291,7 +282,7 @@ onMounted(loadAll);
         <div v-else class="flex items-center gap-3">
           <span class="text-sm text-ink-500">Current role:</span>
           <Tag
-            :value="displayRole(member.roleName)"
+            :value="member.roleDisplayName"
             :severity="roleSeverity(member.roleName)"
           />
         </div>

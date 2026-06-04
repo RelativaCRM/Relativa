@@ -4,6 +4,7 @@ public class EntityType
 {
     public int Id { get; set; }
     public string Name { get; set; } = null!;
+    public string? DisplayName { get; set; }
     public bool IsStandalone { get; set; } = true;
     public ICollection<Entity> Entities { get; set; } = new List<Entity>();
     public ICollection<EntityTypeProperty> EntityTypeProperties { get; set; } = new List<EntityTypeProperty>();

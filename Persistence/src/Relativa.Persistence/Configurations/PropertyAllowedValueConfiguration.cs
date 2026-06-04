@@ -12,6 +12,7 @@ public class PropertyAllowedValueConfiguration : IEntityTypeConfiguration<Proper
         builder.HasKey(pav => new { pav.PropertyId, pav.Value });
         builder.Property(pav => pav.PropertyId).HasColumnName("property_id");
         builder.Property(pav => pav.Value).HasColumnName("value").IsRequired();
+        builder.Property(pav => pav.DisplayName).HasColumnName("display_name").HasMaxLength(200);
         builder.HasOne(pav => pav.Property)
             .WithMany(p => p.AllowedValues)
             .HasForeignKey(pav => pav.PropertyId)

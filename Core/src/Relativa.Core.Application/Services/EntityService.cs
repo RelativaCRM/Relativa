@@ -4,6 +4,7 @@ using FluentValidation;
 using Relativa.Core.Application.DTOs.Entity;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -16,7 +17,8 @@ public sealed class EntityService(
     IUserRoleWorkspaceRepository memberRepository,
     IValidator<CreateEntityRequest> createValidator,
     IValidator<UpdateEntityRequest> updateValidator,
-    IOutboxWriter? auditOutboxWriter = null) : IEntityService
+    IOutboxWriter? auditOutboxWriter = null,
+    IEntityRelationshipNotifier? relationshipNotifier = null) : IEntityService
 {
     public async Task<EntityPagedResult> GetByWorkspaceAsync(
         int workspaceId,
@@ -406,6 +408,7 @@ public sealed class EntityService(
     /// Validates that:
     /// - All submitted property ids belong to the entity type.
     /// - All required properties have a non-null value.
+    /// - Required String properties have a non-empty, non-whitespace value.
     /// - No duplicate property ids are supplied.
     /// </summary>
     private static void ValidatePropertyPayload(
@@ -431,6 +434,20 @@ public sealed class EntityService(
                 .Where(tp => missingRequired.Contains(tp.PropertyId))
                 .Select(tp => $"{tp.Property.Name} (propertyId {tp.PropertyId})");
             throw new ArgumentException($"Required properties are missing: {string.Join(", ", details)}.");
+        }
+
+        var emptyStringIds = typeProperties
+            .Where(tp => tp.IsRequired && tp.Property.DataType == PropertyDataType.String)
+            .Where(tp => submitted.Any(p => p.PropertyId == tp.PropertyId && string.IsNullOrWhiteSpace(p.Value)))
+            .Select(tp => tp.PropertyId)
+            .ToList();
+
+        if (emptyStringIds.Count > 0)
+        {
+            var emptyDetails = typeProperties
+                .Where(tp => emptyStringIds.Contains(tp.PropertyId))
+                .Select(tp => $"{tp.Property.Name} (propertyId {tp.PropertyId})");
+            throw new ArgumentException($"Required string properties cannot be empty or whitespace: {string.Join(", ", emptyDetails)}.");
         }
 
         foreach (var tp in typeProperties.Where(tp => tp.Property.IsReadonly))
@@ -513,6 +530,7 @@ public sealed class EntityService(
         e.Id,
         e.EntityTypeId,
         e.EntityType.Name,
+        e.EntityType.DisplayName ?? DisplayNameHelper.Humanize(e.EntityType.Name),
         MapPropertyValues(e));
 
     private static EntityDetailDto MapToDetail(Entity e)
@@ -522,6 +540,7 @@ public sealed class EntityService(
             e.Id,
             e.EntityTypeId,
             e.EntityType.Name,
+            e.EntityType.DisplayName ?? DisplayNameHelper.Humanize(e.EntityType.Name),
             e.IsArchived,
             MapPropertyValues(e),
             MapOutbound(e, previewCap),
@@ -535,8 +554,10 @@ public sealed class EntityService(
                 r.Id,
                 r.RelationshipTypeId,
                 r.RelationshipType.Name,
+                r.RelationshipType.DisplayName ?? DisplayNameHelper.Humanize(r.RelationshipType.Name),
                 r.TargetEntityId,
                 r.TargetEntity.EntityType.Name,
+                r.TargetEntity.EntityType.DisplayName ?? DisplayNameHelper.Humanize(r.TargetEntity.EntityType.Name),
                 MapPreview(r.TargetEntity, previewCap)))
             .ToList();
 
@@ -547,8 +568,10 @@ public sealed class EntityService(
                 r.Id,
                 r.RelationshipTypeId,
                 r.RelationshipType.Name,
+                r.RelationshipType.DisplayName ?? DisplayNameHelper.Humanize(r.RelationshipType.Name),
                 r.SourceEntityId,
                 r.SourceEntity.EntityType.Name,
+                r.SourceEntity.EntityType.DisplayName ?? DisplayNameHelper.Humanize(r.SourceEntity.EntityType.Name),
                 MapPreview(r.SourceEntity, previewCap)))
             .ToList();
 
@@ -559,6 +582,7 @@ public sealed class EntityService(
             .Select(pv => new EntityPropertyValueDto(
                 pv.PropertyId,
                 pv.Property.Name,
+                pv.Property.DisplayName ?? DisplayNameHelper.Humanize(pv.Property.Name),
                 pv.Property.DataType.ToString(),
                 ResolveValue(pv),
                 pv.Property.IsReadonly))
@@ -570,6 +594,7 @@ public sealed class EntityService(
             .Select(pv => new EntityPropertyValueDto(
                 pv.PropertyId,
                 pv.Property.Name,
+                pv.Property.DisplayName ?? DisplayNameHelper.Humanize(pv.Property.Name),
                 pv.Property.DataType.ToString(),
                 ResolveValue(pv),
                 pv.Property.IsReadonly))
@@ -631,13 +656,18 @@ public sealed class EntityService(
             RelationshipTypeId = relType.Id,
         }, ct);
 
+        if (relationshipNotifier is not null)
+            await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, source.Id, target.Id);
+
         const int previewCap = 12;
         return new EntityRelationshipRefDto(
             rel.Id,
             relType.Id,
             relType.Name,
+            relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
             target.Id,
             relType.TargetEntityType.Name,
+            relType.TargetEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.TargetEntityType.Name),
             MapPreview(target, previewCap));
     }
 
@@ -652,13 +682,24 @@ public sealed class EntityService(
             throw new ForbiddenAccessException("Relationship does not belong to an entity in this workspace.");
 
         if (rel.RelationshipType.IsRequired)
-            throw new ArgumentException($"Cannot delete required relationship '{rel.RelationshipType.Name}'.");
+        {
+            var remaining = await entityRepository.CountRelationshipsBySourceAsync(
+                rel.SourceEntityId, rel.RelationshipTypeId, ct);
+            if (remaining <= 1)
+                throw new ArgumentException(
+                    $"Cannot unlink: the entity requires at least one '{rel.RelationshipType.Name}' link.");
+        }
 
         var targetTypeProps = await entityRepository.GetTypePropertiesAsync(rel.TargetEntity.EntityTypeId, ct);
         if (targetTypeProps.Count > 0 && targetTypeProps.All(tp => tp.Property.IsReadonly))
             throw new ArgumentException("Cannot unlink an entity whose properties are all read-only.");
 
+        var sourceId = rel.SourceEntityId;
+        var targetId = rel.TargetEntityId;
         await entityRepository.RemoveRelationshipAsync(relationshipId, ct);
+
+        if (relationshipNotifier is not null)
+            await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, sourceId, targetId);
     }
 
     public async Task<EntityRelationshipRefDto> ReassignRelationshipAsync(
@@ -719,9 +760,15 @@ public sealed class EntityService(
                     workspaceId, userId, "updated", ct);
             }
 
+            if (relationshipNotifier is not null)
+                await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, rel.SourceEntityId, rel.TargetEntityId, newTarget.Id);
+
             const int previewCap = 12;
             result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
-                newTarget.Id, relType.TargetEntityType.Name, MapPreview(newTarget, previewCap));
+                relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
+                newTarget.Id, relType.TargetEntityType.Name,
+                relType.TargetEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.TargetEntityType.Name),
+                MapPreview(newTarget, previewCap));
         }
         else
         {
@@ -764,9 +811,15 @@ public sealed class EntityService(
                     workspaceId, userId, "updated", ct);
             }
 
+            if (relationshipNotifier is not null)
+                await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, rel.SourceEntityId, rel.TargetEntityId, newSource.Id);
+
             const int previewCap = 12;
             result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
-                newSource.Id, relType.SourceEntityType.Name, MapPreview(newSource, previewCap));
+                relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
+                newSource.Id, relType.SourceEntityType.Name,
+                relType.SourceEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.SourceEntityType.Name),
+                MapPreview(newSource, previewCap));
         }
 
         return result;

@@ -352,6 +352,50 @@ public sealed class EntityServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RequiredStringProperty_EmptyValue_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
+        };
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new CreateEntityRequest(1,
+        [
+            new PropertyValueInput(1, ""),
+            new PropertyValueInput(3, "Koval")
+        ]);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*empty or whitespace*");
+    }
+
+    [Fact]
+    public async Task CreateAsync_RequiredStringProperty_WhitespaceValue_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
+        };
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new CreateEntityRequest(1,
+        [
+            new PropertyValueInput(1, "   "),
+            new PropertyValueInput(3, "Koval")
+        ]);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*empty or whitespace*");
+    }
+
+    [Fact]
     public async Task CreateAsync_UnknownPropertyId_ThrowsArgumentException()
     {
         var typeProps = new List<EntityTypeProperty>
@@ -529,6 +573,38 @@ public sealed class EntityServiceTests
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(99, "bad")])))
             .Should().ThrowAsync<ArgumentException>()
             .WithMessage("*99*");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RequiredStringProperty_EmptyValue_ThrowsArgumentException()
+    {
+        var entity = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "")])))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*empty or whitespace*");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RequiredStringProperty_WhitespaceValue_ThrowsArgumentException()
+    {
+        var entity = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, " ")])))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*empty or whitespace*");
     }
 
 

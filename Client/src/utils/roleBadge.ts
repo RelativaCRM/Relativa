@@ -1,6 +1,6 @@
-// Single source of truth for how role identifiers (org_*, ws_*) render as
-// human-friendly labels and weight-ladder badges across the SPA. Tiered in
-// blue only — never reach for emerald/amber severities to express seniority.
+// Badge classes for role identifiers (org_*, ws_*) across the SPA.
+// Tiered in blue only — never reach for emerald/amber severities to express seniority.
+// Display names are served by the API (role.displayName / member.roleDisplayName).
 
 export type RoleName =
   | 'org_owner'
@@ -11,16 +11,6 @@ export type RoleName =
   | 'ws_analyst'
   | 'ws_member'
   | (string & {}); // tolerate forward-compat custom role names
-
-const DISPLAY: Record<string, string> = {
-  org_owner: 'Owner',
-  org_admin: 'Admin',
-  org_member: 'Member',
-  ws_admin: 'Admin',
-  ws_manager: 'Manager',
-  ws_analyst: 'Analyst',
-  ws_member: 'Member',
-};
 
 // Badge tiers, heaviest → lightest
 const HEAVIEST = 'bg-brand-700 text-white shadow-sm';
@@ -37,11 +27,6 @@ const BADGE: Record<string, string> = {
   ws_analyst: MEDIUM,
   ws_member: BACKGROUND,
 };
-
-export function roleDisplayName(roleName: RoleName | null | undefined): string {
-  if (!roleName) return 'Member';
-  return DISPLAY[roleName] ?? roleName;
-}
 
 export function roleBadgeClass(roleName: RoleName | null | undefined): string {
   if (!roleName) return BACKGROUND;

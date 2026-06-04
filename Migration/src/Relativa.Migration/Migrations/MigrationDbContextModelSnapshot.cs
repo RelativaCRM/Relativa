@@ -419,7 +419,8 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("SourceEntityId")
                         .HasDatabaseName("ix_er_source_entity_id");
 
-                    b.HasIndex("TargetEntityId");
+                    b.HasIndex("TargetEntityId")
+                        .HasDatabaseName("ix_er_target_entity_id");
 
                     b.ToTable("entity_relationship", (string)null);
                 });
@@ -432,6 +433,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
 
                     b.Property<bool>("IsRequired")
                         .HasColumnType("boolean")
@@ -477,6 +483,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
 
                     b.Property<bool>("IsStandalone")
                         .HasColumnType("boolean")
@@ -543,6 +554,9 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("EntityId", "WorkspaceId")
                         .IsUnique()
                         .HasDatabaseName("ix_ew_entity_workspace");
+
+                    b.HasIndex("WorkspaceId")
+                        .HasDatabaseName("ix_ew_workspace_id");
 
                     b.ToTable("entity_workspace", (string)null);
                 });
@@ -695,6 +709,11 @@ namespace Relativa.Migration.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
                     b.Property<bool>("IsArchived")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -804,6 +823,11 @@ namespace Relativa.Migration.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
                     b.Property<bool>("IsArchived")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -837,6 +861,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("text")
                         .HasColumnName("data_type");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
                     b.Property<bool>("IsReadonly")
                         .HasColumnType("boolean")
                         .HasColumnName("is_readonly");
@@ -859,6 +888,11 @@ namespace Relativa.Migration.Migrations
 
             modelBuilder.Entity("Relativa.Persistence.Entities.PropertyAllowedValue", b =>
                 {
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
                     b.Property<int>("PropertyId")
                         .HasColumnType("integer")
                         .HasColumnName("property_id");
@@ -1083,6 +1117,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
 
                     b.Property<bool>("IsArchived")
                         .ValueGeneratedOnAdd()

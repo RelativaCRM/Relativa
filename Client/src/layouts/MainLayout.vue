@@ -111,14 +111,6 @@ async function handleOrgChange(orgId: number | null) {
   }
 }
 
-function formatTypeName(name: string): string {
-  return name
-    .split('_')
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
 async function handleWorkspaceChange(wsId: number | null) {
   if (wsId == null) return;
   wsStore.setCurrentWorkspace(wsId);
@@ -291,7 +283,7 @@ onMounted(async () => {
             ]"
           >
             <span :class="['w-1.5 h-1.5 rounded-full shrink-0', route.query.entityType === type.name ? 'bg-brand-500' : 'bg-slate-300']" />
-            {{ formatTypeName(type.name) }}
+            {{ type.displayName }}
           </RouterLink>
         </div>
       </Transition>

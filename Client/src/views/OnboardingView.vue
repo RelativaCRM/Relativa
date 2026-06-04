@@ -27,9 +27,26 @@ const wsStore = useWorkspaceStore();
 const entityStore = useEntityStore();
 const { notify } = useApiErrorHandler();
 
-type Tab = 'invitations' | 'create' | 'join';
+type Tab = 'my-orgs' | 'invitations' | 'create' | 'join';
 const activeTab = ref<Tab>('create');
 
+// --- My organizations ---
+const myOrgs = computed(() => orgStore.organizations);
+const hasMyOrgs = computed(() => myOrgs.value.length > 0);
+
+function enterOrg(orgId: number) {
+  orgStore.setCurrentOrg(orgId);
+  router.push({ name: 'home' });
+}
+
+// Tabs shown depend on whether user already belongs to orgs
+const visibleTabs = computed<Tab[]>(() =>
+  hasMyOrgs.value
+    ? ['my-orgs', 'invitations', 'create', 'join']
+    : ['invitations', 'create', 'join'],
+);
+
+// --- Invitations / join requests ---
 const orgInvitations = ref<OrgInvitationDto[]>([]);
 const pendingJoinRequests = ref<JoinRequestDto[]>([]);
 const inboxLoading = ref(true);
@@ -44,13 +61,22 @@ const hasInboxItems = computed(
 async function loadInbox() {
   inboxLoading.value = true;
   try {
+    // Ensure orgs are loaded (may not be if navigated here directly)
+    if (!orgStore.organizations.length) {
+      await orgStore.fetchOrganizations();
+    }
+
     const [invitations, joinReqs] = await Promise.all([
       orgApi.myOrganizationInvitations(),
       orgApi.myJoinRequests(),
     ]);
     orgInvitations.value = invitations;
     pendingJoinRequests.value = joinReqs.filter((r) => r.status === 'Pending');
-    if (hasInboxItems.value) {
+
+    // Default tab priority: my orgs → inbox → create
+    if (hasMyOrgs.value) {
+      activeTab.value = 'my-orgs';
+    } else if (hasInboxItems.value) {
       activeTab.value = 'invitations';
     }
   } catch {
@@ -77,6 +103,7 @@ async function acceptOrgInvite(token: string) {
 
 onMounted(loadInbox);
 
+// --- Create org ---
 const newOrgName = ref('');
 const creating = ref(false);
 const createError = ref<string | null>(null);
@@ -95,6 +122,7 @@ async function handleCreate() {
   }
 }
 
+// --- Join org ---
 const searchQuery = ref('');
 const searchResults = ref<OrganizationDto[]>([]);
 const searching = ref(false);
@@ -146,21 +174,32 @@ function handleLogout() {
   entityStore.clear();
   router.push({ name: 'login' });
 }
+
+function tabLabel(tab: Tab): string {
+  switch (tab) {
+    case 'my-orgs': return 'My organizations';
+    case 'invitations': return 'Invitations';
+    case 'create': return 'Create organization';
+    case 'join': return 'Join organization';
+  }
+}
 </script>
 
 <template>
   <AuthLayout>
     <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">
-      Get started
+      {{ hasMyOrgs ? 'Choose organization' : 'Get started' }}
     </h1>
     <p class="mt-1 text-[13px] text-ink-500">
-      Create a new organization or join an existing one.
+      {{ hasMyOrgs
+        ? 'Select the organization you want to work in, or join a new one.'
+        : 'Create a new organization or join an existing one.' }}
     </p>
 
-    
+    <!-- Tab bar -->
     <div class="mt-5 flex border-b border-line">
       <button
-        v-for="tab in (['invitations', 'create', 'join'] as Tab[])"
+        v-for="tab in visibleTabs"
         :key="tab"
         :class="[
           'flex-1 pb-2.5 text-sm font-medium transition-colors relative',
@@ -170,21 +209,49 @@ function handleLogout() {
         ]"
         @click="activeTab = tab"
       >
-        <template v-if="tab === 'invitations'">
-          Invitations
-          <Tag
-            v-if="hasInboxItems"
-            :value="pendingOrgInvitations.length + pendingJoinRequests.length"
-            severity="info"
-            class="!ml-1.5 !text-[10px] !py-0 !px-1.5"
-          />
-        </template>
-        <template v-else-if="tab === 'create'">Create organization</template>
-        <template v-else>Join organization</template>
+        {{ tabLabel(tab) }}
+        <Tag
+          v-if="tab === 'invitations' && hasInboxItems"
+          :value="pendingOrgInvitations.length + pendingJoinRequests.length"
+          severity="info"
+          class="!ml-1.5 !text-[10px] !py-0 !px-1.5"
+        />
       </button>
     </div>
 
-    
+    <!-- My organizations -->
+    <div
+      v-if="activeTab === 'my-orgs'"
+      class="mt-5 flex flex-col gap-3"
+    >
+      <LoadingSkeleton
+        v-if="inboxLoading"
+        variant="list"
+        :rows="2"
+        label="Loading organizations"
+      />
+      <ul v-else class="flex flex-col gap-2 max-h-72 overflow-y-auto">
+        <li
+          v-for="org in myOrgs"
+          :key="org.id"
+          class="flex items-center justify-between rounded-lg border border-line px-4 py-3"
+        >
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-ink-900 truncate">{{ org.name }}</p>
+            <p v-if="org.memberCount != null" class="text-xs text-ink-500">
+              {{ org.memberCount }} {{ org.memberCount === 1 ? 'member' : 'members' }}
+            </p>
+          </div>
+          <Button
+            size="small"
+            label="Enter"
+            @click="enterOrg(org.id)"
+          />
+        </li>
+      </ul>
+    </div>
+
+    <!-- Invitations -->
     <div
       v-if="activeTab === 'invitations'"
       class="mt-5 flex flex-col gap-3"
@@ -219,7 +286,7 @@ function handleLogout() {
       </div>
 
       <div v-else class="flex flex-col gap-2">
-        
+        <!-- Org invitations -->
         <ul v-if="pendingOrgInvitations.length" class="flex flex-col gap-2">
           <li
             v-for="inv in pendingOrgInvitations"
@@ -243,7 +310,7 @@ function handleLogout() {
           </li>
         </ul>
 
-        
+        <!-- Pending join requests -->
         <ul v-if="pendingJoinRequests.length" class="flex flex-col gap-2">
           <li
             v-for="req in pendingJoinRequests"
@@ -273,7 +340,7 @@ function handleLogout() {
       </Message>
     </div>
 
-    
+    <!-- Create org -->
     <form
       v-if="activeTab === 'create'"
       class="mt-5 flex flex-col gap-4"
@@ -310,7 +377,7 @@ function handleLogout() {
       </Button>
     </form>
 
-    
+    <!-- Join org -->
     <div v-else-if="activeTab === 'join'" class="mt-5 flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
         <label for="searchOrg" class="text-xs font-medium text-ink-600">
@@ -372,7 +439,7 @@ function handleLogout() {
       </Message>
     </div>
 
-    
+    <!-- Sign out -->
     <p class="mt-6 text-center text-[13px] text-ink-500">
       <button class="font-medium text-brand-600 hover:underline" @click="handleLogout">
         Sign out

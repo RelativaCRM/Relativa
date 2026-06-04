@@ -5,7 +5,7 @@ import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import { useToast } from 'primevue/usetoast';
-import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass } from '@/utils/roleBadge';
 import { orgApi } from '@/api/organizations';
 import {
   workspaceApi,
@@ -75,7 +75,7 @@ const orgRoleOptions = computed(() =>
     .slice()
     .sort((a, b) => a.priority - b.priority)
     .map((r) => ({
-      label: r.name === 'org_admin' ? 'Admin' : 'Member',
+      label: r.displayName,
       value: r.id,
       name: r.name,
     })),
@@ -84,8 +84,6 @@ const orgRoleOptions = computed(() =>
 function roleIdByName(roleName: string): number | null {
   return orgStore.roles.find((r) => r.name === roleName)?.id ?? null;
 }
-
-const displayRole = roleDisplayName;
 
 function emailDomain(email: string | null | undefined): string {
   if (!email) return '';
@@ -106,7 +104,7 @@ function workspaceMemberFor(wsId: number): WorkspaceMemberDto | null {
 
 function workspaceRoleOptions(wsId: number) {
   return (workspaceRoles.value[wsId] ?? []).map((r) => ({
-    label: r.name,
+    label: r.displayName,
     value: r.id,
   }));
 }
@@ -336,7 +334,7 @@ onMounted(async () => {
         </p>
       </div>
       <span v-if="member" :class="roleBadgeFullClass(member.roleName)">
-        {{ displayRole(member.roleName) }}
+        {{ member.roleDisplayName }}
       </span>
     </div>
 
@@ -410,7 +408,7 @@ onMounted(async () => {
           />
         </div>
         <p class="mt-2 text-xs text-ink-500">
-          Archive account requires <code>delete_org_users</code> and matching email domain.
+          Archive account requires the Delete Org Users permission and a matching email domain.
         </p>
       </div>
 

@@ -11,7 +11,7 @@ import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { ApiError } from '@/api/http';
 import { useApiErrorHandler } from '@/api/errorToast';
-import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass } from '@/utils/roleBadge';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const route = useRoute();
@@ -90,7 +90,7 @@ const orgMemberOptions = computed(() =>
 const roleOptions = computed(() =>
   ROLE_ORDER.map((name) => wsStore.roles.find((r) => r.name === name))
     .filter((r): r is NonNullable<typeof r> => !!r)
-    .map((r) => ({ label: displayRole(r.name), value: r.id })),
+    .map((r) => ({ label: r.displayName, value: r.id })),
 );
 
 const canSubmitAdd = computed(
@@ -99,8 +99,6 @@ const canSubmitAdd = computed(
     addMemberRoleId.value !== null &&
     !addMemberSending.value,
 );
-
-const displayRole = roleDisplayName;
 
 function roleIdByName(roleName: string): number | undefined {
   return wsStore.roles.find((r) => r.name === roleName)?.id;
@@ -320,7 +318,7 @@ onMounted(loadAll);
                 @update:model-value="handleRoleChange(member.userId, $event)"
               />
               <span v-else :class="roleBadgeFullClass(member.roleName)">
-                {{ displayRole(member.roleName) }}
+                {{ member.roleDisplayName }}
               </span>
             </td>
             <td class="px-5 py-3 text-ink-500">

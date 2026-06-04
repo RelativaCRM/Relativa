@@ -12,6 +12,7 @@ public class PermissionConfiguration : IEntityTypeConfiguration<Permission>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.Name).HasColumnName("name").IsRequired();
+        builder.Property(e => e.DisplayName).HasColumnName("display_name").HasMaxLength(200);
         builder.HasIndex(e => e.Name).IsUnique();
         builder.Property(e => e.IsArchived).HasColumnName("is_archived").HasDefaultValue(false);
     }
