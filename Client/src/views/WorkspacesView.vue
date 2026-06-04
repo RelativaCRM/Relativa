@@ -154,7 +154,7 @@ onMounted(async () => {
             class="text-brand-600 font-medium hover:underline"
             @click="openEntities(ws.id)"
           >
-            <i class="pi pi-database mr-1 text-[10px]" />Entities
+            <i class="pi pi-th-large mr-1 text-[10px]" />Dashboard
           </button>
         </div>
       </div>

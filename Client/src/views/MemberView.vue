@@ -75,7 +75,7 @@ const orgRoleOptions = computed(() =>
     .slice()
     .sort((a, b) => a.priority - b.priority)
     .map((r) => ({
-      label: r.name === 'org_admin' ? 'Admin' : 'Member',
+      label: r.displayName,
       value: r.id,
       name: r.name,
     })),
@@ -104,7 +104,7 @@ function workspaceMemberFor(wsId: number): WorkspaceMemberDto | null {
 
 function workspaceRoleOptions(wsId: number) {
   return (workspaceRoles.value[wsId] ?? []).map((r) => ({
-    label: r.name,
+    label: r.displayName,
     value: r.id,
   }));
 }
@@ -408,7 +408,7 @@ onMounted(async () => {
           />
         </div>
         <p class="mt-2 text-xs text-ink-500">
-          Archive account requires <code>delete_org_users</code> and matching email domain.
+          Archive account requires the Delete Org Users permission and a matching email domain.
         </p>
       </div>
 

@@ -331,7 +331,7 @@ watch(nestedDialogOpen, (open) => {
 function entityOptionLabel(e: EntityListItemDto): string {
   const bits = e.propertyValues
     .slice(0, 2)
-    .map((p) => `${p.propertyName}=${p.value ?? '—'}`);
+    .map((p) => `${p.displayName}: ${p.value ?? '—'}`);
   return `#${e.id}${bits.length ? ` · ${bits.join(', ')}` : ''}`;
 }
 

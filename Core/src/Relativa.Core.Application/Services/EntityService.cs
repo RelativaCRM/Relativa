@@ -664,8 +664,10 @@ public sealed class EntityService(
             rel.Id,
             relType.Id,
             relType.Name,
+            relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
             target.Id,
             relType.TargetEntityType.Name,
+            relType.TargetEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.TargetEntityType.Name),
             MapPreview(target, previewCap));
     }
 
@@ -763,7 +765,10 @@ public sealed class EntityService(
 
             const int previewCap = 12;
             result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
-                newTarget.Id, relType.TargetEntityType.Name, MapPreview(newTarget, previewCap));
+                relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
+                newTarget.Id, relType.TargetEntityType.Name,
+                relType.TargetEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.TargetEntityType.Name),
+                MapPreview(newTarget, previewCap));
         }
         else
         {
@@ -811,7 +816,10 @@ public sealed class EntityService(
 
             const int previewCap = 12;
             result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
-                newSource.Id, relType.SourceEntityType.Name, MapPreview(newSource, previewCap));
+                relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
+                newSource.Id, relType.SourceEntityType.Name,
+                relType.SourceEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.SourceEntityType.Name),
+                MapPreview(newSource, previewCap));
         }
 
         return result;

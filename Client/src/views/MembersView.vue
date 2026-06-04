@@ -66,7 +66,7 @@ const orgRoleOptions = computed(() =>
     .slice()
     .sort((a, b) => a.priority - b.priority)
     .map((r) => ({
-      label: r.name === 'org_admin' ? 'Admin' : 'Member',
+      label: r.displayName,
       value: r.id,
       name: r.name,
     })),

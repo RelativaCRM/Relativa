@@ -29,12 +29,13 @@ const joinPolicyOptions = [
 ];
 
 const defaultRoleOptions = computed(() => {
-  const none = { label: 'System default (org_member)', value: null as number | null };
+  const memberDisplayName = orgStore.roles.find((r) => r.name === 'org_member')?.displayName ?? 'Member';
+  const none = { label: `System default (${memberDisplayName})`, value: null as number | null };
   return [
     none,
     ...orgStore.roles
       .filter((r) => !r.isSystem || r.name !== 'org_owner')
-      .map((r) => ({ label: r.name, value: r.id })),
+      .map((r) => ({ label: r.displayName, value: r.id })),
   ];
 });
 

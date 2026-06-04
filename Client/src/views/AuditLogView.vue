@@ -157,6 +157,24 @@ function actorEmail(row: AuditLogEntryDto): string {
   return row.actor?.email ?? '—';
 }
 
+function humanizeAction(action: string): string {
+  if (!action) return '—';
+  return action
+    .split('_')
+    .filter(Boolean)
+    .map((w, i) => i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)
+    .join(' ');
+}
+
+function humanizeField(field: string): string {
+  if (!field) return '';
+  return field
+    .split('_')
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 function entityIdOf(row: AuditLogEntryDto): number | null {
   return row.entity?.id ?? null;
 }
@@ -265,7 +283,7 @@ function toggle(rowId: string, slot: 'old' | 'next') {
         <label class="text-xs font-medium text-ink-600">Action</label>
         <InputText
           v-model="actionFilter"
-          placeholder="e.g. entity_updated"
+          placeholder="e.g. Entity updated"
           class="!h-10 min-w-[200px]"
           @keydown.enter="applyFilters"
         />
@@ -337,9 +355,9 @@ function toggle(rowId: string, slot: 'old' | 'next') {
 
         <Column field="action" header="Action" style="width: 220px">
           <template #body="{ data }">
-            <span class="font-mono text-xs text-ink-700">{{ data.action }}</span>
+            <span class="text-xs text-ink-700">{{ humanizeAction(data.action) }}</span>
             <div v-if="data.fieldName" class="text-[11px] text-ink-400 mt-0.5">
-              field: {{ data.fieldName }}
+              {{ humanizeField(data.fieldName) }}
             </div>
           </template>
         </Column>

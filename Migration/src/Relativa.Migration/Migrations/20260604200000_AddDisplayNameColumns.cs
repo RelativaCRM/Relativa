@@ -1,13 +1,17 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using EfMigration = Microsoft.EntityFrameworkCore.Migrations.Migration;
+using Relativa.Migration.Data;
 
 #nullable disable
 
-namespace Relativa.Migration.Migrations
+namespace Relativa.Migration.Migrations;
+
+[DbContext(typeof(MigrationDbContext))]
+[Migration("20260604200000_AddDisplayNameColumns")]
+public partial class AddDisplayNameColumns : EfMigration
 {
     /// <inheritdoc />
-    public partial class AddDisplayNameColumns : Microsoft.EntityFrameworkCore.Migrations.Migration
-    {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
@@ -270,5 +274,4 @@ namespace Relativa.Migration.Migrations
             migrationBuilder.DropColumn(name: "display_name", table: "workspace_roles");
             migrationBuilder.DropColumn(name: "display_name", table: "permissions");
         }
-    }
 }
