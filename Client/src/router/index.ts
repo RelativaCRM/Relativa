@@ -223,7 +223,7 @@ router.beforeEach(async (to) => {
     if (!orgStore.organizations.length) {
       await orgStore.fetchOrganizations();
     }
-    if (!orgStore.hasOrganization) {
+    if (!orgStore.hasOrganization || !orgStore.currentOrgId) {
       return { name: 'onboarding' };
     }
   }

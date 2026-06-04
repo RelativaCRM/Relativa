@@ -34,10 +34,22 @@ export const useOrganizationStore = defineStore('organization', () => {
 
   async function fetchOrganizations() {
     organizations.value = await orgApi.list();
-    const first = organizations.value[0];
-    if (first && !currentOrgId.value) {
-      setCurrentOrg(first.id);
+
+    // Clear a stored ID that no longer exists in the user's org list
+    if (currentOrgId.value !== null) {
+      const ids = new Set(organizations.value.map((o) => o.id));
+      if (!ids.has(currentOrgId.value)) {
+        currentOrgId.value = null;
+        saveNumber(ORG_KEY, null);
+      }
     }
+
+    // Auto-select only when the user belongs to exactly one org —
+    // multi-org users are redirected to the org picker instead.
+    if (!currentOrgId.value && organizations.value.length === 1) {
+      setCurrentOrg(organizations.value[0].id);
+    }
+
     return organizations.value;
   }
 
