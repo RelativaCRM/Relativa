@@ -21,4 +21,5 @@ public interface IUserRepository
     Task AddEmailAsync(UserEmail email, CancellationToken ct = default);
     Task UpdateEmailAsync(UserEmail email, CancellationToken ct = default);
     Task RemoveEmailAsync(UserEmail email, CancellationToken ct = default);
+    Task ReleaseExternalIdentifiersAsync(int userId, CancellationToken ct = default);
 }

@@ -24,6 +24,7 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
         {
             ValidationException ve => (StatusCodes.Status400BadRequest, "Validation Failed",
                 string.Join("; ", ve.Errors.Select(e => e.ErrorMessage))),
+            AuthException ax => (ax.StatusCode, TitleForStatus(ax.StatusCode), ax.Message),
             EmailNotVerifiedException env => (StatusCodes.Status403Forbidden, "Forbidden", env.Message),
             TwoFactorRequiredException tfr => (StatusCodes.Status403Forbidden, "Forbidden", tfr.Message),
             InvalidTwoFactorCodeException itf => (StatusCodes.Status400BadRequest, "Bad Request", itf.Message),
@@ -58,6 +59,7 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
 
         var code = exception switch
         {
+            AuthException ax => ax.Code,
             EmailNotVerifiedException => "email_not_verified",
             TwoFactorRequiredException => "two_factor_required",
             InvalidTwoFactorCodeException => "invalid_two_factor_code",
@@ -79,6 +81,17 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
 
         return true;
     }
+
+    private static string TitleForStatus(int statusCode) => statusCode switch
+    {
+        StatusCodes.Status400BadRequest => "Bad Request",
+        StatusCodes.Status401Unauthorized => "Unauthorized",
+        StatusCodes.Status403Forbidden => "Forbidden",
+        StatusCodes.Status404NotFound => "Not Found",
+        StatusCodes.Status409Conflict => "Conflict",
+        StatusCodes.Status429TooManyRequests => "Too Many Requests",
+        _ => "Error"
+    };
 
     private static bool IsPostgresUniqueViolation(Exception exception)
     {

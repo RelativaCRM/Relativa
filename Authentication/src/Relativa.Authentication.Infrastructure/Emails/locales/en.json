@@ -1,0 +1,24 @@
+{
+  "passwordReset.subject": "Reset your Relativa password",
+  "passwordReset.title": "Reset your password",
+  "passwordReset.body": "Hi {0},\n\nWe received a request to reset the password for your Relativa account. Click the button below to choose a new password. This link expires in 1 hour.",
+  "passwordReset.button": "Reset password",
+  "passwordReset.linkHelp": "Or copy and paste this link into your browser:",
+  "passwordReset.footer": "If you didn't request a password reset, you can safely ignore this email. Your password will not change.",
+
+  "emailVerification.subject": "Your Relativa verification code",
+  "emailVerification.title": "Verify your email",
+  "emailVerification.body": "Hi {0},\n\nWelcome to Relativa. Enter the code below to confirm your email address. It expires in 15 minutes.",
+  "emailVerification.footer": "This code was requested during sign-up. If it wasn't you, you can safely ignore this email.",
+
+  "smsVerification.body": "Relativa: your verification code is {0}. It expires in 15 minutes.",
+
+  "addEmail.subject": "Confirm your email address",
+  "addEmail.title": "Confirm this email",
+  "addEmail.body": "Hi {0},\n\nEnter the code below to add this email address to your Relativa account. It expires in 15 minutes.",
+  "addEmail.footer": "If you didn't request this, you can safely ignore this email.",
+
+
+  "support.subject": "[Relativa Support] {0}",
+  "support.from": "From: {0}"
+}

@@ -124,4 +124,10 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         db.UserEmails.Remove(email);
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task ReleaseExternalIdentifiersAsync(int userId, CancellationToken ct = default)
+    {
+        await db.UserExternalLogins.Where(l => l.UserId == userId).ExecuteDeleteAsync(ct);
+        await db.UserEmails.Where(e => e.UserId == userId).ExecuteDeleteAsync(ct);
+    }
 }

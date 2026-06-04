@@ -45,7 +45,7 @@ public sealed class OrgRoleService(
 
         var permissions = await permissionRepository.GetByIdsAsync(request.PermissionIds, ct);
         if (permissions.Count != request.PermissionIds.Count)
-            throw new ArgumentException("One or more permission IDs are invalid.");
+            throw new AppException("invalid_permission_ids", 400, "One or more permission IDs are invalid.");
 
         var role = new OrganizationRole
         {
@@ -101,13 +101,13 @@ public sealed class OrgRoleService(
         await RequireOrgPermission(userId, organizationId, "manage_org_roles", ct);
 
         var role = await orgRoleRepository.GetByIdAsync(roleId, ct)
-            ?? throw new KeyNotFoundException("Role not found.");
+            ?? throw new AppException("role_not_found", 404, "Role not found.");
 
         if (role.OrganizationId is null)
-            throw new InvalidOperationException("System roles cannot be modified.");
+            throw new AppException("system_role_immutable", 409, "System roles cannot be modified.");
 
         if (role.OrganizationId != organizationId)
-            throw new KeyNotFoundException("Role not found in this organization.");
+            throw new AppException("role_not_in_organization", 404, "Role not found in this organization.");
 
         if (request.Name is not null)
             role.Name = request.Name;
@@ -119,7 +119,7 @@ public sealed class OrgRoleService(
         {
             var permissions = await permissionRepository.GetByIdsAsync(request.PermissionIds, ct);
             if (permissions.Count != request.PermissionIds.Count)
-                throw new ArgumentException("One or more permission IDs are invalid.");
+                throw new AppException("invalid_permission_ids", 400, "One or more permission IDs are invalid.");
 
             role.RolePermissions.Clear();
             foreach (var perm in permissions)
@@ -165,13 +165,13 @@ public sealed class OrgRoleService(
         await RequireOrgPermission(userId, organizationId, "manage_org_roles", ct);
 
         var role = await orgRoleRepository.GetByIdAsync(roleId, ct)
-            ?? throw new KeyNotFoundException("Role not found.");
+            ?? throw new AppException("role_not_found", 404, "Role not found.");
 
         if (role.OrganizationId is null)
-            throw new InvalidOperationException("System roles cannot be deleted.");
+            throw new AppException("system_role_undeletable", 409, "System roles cannot be deleted.");
 
         if (role.OrganizationId != organizationId)
-            throw new KeyNotFoundException("Role not found in this organization.");
+            throw new AppException("role_not_in_organization", 404, "Role not found in this organization.");
 
         role.IsArchived = true;
         await orgRoleRepository.UpdateAsync(role, ct);
@@ -198,7 +198,7 @@ public sealed class OrgRoleService(
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)
     {
         return await orgMemberRepository.GetAsync(userId, orgId, ct)
-            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
+            ?? throw new AppException("not_org_member", 403, "You are not a member of this organization.");
     }
 
     private async Task RequireOrgPermission(int userId, int orgId, string permission, CancellationToken ct)
@@ -207,6 +207,6 @@ public sealed class OrgRoleService(
         var hasPermission = membership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
-            throw new ForbiddenAccessException($"You do not have the '{permission}' permission in this organization.");
+            throw new AppException("permission_denied", 403, $"You do not have the '{permission}' permission in this organization.");
     }
 }

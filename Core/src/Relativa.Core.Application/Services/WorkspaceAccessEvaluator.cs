@@ -40,7 +40,7 @@ public sealed class WorkspaceAccessEvaluator(
             return;
         if (await IsOrgOwnerOfWorkspaceAsync(userId, workspaceId, ct))
             return;
-        throw new ForbiddenAccessException("You are not a member of this workspace.");
+        throw new AppException("not_ws_member", 403, "You are not a member of this workspace.");
     }
 
     public async Task<bool> HasWorkspacePermissionAsync(

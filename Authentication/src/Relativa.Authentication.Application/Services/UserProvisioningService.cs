@@ -1,5 +1,6 @@
 using FluentValidation;
 using Relativa.Authentication.Application.DTOs;
+using Relativa.Authentication.Application.Exceptions;
 using Relativa.Authentication.Application.Interfaces;
 using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -19,7 +20,7 @@ public sealed class UserProvisioningService(
 
         var email = EmailNormalizer.Normalize(request.Email);
         if (await userRepository.ExistsAsync(email, ct))
-            throw new InvalidOperationException("A user with this email already exists.");
+            throw new AuthException("email_already_exists", 409, "A user with this email already exists.");
 
         var user = new User
         {
@@ -183,6 +184,7 @@ public sealed class UserProvisioningService(
 
         user.IsArchived = true;
         await userRepository.UpdateAsync(user, ct);
+        await userRepository.ReleaseExternalIdentifiersAsync(targetUserId, ct);
 
         if (auditOutboxWriter is not null)
         {

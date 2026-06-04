@@ -98,9 +98,6 @@ public sealed class DashboardService(GraphQueryDbContext db, IMlScoringClient ml
                 .Select(ws => ws.Id)
                 .ToListAsync(ct);
 
-            if (allWsIds.Count == 0)
-                throw new ForbiddenAccessException("No workspaces found in this organization.");
-
             return allWsIds;
         }
 

@@ -32,10 +32,10 @@ public sealed class AuthService(
 
         var email = EmailNormalizer.Normalize(request.Email);
         var user = await userRepository.GetByEmailAsync(email, ct)
-            ?? throw new UnauthorizedAccessException("Invalid email or password.");
+            ?? throw new AuthException("invalid_credentials", 401, "Invalid email or password.");
 
         if (string.IsNullOrEmpty(user.Password) || !passwordHasher.Verify(request.Password, user.Password))
-            throw new UnauthorizedAccessException("Invalid email or password.");
+            throw new AuthException("invalid_credentials", 401, "Invalid email or password.");
 
         if (!user.EmailVerified)
             throw new EmailNotVerifiedException(user.Email);
@@ -95,11 +95,11 @@ public sealed class AuthService(
         var existing = await userRepository.GetByExternalLoginAsync(identity.Provider, identity.Subject, ct);
         if (existing is not null && existing.Id != userId)
         {
-            throw new InvalidOperationException("This provider account is already linked to a different user.");
+            throw new AuthException("provider_already_linked", 409, "This provider account is already linked to a different user.");
         }
 
         var user = await userRepository.GetByIdAsync(userId, ct)
-            ?? throw new KeyNotFoundException("User not found.");
+            ?? throw new AuthException("user_not_found", 404, "User not found.");
 
         if (existing is null)
         {
@@ -192,7 +192,7 @@ public sealed class AuthService(
     public async Task<UserProfileDto> GetProfileAsync(int userId, CancellationToken ct = default)
     {
         var user = await userRepository.GetByIdAsync(userId, ct)
-            ?? throw new KeyNotFoundException("User not found.");
+            ?? throw new AuthException("user_not_found", 404, "User not found.");
 
         return new UserProfileDto(
             user.Id, user.Email, user.FirstName, user.LastName, user.TwoFactorEnabled,
@@ -206,7 +206,7 @@ public sealed class AuthService(
         await updateProfileValidator.ValidateAndThrowAsync(request, ct);
 
         var user = await userRepository.GetByIdAsync(userId, ct)
-            ?? throw new KeyNotFoundException("User not found.");
+            ?? throw new AuthException("user_not_found", 404, "User not found.");
         user.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
         user.DateOfBirth = request.DateOfBirth;
         await userRepository.UpdateAsync(user, ct);
@@ -258,7 +258,7 @@ public sealed class AuthService(
 
         if (user is null)
         {
-            throw new ArgumentException("Invalid or expired reset token.");
+            throw new AuthException("reset_token_invalid", 400, "Invalid or expired reset token.");
         }
     }
 
@@ -268,7 +268,7 @@ public sealed class AuthService(
 
         var tokenHash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token)));
         var user      = await userRepository.GetByResetTokenAsync(tokenHash, ct)
-            ?? throw new ArgumentException("Invalid or expired reset token.");
+            ?? throw new AuthException("reset_token_invalid", 400, "Invalid or expired reset token.");
 
         user.Password                    = passwordHasher.Hash(newPassword);
         user.PasswordResetToken          = null;
