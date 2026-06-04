@@ -4,6 +4,7 @@ using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Workspace;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -99,7 +100,7 @@ public sealed class WorkspaceService(
                 ct);
         }
 
-        return new WorkspaceDto(workspace.Id, workspace.OrganizationId, workspace.Name, 1, adminRole.Name, myPermissions);
+        return new WorkspaceDto(workspace.Id, workspace.OrganizationId, workspace.Name, 1, adminRole.Name, adminRole.DisplayName ?? DisplayNameHelper.Humanize(adminRole.Name), myPermissions);
     }
 
     public async Task<List<WorkspaceDto>> GetByUserAsync(int userId, int? organizationId, CancellationToken ct = default)
@@ -137,6 +138,7 @@ public sealed class WorkspaceService(
                 ws.Name,
                 memberCount,
                 membership?.Role?.Name,
+                membership?.Role is { } r ? (r.DisplayName ?? DisplayNameHelper.Humanize(r.Name)) : null,
                 myPermissions));
         }
 
@@ -160,6 +162,7 @@ public sealed class WorkspaceService(
             workspace.Name,
             members.Count(m => !m.IsArchived),
             membership?.Role?.Name,
+            membership?.Role is { } r ? (r.DisplayName ?? DisplayNameHelper.Humanize(r.Name)) : null,
             myPermissions);
     }
 

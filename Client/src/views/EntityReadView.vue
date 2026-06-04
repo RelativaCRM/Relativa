@@ -93,7 +93,7 @@ const typeSchema = computed(() => {
   return entityStore.types.find((t) => t.id === d.entityTypeId) ?? null;
 });
 
-function allowedValuesFor(propertyId: number): string[] {
+function allowedValuesFor(propertyId: number) {
   return typeSchema.value?.properties.find((p) => p.propertyId === propertyId)?.allowedValues ?? [];
 }
 
@@ -436,7 +436,7 @@ async function submitCreateLink() {
 
     createLinkOpen.value = false;
     await loadDetail();
-    toast.add({ severity: 'success', summary: `${humanize(targetType.name)} created and linked`, life: 3000 });
+    toast.add({ severity: 'success', summary: `${targetType.displayName} created and linked`, life: 3000 });
   } catch (err) {
     createLinkError.value = normalizeError(err, 'Failed to create and link. Please try again.').message;
   } finally {
@@ -479,8 +479,9 @@ type EdgeRelTab = {
   direction: 'out' | 'in';
   relationshipTypeId: number;
   name: string;
-
+  displayName: string;
   otherEntityTypeName: string;
+  otherEntityTypeDisplayName: string;
 };
 
 function relTabKey(tab: Pick<EdgeRelTab, 'direction' | 'relationshipTypeId'>): string {
@@ -499,7 +500,9 @@ const outboundRelTabs = computed((): EdgeRelTab[] => {
         direction: 'out' as const,
         relationshipTypeId: r.relationshipTypeId,
         name: r.name,
+        displayName: r.displayName,
         otherEntityTypeName: r.targetEntityTypeName,
+        otherEntityTypeDisplayName: r.targetEntityTypeDisplayName,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -515,7 +518,9 @@ const outboundRelTabs = computed((): EdgeRelTab[] => {
       direction: 'out',
       relationshipTypeId: r.relationshipTypeId,
       name: r.relationshipName,
+      displayName: r.relationshipDisplayName,
       otherEntityTypeName: r.relatedEntityTypeName,
+      otherEntityTypeDisplayName: r.relatedEntityTypeDisplayName,
     });
   }
 
@@ -544,7 +549,9 @@ const inboundRelTabs = computed((): EdgeRelTab[] => {
         direction: 'in' as const,
         relationshipTypeId: r.relationshipTypeId,
         name: r.name,
+        displayName: r.displayName,
         otherEntityTypeName: r.sourceEntityTypeName,
+        otherEntityTypeDisplayName: r.sourceEntityTypeDisplayName,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -562,7 +569,9 @@ const inboundRelTabs = computed((): EdgeRelTab[] => {
       direction: 'in',
       relationshipTypeId: r.relationshipTypeId,
       name: r.relationshipName,
+      displayName: r.relationshipDisplayName,
       otherEntityTypeName: r.relatedEntityTypeName,
+      otherEntityTypeDisplayName: r.relatedEntityTypeDisplayName,
     });
   }
 
@@ -627,10 +636,6 @@ function outboundLinksForTab(tab: EdgeRelTab) {
     seen.add(k);
   }
   return merged;
-}
-
-function humanize(name: string): string {
-  return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function pad(n: number): string {
@@ -704,7 +709,7 @@ function formatDisplayValue(p: EntityPropertyValueDto): string {
 function previewLabel(pv: EntityPropertyValueDto[]): string {
   const first = pv[0];
   if (!first) return '';
-  return `${humanize(first.propertyName)}: ${formatDisplayValue(first)}`;
+  return `${first.displayName}: ${formatDisplayValue(first)}`;
 }
 
 function goToEntity(typeName: string, id: number) {
@@ -897,7 +902,7 @@ onUnmounted(() => stopHub());
         />
         <h1 class="text-2xl font-bold text-ink-900">
           <template v-if="detail">
-            {{ humanize(detail.entityTypeName) }} · #{{ detail.id }}
+            {{ detail.entityTypeDisplayName }} · #{{ detail.id }}
           </template>
           <template v-else>Entity</template>
         </h1>
@@ -1045,7 +1050,7 @@ onUnmounted(() => stopHub());
           <template v-for="p in detail.propertyValues" :key="p.propertyId">
             <div class="sm:col-span-2 border-b border-line pb-4 last:border-0 last:pb-0">
               <dt class="text-xs font-medium text-ink-500 uppercase tracking-wide">
-                {{ humanize(p.propertyName) }}
+                {{ p.displayName }}
                 <span
                   v-if="p.isReadonly"
                   class="ml-2 normal-case text-ink-400 font-normal"
@@ -1057,6 +1062,8 @@ onUnmounted(() => stopHub());
                     v-if="p.dataType === 'String' && allowedValuesFor(p.propertyId).length > 0"
                     v-model="editValues[p.propertyId] as string"
                     :options="allowedValuesFor(p.propertyId)"
+                    option-label="displayName"
+                    option-value="value"
                     class="w-full !h-10"
                     :invalid="!!fieldError(p)"
                   />
@@ -1125,7 +1132,7 @@ onUnmounted(() => stopHub());
       >
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
-            {{ humanize(tab.otherEntityTypeName) }}
+            {{ tab.otherEntityTypeDisplayName }}
           </span>
           <div v-if="canEditCurrentEntity && !currentEntityAllReadonly && !relatedTypeAllReadonly(tab.otherEntityTypeName)" class="flex items-center gap-0.5">
             <Button
@@ -1175,7 +1182,7 @@ onUnmounted(() => stopHub());
                     class="pi text-xs text-ink-400"
                     :class="isExpanded(relTabKey(tab), r.relatedEntityId) ? 'pi-chevron-down' : 'pi-chevron-right'"
                   />
-                  <span class="text-brand-700 font-medium">{{ humanize(r.relatedEntityTypeName) }}</span>
+                  <span class="text-brand-700 font-medium">{{ r.relatedEntityTypeDisplayName }}</span>
                   <span class="font-mono text-xs text-ink-500">#{{ r.relatedEntityId }}</span>
                 </span>
                 <span v-if="r.previewPropertyValues.length" class="block text-xs text-ink-500 mt-0.5 pl-5">
@@ -1218,7 +1225,7 @@ onUnmounted(() => stopHub());
                   :key="p.propertyId"
                   class="flex gap-2 text-xs"
                 >
-                  <dt class="text-ink-500 min-w-[80px] shrink-0">{{ humanize(p.propertyName) }}</dt>
+                  <dt class="text-ink-500 min-w-[80px] shrink-0">{{ p.displayName }}</dt>
                   <dd class="text-ink-800 break-all">{{ formatDisplayValue(p) }}</dd>
                 </div>
               </dl>
@@ -1235,10 +1242,10 @@ onUnmounted(() => stopHub());
             @click="openCreateLinkModal(tab)"
           >
             <i class="pi pi-plus text-xs" />
-            <span>Add {{ humanize(tab.otherEntityTypeName) }}</span>
+            <span>Add {{ tab.otherEntityTypeDisplayName }}</span>
           </button>
           <p v-else class="text-xs text-ink-500 mt-1">
-            No {{ humanize(tab.otherEntityTypeName) }} for this {{ humanize(detail.entityTypeName) }}
+            No {{ tab.otherEntityTypeDisplayName }} for this {{ detail.entityTypeDisplayName }}
           </p>
         </template>
       </div>
@@ -1247,7 +1254,7 @@ onUnmounted(() => stopHub());
 
   <Dialog
     v-model:visible="linkModalOpen"
-    :header="linkModalTab ? `${linkIsReassign ? 'Reassign' : 'Link'} ${humanize(linkModalTab.otherEntityTypeName)}` : 'Link'"
+    :header="linkModalTab ? `${linkIsReassign ? 'Reassign' : 'Link'} ${linkModalTab.otherEntityTypeDisplayName}` : 'Link'"
     modal
     class="w-full max-w-lg"
   >
@@ -1267,7 +1274,7 @@ onUnmounted(() => stopHub());
         <InputText
           ref="linkSearchInputRef"
           v-model="linkSearch"
-          :placeholder="linkModalTab ? `Search ${humanize(linkModalTab.otherEntityTypeName)} by name, email or id…` : 'Search by name, email or id…'"
+          :placeholder="linkModalTab ? `Search ${linkModalTab.otherEntityTypeDisplayName} by name, email or id…` : 'Search by name, email or id…'"
           class="w-full !h-10 !pl-9"
         />
       </div>
@@ -1290,7 +1297,7 @@ onUnmounted(() => stopHub());
             @click="confirmLink(item)"
           >
             <span class="flex items-baseline gap-2">
-              <span class="text-brand-700">{{ humanize(item.entityTypeName) }}</span>
+              <span class="text-brand-700">{{ item.entityTypeDisplayName }}</span>
               <span class="font-mono text-xs text-ink-600">#{{ item.id }}</span>
             </span>
             <span class="block text-sm text-ink-900 mt-0.5">{{ candidatePrimary(item) }}</span>
@@ -1305,7 +1312,7 @@ onUnmounted(() => stopHub());
 
   <Dialog
     v-model:visible="createLinkOpen"
-    :header="createLinkTargetType ? `New ${humanize(createLinkTargetType.name)}` : 'Create & link'"
+    :header="createLinkTargetType ? `New ${createLinkTargetType.displayName}` : 'Create & link'"
     modal
     class="w-full max-w-lg"
   >
@@ -1313,14 +1320,14 @@ onUnmounted(() => stopHub());
       <template v-for="r in createLinkOtherRequired" :key="r.relationshipTypeId">
         <div class="flex flex-col gap-1.5">
           <label class="text-xs font-medium text-ink-600">
-            {{ humanize(r.name) }} <span class="text-danger">*</span>
+            {{ r.displayName }} <span class="text-danger">*</span>
           </label>
           <Select
             v-model="createLinkOtherRelPick[r.relationshipTypeId]"
             :options="createLinkRelOptions(r.relationshipTypeId)"
             option-label="label"
             option-value="value"
-            :placeholder="`Choose ${humanize(r.targetEntityTypeName)}`"
+            :placeholder="`Choose ${r.targetEntityTypeDisplayName}`"
             class="w-full !h-10"
             filter
           />
@@ -1330,7 +1337,7 @@ onUnmounted(() => stopHub());
       <template v-for="p in createLinkTargetType.properties.filter(p => !p.isReadonly)" :key="p.propertyId">
         <div class="flex flex-col gap-1.5">
           <label :for="`cl-${p.propertyId}`" class="text-xs font-medium text-ink-600">
-            {{ humanize(p.name) }}
+            {{ p.displayName }}
             <span v-if="p.dataType !== 'Bool'" class="text-danger">*</span>
           </label>
           <Select
@@ -1338,6 +1345,8 @@ onUnmounted(() => stopHub());
             :id="`cl-${p.propertyId}`"
             v-model="createLinkValues[p.propertyId] as string"
             :options="p.allowedValues"
+            option-label="displayName"
+            option-value="value"
             placeholder="Select..."
             class="w-full !h-10"
             :invalid="!!createLinkPropError(p)"

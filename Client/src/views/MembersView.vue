@@ -8,7 +8,7 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
 import { normalizeError } from '@/api/errors';
-import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass } from '@/utils/roleBadge';
 import { useApiErrorHandler } from '@/api/errorToast';
 import { orgApi, type JoinRequestDto } from '@/api/organizations';
 import { useOrganizationStore } from '@/stores/organization';
@@ -48,8 +48,6 @@ const canCreateOrgUsers = computed(() =>
 const pendingJoinRequests = computed(() =>
   joinRequests.value.filter((r) => r.status === 'Pending'),
 );
-
-const displayRole = roleDisplayName;
 
 const showCreateUser = ref(false);
 const createSubmitting = ref(false);
@@ -301,7 +299,7 @@ onMounted(async () => {
             <td class="px-5 py-3 text-ink-600">{{ member.email }}</td>
             <td class="px-5 py-3">
               <span :class="roleBadgeFullClass(member.roleName)">
-                {{ displayRole(member.roleName) }}
+                {{ member.roleDisplayName }}
               </span>
             </td>
             <td class="px-5 py-3 text-ink-500">
@@ -325,7 +323,7 @@ onMounted(async () => {
             <div class="flex items-center gap-2">
               <p class="text-sm text-ink-700 truncate">{{ inv.email }}</p>
               <span v-if="inv.roleName" :class="roleBadgeFullClass(inv.roleName)">
-                {{ displayRole(inv.roleName) }}
+                {{ inv.roleDisplayName }}
               </span>
             </div>
             <p class="text-xs text-ink-400">

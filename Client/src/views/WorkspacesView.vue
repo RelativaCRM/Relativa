@@ -9,7 +9,7 @@ import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
-import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass } from '@/utils/roleBadge';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const router = useRouter();
@@ -69,8 +69,6 @@ function openEntities(id: number) {
     params: { workspaceId: String(id) },
   });
 }
-
-const displayRole = roleDisplayName;
 
 onMounted(async () => {
   try {
@@ -141,7 +139,7 @@ onMounted(async () => {
               </p>
             </div>
             <span :class="[roleBadgeFullClass(ws.userRole), 'shrink-0']">
-              {{ displayRole(ws.userRole) }}
+              {{ ws.userRoleDisplayName ?? ws.userRole }}
             </span>
           </div>
         </button>

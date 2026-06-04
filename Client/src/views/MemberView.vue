@@ -5,7 +5,7 @@ import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import { useToast } from 'primevue/usetoast';
-import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass } from '@/utils/roleBadge';
 import { orgApi } from '@/api/organizations';
 import {
   workspaceApi,
@@ -84,8 +84,6 @@ const orgRoleOptions = computed(() =>
 function roleIdByName(roleName: string): number | null {
   return orgStore.roles.find((r) => r.name === roleName)?.id ?? null;
 }
-
-const displayRole = roleDisplayName;
 
 function emailDomain(email: string | null | undefined): string {
   if (!email) return '';
@@ -336,7 +334,7 @@ onMounted(async () => {
         </p>
       </div>
       <span v-if="member" :class="roleBadgeFullClass(member.roleName)">
-        {{ displayRole(member.roleName) }}
+        {{ member.roleDisplayName }}
       </span>
     </div>
 

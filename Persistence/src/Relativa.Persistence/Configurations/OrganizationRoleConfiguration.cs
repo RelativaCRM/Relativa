@@ -12,6 +12,7 @@ public class OrganizationRoleConfiguration : IEntityTypeConfiguration<Organizati
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.Name).HasColumnName("name").IsRequired();
+        builder.Property(e => e.DisplayName).HasColumnName("display_name").HasMaxLength(200);
         builder.Property(e => e.OrganizationId).HasColumnName("organization_id").IsRequired(false);
         builder.Property(e => e.Priority).HasColumnName("priority").IsRequired();
         builder.HasIndex(e => new { e.Name, e.OrganizationId })

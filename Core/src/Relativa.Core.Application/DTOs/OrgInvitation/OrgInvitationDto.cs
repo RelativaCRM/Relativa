@@ -6,6 +6,7 @@ public sealed record OrgInvitationDto(
     string Email,
     string OrganizationName,
     string RoleName,
+    string RoleDisplayName,
     string Status,
     string Token,
     DateTime ExpiresAt);

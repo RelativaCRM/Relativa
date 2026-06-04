@@ -3,6 +3,7 @@ using FluentValidation;
 using Relativa.Core.Application.DTOs.OrgRole;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -27,9 +28,13 @@ public sealed class OrgRoleService(
             .Select(r => new OrgRoleDto(
                 r.Id,
                 r.Name,
+                r.DisplayName ?? DisplayNameHelper.Humanize(r.Name),
                 r.OrganizationId is null,
                 r.Priority,
-                r.RolePermissions.Select(rp => new PermissionDto(rp.Permission.Id, rp.Permission.Name)).ToList()))
+                r.RolePermissions.Select(rp => new PermissionDto(
+                    rp.Permission.Id,
+                    rp.Permission.Name,
+                    rp.Permission.DisplayName ?? DisplayNameHelper.Humanize(rp.Permission.Name))).ToList()))
             .ToList();
     }
 
@@ -84,9 +89,10 @@ public sealed class OrgRoleService(
         return new OrgRoleDto(
             role.Id,
             role.Name,
+            role.DisplayName ?? DisplayNameHelper.Humanize(role.Name),
             false,
             role.Priority,
-            permissions.Select(p => new PermissionDto(p.Id, p.Name)).ToList());
+            permissions.Select(p => new PermissionDto(p.Id, p.Name, p.DisplayName ?? DisplayNameHelper.Humanize(p.Name))).ToList());
     }
 
     public async Task UpdateAsync(int organizationId, int roleId, int userId, UpdateOrgRoleRequest request, CancellationToken ct = default)

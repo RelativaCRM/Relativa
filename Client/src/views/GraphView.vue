@@ -142,7 +142,7 @@ const typeLegendItems = computed(() => {
   const typeMap = buildEntityTypeColorMap(graphStore.nodes);
   for (const [name, color] of typeMap) {
     if (name === 'deal') continue;
-    items.push({ label: formatTypeName(name), color });
+    items.push({ label: typeDisplayName(name), color });
   }
   const usedTags = new Set(
     graphStore.nodes.map(n => n.highlightTag).filter(Boolean) as string[]
@@ -170,8 +170,9 @@ const riskLegendItems = computed(() => {
   return items;
 });
 
-function formatTypeName(name: string): string {
-  return name.split('_').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+function typeDisplayName(name: string): string {
+  return entityStore.types.find(t => t.name === name)?.displayName
+    ?? name.split('_').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 
@@ -278,7 +279,7 @@ const entityTypeOptions = computed<FilterPanelOption[]>(() => {
   const seen = new Map<string, string>();
   for (const n of graphStore.nodes) {
     if (n.type === 'entity' && n.entityTypeName && !seen.has(n.entityTypeName)) {
-      seen.set(n.entityTypeName, formatTypeName(n.entityTypeName));
+      seen.set(n.entityTypeName, typeDisplayName(n.entityTypeName));
     }
   }
   return [...seen.entries()]
@@ -437,7 +438,7 @@ function typeBadge(node: GraphNodeDto): string {
   if (node.type === 'user_self') return 'You';
   if (node.type === 'user') return 'User';
   if (node.type === 'workspace') return 'Workspace';
-  return node.entityTypeName ? formatTypeName(node.entityTypeName) : 'Entity';
+  return node.entityTypeName ? typeDisplayName(node.entityTypeName) : 'Entity';
 }
 
 function selectedScore(): DealScoreDto | undefined {

@@ -300,8 +300,8 @@ async function submitNestedCreate() {
 
     toast.add({
       severity: 'success',
-      summary: `${formatTypeName(target.name)} created`,
-      detail: `Linked to this ${selectedType.value ? formatTypeName(selectedType.value.name) : 'record'}.`,
+      summary: `${target.displayName} created`,
+      detail: `Linked to this ${selectedType.value ? selectedType.value.displayName : 'record'}.`,
       life: 3500,
     });
     nestedDialogOpen.value = false;
@@ -369,18 +369,6 @@ watch(selectedTypeId, async (typeId) => {
     }
   }
 });
-
-function humanize(name: string): string {
-  return name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-}
-
-function formatTypeName(name: string): string {
-  return name
-    .split('_')
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
 
 function isEmpty(v: FieldValue): boolean {
   if (v === null || v === undefined) return true;
@@ -515,7 +503,7 @@ async function handleSubmit() {
   }
   for (const rel of requiredOutgoing.value) {
     if (linkPick[rel.relationshipTypeId] == null) {
-      errorMessage.value = `Select a linked ${rel.targetEntityTypeName.replace(/_/g, ' ')} for "${humanize(rel.name)}".`;
+      errorMessage.value = `Select a linked ${rel.targetEntityTypeDisplayName} for "${rel.displayName}".`;
       return;
     }
   }
@@ -672,17 +660,17 @@ watch(
       <template v-for="rel in requiredOutgoing" :key="rel.relationshipTypeId">
         <div class="flex flex-col gap-1.5">
           <label class="text-xs font-medium text-ink-600">
-            {{ humanize(rel.name) }}
+            {{ rel.displayName }}
             <span class="text-danger">*</span>
             <span class="text-ink-400 font-normal normal-case">
-              → {{ formatTypeName(rel.targetEntityTypeName) }}</span>
+              → {{ rel.targetEntityTypeDisplayName }}</span>
           </label>
           <Select
             v-model="linkPick[rel.relationshipTypeId]"
             :options="linkSelectOptions(rel.relationshipTypeId)"
             option-label="label"
             option-value="value"
-            :placeholder="`Choose ${formatTypeName(rel.targetEntityTypeName)}`"
+            :placeholder="`Choose ${rel.targetEntityTypeDisplayName}`"
             class="w-full !h-10"
             filter
           />
@@ -690,7 +678,7 @@ watch(
             v-if="canCreateLinkedTarget(rel)"
             type="button"
             icon="pi pi-plus"
-            :label="`Create new ${formatTypeName(rel.targetEntityTypeName)}`"
+            :label="`Create new ${rel.targetEntityTypeDisplayName}`"
             severity="secondary"
             outlined
             size="small"
@@ -713,7 +701,7 @@ watch(
             "
             class="text-xs text-ink-500"
           >
-            No records yet — use “Create new {{ formatTypeName(rel.targetEntityTypeName) }}” to add one; it will be selected for this deal automatically.
+            No records yet — use “Create new {{ rel.targetEntityTypeDisplayName }}” to add one; it will be selected for this deal automatically.
           </p>
         </div>
       </template>
@@ -727,7 +715,7 @@ watch(
             :for="`p-${prop.propertyId}`"
             class="text-xs font-medium text-ink-600"
           >
-            {{ humanize(prop.name) }}
+            {{ prop.displayName }}
             <span v-if="isPropertyRequired(prop)" class="text-danger">*</span>
           </label>
 
@@ -736,6 +724,8 @@ watch(
             :id="`p-${prop.propertyId}`"
             v-model="values[prop.propertyId] as string"
             :options="prop.allowedValues"
+            option-label="displayName"
+            option-value="value"
             placeholder="Select..."
             class="w-full !h-10"
             :invalid="!!propertyFieldError(prop)"
@@ -834,7 +824,7 @@ watch(
       v-model:visible="nestedDialogOpen"
       :header="
         nestedTargetType
-          ? `New ${formatTypeName(nestedTargetType.name)}`
+          ? `New ${nestedTargetType.displayName}`
           : 'New record'
       "
       modal
@@ -850,17 +840,17 @@ watch(
         <template v-for="ir in nestedRequiredOutgoing" :key="ir.relationshipTypeId">
           <div class="flex flex-col gap-1.5">
             <label class="text-xs font-medium text-ink-600">
-              {{ humanize(ir.name) }}
+              {{ ir.displayName }}
               <span class="text-danger">*</span>
               <span class="text-ink-400 font-normal normal-case">
-                → {{ formatTypeName(ir.targetEntityTypeName) }}</span>
+                → {{ ir.targetEntityTypeDisplayName }}</span>
             </label>
             <Select
               v-model="nestedLinkPick[ir.relationshipTypeId]"
               :options="nestedLinkSelectOptions(ir.relationshipTypeId)"
               option-label="label"
               option-value="value"
-              :placeholder="`Choose ${formatTypeName(ir.targetEntityTypeName)}`"
+              :placeholder="`Choose ${ir.targetEntityTypeDisplayName}`"
               class="w-full !h-10"
               filter
             />
@@ -876,7 +866,7 @@ watch(
               :for="`np-${prop.propertyId}`"
               class="text-xs font-medium text-ink-600"
             >
-              {{ humanize(prop.name) }}
+              {{ prop.displayName }}
               <span v-if="isPropertyRequired(prop)" class="text-danger">*</span>
             </label>
 

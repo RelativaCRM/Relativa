@@ -13,6 +13,7 @@ public class Property
 {
     public int Id { get; set; }
     public string Name { get; set; } = null!;
+    public string? DisplayName { get; set; }
     public PropertyDataType DataType { get; set; }
     public bool IsReadonly { get; set; }
     public int? OrganizationId { get; set; }

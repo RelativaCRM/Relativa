@@ -4,6 +4,7 @@ using FluentValidation;
 using Relativa.Core.Application.DTOs.Entity;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -529,6 +530,7 @@ public sealed class EntityService(
         e.Id,
         e.EntityTypeId,
         e.EntityType.Name,
+        e.EntityType.DisplayName ?? DisplayNameHelper.Humanize(e.EntityType.Name),
         MapPropertyValues(e));
 
     private static EntityDetailDto MapToDetail(Entity e)
@@ -538,6 +540,7 @@ public sealed class EntityService(
             e.Id,
             e.EntityTypeId,
             e.EntityType.Name,
+            e.EntityType.DisplayName ?? DisplayNameHelper.Humanize(e.EntityType.Name),
             e.IsArchived,
             MapPropertyValues(e),
             MapOutbound(e, previewCap),
@@ -551,8 +554,10 @@ public sealed class EntityService(
                 r.Id,
                 r.RelationshipTypeId,
                 r.RelationshipType.Name,
+                r.RelationshipType.DisplayName ?? DisplayNameHelper.Humanize(r.RelationshipType.Name),
                 r.TargetEntityId,
                 r.TargetEntity.EntityType.Name,
+                r.TargetEntity.EntityType.DisplayName ?? DisplayNameHelper.Humanize(r.TargetEntity.EntityType.Name),
                 MapPreview(r.TargetEntity, previewCap)))
             .ToList();
 
@@ -563,8 +568,10 @@ public sealed class EntityService(
                 r.Id,
                 r.RelationshipTypeId,
                 r.RelationshipType.Name,
+                r.RelationshipType.DisplayName ?? DisplayNameHelper.Humanize(r.RelationshipType.Name),
                 r.SourceEntityId,
                 r.SourceEntity.EntityType.Name,
+                r.SourceEntity.EntityType.DisplayName ?? DisplayNameHelper.Humanize(r.SourceEntity.EntityType.Name),
                 MapPreview(r.SourceEntity, previewCap)))
             .ToList();
 
@@ -575,6 +582,7 @@ public sealed class EntityService(
             .Select(pv => new EntityPropertyValueDto(
                 pv.PropertyId,
                 pv.Property.Name,
+                pv.Property.DisplayName ?? DisplayNameHelper.Humanize(pv.Property.Name),
                 pv.Property.DataType.ToString(),
                 ResolveValue(pv),
                 pv.Property.IsReadonly))
@@ -586,6 +594,7 @@ public sealed class EntityService(
             .Select(pv => new EntityPropertyValueDto(
                 pv.PropertyId,
                 pv.Property.Name,
+                pv.Property.DisplayName ?? DisplayNameHelper.Humanize(pv.Property.Name),
                 pv.Property.DataType.ToString(),
                 ResolveValue(pv),
                 pv.Property.IsReadonly))

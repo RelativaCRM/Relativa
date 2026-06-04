@@ -12,6 +12,7 @@ public class EntityRelationshipTypeConfiguration : IEntityTypeConfiguration<Enti
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
         builder.Property(e => e.Name).HasColumnName("name").IsRequired();
+        builder.Property(e => e.DisplayName).HasColumnName("display_name").HasMaxLength(200);
         builder.HasIndex(e => e.Name).IsUnique().HasDatabaseName("ix_entity_relationship_type_name");
         builder.Property(e => e.SourceEntityTypeId).HasColumnName("source_entity_type_id").IsRequired();
         builder.Property(e => e.TargetEntityTypeId).HasColumnName("target_entity_type_id").IsRequired();

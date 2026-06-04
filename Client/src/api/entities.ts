@@ -7,22 +7,30 @@ export type EntityPropertyDataType =
   | 'Bool'
   | 'Date';
 
+export interface AllowedValueDto {
+  value: string;
+  displayName: string;
+}
+
 export interface EntityTypePropertyDto {
   propertyId: number;
   name: string;
+  displayName: string;
   dataType: EntityPropertyDataType;
   isRequired: boolean;
   /** From `property.is_readonly`; if all properties are readonly, creation/editing is blocked in the UI. */
   isReadonly: boolean;
   /** Non-empty when only specific string values are allowed (e.g. deal status, contract_status). */
-  allowedValues: string[];
+  allowedValues: AllowedValueDto[];
 }
 
 export interface OutgoingRelationshipDto {
   relationshipTypeId: number;
   name: string;
+  displayName: string;
   targetEntityTypeId: number;
   targetEntityTypeName: string;
+  targetEntityTypeDisplayName: string;
   isRequired: boolean;
   relationshipCardinality: string;
 }
@@ -30,8 +38,10 @@ export interface OutgoingRelationshipDto {
 export interface IncomingRelationshipDto {
   relationshipTypeId: number;
   name: string;
+  displayName: string;
   sourceEntityTypeId: number;
   sourceEntityTypeName: string;
+  sourceEntityTypeDisplayName: string;
   isRequired: boolean;
   relationshipCardinality: string;
 }
@@ -39,6 +49,7 @@ export interface IncomingRelationshipDto {
 export interface EntityTypeDto {
   id: number;
   name: string;
+  displayName: string;
   isStandalone: boolean;
   outgoingRelationships: OutgoingRelationshipDto[];
   incomingRelationships: IncomingRelationshipDto[];
@@ -48,6 +59,7 @@ export interface EntityTypeDto {
 export interface EntityPropertyValueDto {
   propertyId: number;
   propertyName: string;
+  displayName: string;
   dataType: EntityPropertyDataType;
   value: string | number | boolean | null;
   isReadonly: boolean;
@@ -57,8 +69,10 @@ export interface EntityRelationshipRefDto {
   relationshipId: number;
   relationshipTypeId: number;
   relationshipName: string;
+  relationshipDisplayName: string;
   relatedEntityId: number;
   relatedEntityTypeName: string;
+  relatedEntityTypeDisplayName: string;
   previewPropertyValues: EntityPropertyValueDto[];
 }
 
@@ -77,6 +91,7 @@ export interface EntityListItemDto {
   id: number;
   entityTypeId: number;
   entityTypeName: string;
+  entityTypeDisplayName: string;
   propertyValues: EntityPropertyValueDto[];
 }
 
