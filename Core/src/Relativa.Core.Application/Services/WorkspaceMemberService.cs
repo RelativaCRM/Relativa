@@ -2,6 +2,7 @@ using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.DTOs.Member;
 using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -30,6 +31,7 @@ public sealed class WorkspaceMemberService(
                 m.User.LastName,
                 m.User.Email,
                 m.Role.Name,
+                m.Role.DisplayName ?? DisplayNameHelper.Humanize(m.Role.Name),
                 m.JoinedAt))
             .ToList();
     }
@@ -181,6 +183,7 @@ public sealed class WorkspaceMemberService(
             user.LastName,
             user.Email,
             role.Name,
+            role.DisplayName ?? DisplayNameHelper.Humanize(role.Name),
             member.JoinedAt);
     }
 

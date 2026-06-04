@@ -6,4 +6,5 @@ public sealed record WorkspaceDto(
     string Name,
     int MemberCount,
     string? UserRole,
+    string? UserRoleDisplayName,
     IReadOnlyList<string> MyPermissions);

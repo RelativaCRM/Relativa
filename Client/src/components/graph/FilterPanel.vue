@@ -89,7 +89,7 @@ const hasAnyFilter = computed(
         <i class="pi pi-filter text-ink-500" />
         <span class="text-sm font-semibold text-ink-700">Filters</span>
         <span
-          class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100"
+          class="inline-flex items-center px-2.5 py-1 rounded text-[11px] font-semibold bg-brand-50 text-brand-700 border border-brand-100"
           :aria-label="`Showing ${visibleCount} of ${totalCount} nodes`"
         >
           {{ visibleCount }} of {{ totalCount }} visible
@@ -100,7 +100,7 @@ const hasAnyFilter = computed(
         type="button"
         :disabled="disabled || !hasAnyFilter"
         :class="[
-          'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-ink-600 border border-line bg-white hover:bg-surface hover:border-ink-300 hover:text-ink-900 transition-colors disabled:opacity-50',
+          'inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-ink-600 border border-line bg-white hover:bg-surface hover:border-ink-300 hover:text-ink-900 transition-colors disabled:opacity-50',
           !hasAnyFilter && 'invisible pointer-events-none',
         ]"
         @click="resetAll"

@@ -75,20 +75,11 @@ const detailEntityId = computed(() => {
 
 const showCreate = computed(() => route.query.action === 'create');
 
-function formatTypeName(name: string): string {
-  return name
-    .split('_')
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
 function rowPreview(ent: EntityListItemDto): string {
   const parts = ent.propertyValues.slice(0, 3).map((p) => {
-    const label = formatTypeName(p.propertyName);
     const val =
       p.value === null || p.value === undefined ? '—' : String(p.value);
-    return `${label}: ${val}`;
+    return `${p.displayName}: ${val}`;
   });
   return parts.length ? parts.join(' · ') : '—';
 }
@@ -96,14 +87,14 @@ function rowPreview(ent: EntityListItemDto): string {
 const headingTitle = computed(() => {
   const ws = wsStore.currentWorkspace?.name ?? 'Workspace';
   if (filterType.value) {
-    return `${ws} — ${formatTypeName(filterType.value)}`;
+    return `${ws} — ${filterTypeSchema.value?.displayName ?? filterType.value}`;
   }
   return `${ws} — entities`;
 });
 
 const headingSubtitle = computed(() =>
   filterType.value
-    ? `${formatTypeName(filterType.value)} records in this workspace.`
+    ? `${filterTypeSchema.value?.displayName ?? filterType.value} records in this workspace.`
     : 'Records (clients, deals, …) in this workspace.',
 );
 
@@ -258,7 +249,7 @@ onMounted(load);
           v-model="searchInput"
           :placeholder="
             filterTypeSchema
-              ? `Search ${formatTypeName(filterType ?? '')}…`
+              ? `Search ${filterTypeSchema.displayName}…`
               : 'Search all listed records…'
           "
           class="w-full flex-1 !h-10"
@@ -281,11 +272,11 @@ onMounted(load);
       <p class="mt-3 text-sm text-ink-500">
         <template v-if="filterType">
           <template v-if="filterTypeUiLocked">
-            No {{ formatTypeName(filterType) }} records yet. This type is
+            No {{ filterTypeSchema?.displayName ?? filterType }} records yet. This type is
             maintained automatically and cannot be created here.
           </template>
           <template v-else>
-            No {{ formatTypeName(filterType) }} records yet. Create one to get
+            No {{ filterTypeSchema?.displayName ?? filterType }} records yet. Create one to get
             started.
           </template>
         </template>
@@ -328,7 +319,7 @@ onMounted(load);
           >
             <td class="px-5 py-3 font-mono text-xs text-ink-700">{{ ent.id }}</td>
             <td class="px-5 py-3">
-              <Tag :value="ent.entityTypeName" severity="secondary" />
+              <Tag :value="ent.entityTypeDisplayName" severity="secondary" />
             </td>
             <td class="px-5 py-3 text-ink-600 text-xs leading-relaxed">
               {{ rowPreview(ent) }}

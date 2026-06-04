@@ -8,6 +8,7 @@ export interface OrganizationDto {
   name: string;
   memberCount: number;
   userRole: string;
+  userRoleDisplayName: string | null;
   myPermissions?: string[];
 }
 
@@ -26,16 +27,18 @@ export interface OrgMemberDto {
   lastName: string;
   email: string;
   roleName: string;
+  roleDisplayName: string;
   joinedAt: string;
 }
 
 export interface OrgRoleDto {
   id: number;
   name: string;
+  displayName: string;
   isSystem: boolean;
   /** Lower value = stronger authority in the org hierarchy (0 is strongest). */
   priority: number;
-  permissions: { id: number; name: string }[];
+  permissions: { id: number; name: string; displayName: string }[];
 }
 
 export interface CreateOrgUserRequest {
@@ -52,6 +55,7 @@ export interface OrgInvitationDto {
   email: string;
   organizationName: string;
   roleName: string;
+  roleDisplayName: string;
   status: string;
   token: string;
   expiresAt: string;

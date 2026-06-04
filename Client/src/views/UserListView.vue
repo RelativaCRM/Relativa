@@ -22,14 +22,6 @@ const pageSize = ref(10);
 const pageIndex = ref(1);
 const pageSizeOptions = [10, 20, 50];
 
-function displayRole(roleName: string): string {
-  if (roleName === 'ws_admin') return 'Admin';
-  if (roleName === 'ws_manager') return 'Manager';
-  if (roleName === 'ws_analyst') return 'Analyst';
-  if (roleName === 'ws_member') return 'Member';
-  return roleName;
-}
-
 function roleSeverity(roleName: string): string {
   if (roleName === 'ws_admin') return 'info';
   if (roleName === 'ws_manager') return 'warn';
@@ -162,7 +154,7 @@ onMounted(loadAll);
         <Column field="roleName" header="Role" sortable style="width: 140px">
           <template #body="{ data }">
             <Tag
-              :value="displayRole(data.roleName)"
+              :value="data.roleDisplayName"
               :severity="roleSeverity(data.roleName)"
             />
           </template>

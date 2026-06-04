@@ -115,14 +115,6 @@ async function handleOrgChange(orgId: number | null) {
   }
 }
 
-function formatTypeName(name: string): string {
-  return name
-    .split('_')
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
 async function handleWorkspaceChange(wsId: number | null) {
   if (wsId == null) return;
   wsStore.setCurrentWorkspace(wsId);
@@ -201,10 +193,10 @@ onMounted(async () => {
       @click="showOrgPanel = false; showWsPanel = false; showProfilePanel = false"
     />
 
-    
+
     <div
       v-if="showOrgPanel"
-      class="fixed left-[248px] top-24 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
+      class="fixed left-16 lg:left-[248px] top-24 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
     >
       <div class="px-4 py-2.5 border-b border-line flex items-center justify-between">
         <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">{{ t('nav.organization') }}</span>
@@ -233,10 +225,10 @@ onMounted(async () => {
       </div>
     </div>
 
-    
+
     <div
       v-if="showWsPanel"
-      class="fixed left-[248px] top-44 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
+      class="fixed left-16 lg:left-[248px] top-44 z-50 w-56 bg-white rounded-xl shadow-xl border border-line overflow-hidden"
     >
       <div class="px-4 py-2.5 border-b border-line flex items-center justify-between">
         <span class="text-[11px] font-semibold text-ink-400 uppercase tracking-wider">{{ t('nav.workspace') }}</span>
@@ -265,10 +257,10 @@ onMounted(async () => {
       </div>
     </div>
 
-    
+
     <div
       v-if="showProfilePanel"
-      class="fixed left-[248px] bottom-4 z-50 w-64 bg-white shadow-xl border border-line overflow-hidden"
+      class="fixed left-16 lg:left-[248px] bottom-4 z-50 w-64 bg-white shadow-xl border border-line overflow-hidden"
     >
       <div class="flex items-center gap-3 px-4 py-4 border-b border-line">
         <div class="w-10 h-10 rounded-full bg-brand-600 text-white text-sm font-semibold flex items-center justify-center shrink-0">
@@ -339,7 +331,7 @@ onMounted(async () => {
             ]"
           >
             <span :class="['w-1.5 h-1.5 rounded-full shrink-0', route.query.entityType === type.name ? 'bg-brand-500' : 'bg-slate-300']" />
-            {{ formatTypeName(type.name) }}
+            {{ type.displayName }}
           </RouterLink>
         </div>
       </Transition>
@@ -355,64 +347,65 @@ onMounted(async () => {
     </header>
 
     <div class="flex-1 flex">
-      <aside class="w-60 border-r border-line bg-white py-4 px-3 hidden md:flex md:flex-col sticky top-16 h-[calc(100vh-4rem)] overflow-hidden">
+      <aside class="sidebar w-14 lg:w-60 shrink-0 border-r border-line bg-white py-4 px-1.5 lg:px-3 flex flex-col sticky top-16 h-[calc(100vh-4rem)] overflow-hidden">
 
         <nav class="nav flex flex-col text-sm text-ink-700 flex-1 overflow-y-auto">
 
-          
-          <RouterLink to="/" class="nav-link" active-class="" exact-active-class="nav-link--active">
-            <i class="pi pi-home" />{{ t('nav.home') }}
+          <RouterLink to="/" class="nav-link" active-class="" exact-active-class="nav-link--active" :title="t('nav.home')">
+            <i class="pi pi-home" /><span class="nav-label">{{ t('nav.home') }}</span>
           </RouterLink>
-          <hr class="border-t border-slate-200 mx-1 my-1" />
+          <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
 
-          
+
           <div class="flex flex-col">
             <div v-if="orgStore.currentOrg" class="relative flex items-stretch nav-entry" :class="{ 'nav-entry--active': showOrgPanel }">
               <button
                 type="button"
-                class="group flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
+                class="group nav-entry-main flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
+                :title="orgStore.currentOrg.name"
                 @click="orgExpanded = !orgExpanded"
               >
                 <span class="relative flex items-center justify-center w-4 h-4 shrink-0">
                   <i class="pi pi-briefcase text-[13px] absolute group-hover:opacity-0 transition-opacity" />
                   <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', orgExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
                 </span>
-                <span class="truncate font-medium">{{ orgStore.currentOrg.name }}</span>
+                <span class="nav-label truncate font-medium">{{ orgStore.currentOrg.name }}</span>
               </button>
               <button
                 type="button"
-                :class="['flex items-center px-2 shrink-0 transition-colors', showOrgPanel ? 'bg-brand-50 text-brand-600' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600']"
+                :class="['nav-label flex items-center px-2 shrink-0 transition-colors', showOrgPanel ? 'bg-brand-50 text-brand-600' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600']"
                 @click="showOrgPanel = true"
               >
                 <i class="pi pi-chevron-right text-[10px]" />
               </button>
             </div>
 
-            <div v-if="orgExpanded" class="ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
-              <RouterLink to="/members" class="nav-link" active-class="nav-link--active">
-                <i class="pi pi-users" />{{ t('nav.members') }}
+            <div v-if="orgExpanded" class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
+              <RouterLink to="/members" class="nav-link" active-class="nav-link--active" :title="t('nav.members')">
+                <i class="pi pi-users" /><span class="nav-label">{{ t('nav.members') }}</span>
               </RouterLink>
-              <RouterLink to="/graph" class="nav-link" active-class="nav-link--active">
-                <i class="pi pi-share-alt" />{{ t('nav.graph') }}
+              <RouterLink to="/graph" class="nav-link" active-class="nav-link--active" :title="t('nav.graph')">
+                <i class="pi pi-share-alt" /><span class="nav-label">{{ t('nav.graph') }}</span>
               </RouterLink>
-              <hr class="border-t border-slate-200 mx-1 my-1" />
+              <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
 
-              
+
               <div class="relative flex items-stretch nav-entry" :class="{ 'nav-entry--active': showWsPanel }">
                 <button
                   type="button"
-                  class="group flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
+                  class="group nav-entry-main flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
+                  title="Workspaces"
                   @click="wsStore.workspaces.length ? (wsListExpanded = !wsListExpanded) : undefined"
                 >
                   <span class="relative flex items-center justify-center w-4 h-4 shrink-0">
                     <i class="pi pi-folder text-[13px] absolute group-hover:opacity-0 transition-opacity" />
                     <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', wsListExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
                   </span>
-                  <span class="truncate">{{ t('nav.workspaces') }}</span>
+                  <span class="nav-label truncate">{{ t('nav.workspaces') }}</span>
                 </button>
                 <button
                   type="button"
-                  :class="['flex items-center px-2 shrink-0 transition-colors', showWsPanel ? 'bg-brand-50 text-brand-600' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600']"
+                  :class="['nav-label flex items-center px-2 shrink-0 transition-colors', showWsPanel ? 'bg-brand-50 text-brand-600' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600']"
                   @click="showWsPanel = true"
                 >
                   <i class="pi pi-chevron-right text-[10px]" />
@@ -422,7 +415,7 @@ onMounted(async () => {
               <RouterLink
                 v-if="!wsStore.workspaces.length"
                 to="/workspaces"
-                class="flex items-center gap-2 px-3 py-1.5 text-xs text-ink-500 hover:text-brand-600 hover:bg-brand-50"
+                class="nav-label flex items-center gap-2 px-3 py-1.5 text-xs text-ink-500 hover:text-brand-600 hover:bg-brand-50"
               >
                 <i class="pi pi-plus text-[10px]" />
                 {{ t('nav.addWorkspace') }}
@@ -430,7 +423,7 @@ onMounted(async () => {
 
               <div
                 v-if="wsListExpanded && wsStore.workspaces.length"
-                class="nav-scroll ml-4 flex flex-col border-l border-slate-200 pl-2 max-h-48 overflow-y-auto mb-1"
+                class="nav-scroll nav-label ml-4 flex flex-col border-l border-slate-200 pl-2 max-h-48 overflow-y-auto mb-1"
               >
                 <button
                   v-for="ws in wsStore.workspaces"
@@ -458,70 +451,75 @@ onMounted(async () => {
               </div>
 
               <template v-if="canViewAuditLog || canManageOrgSettings">
-                <hr class="border-t border-slate-200 mx-1 my-1" />
-                <RouterLink v-if="canViewAuditLog" to="/audit-log" class="nav-link" active-class="nav-link--active">
-                  <i class="pi pi-history" />{{ t('nav.auditLog') }}
+                <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
+                <RouterLink v-if="canViewAuditLog" to="/audit-log" class="nav-link" active-class="nav-link--active" :title="t('nav.auditLog')">
+                  <i class="pi pi-history" /><span class="nav-label">{{ t('nav.auditLog') }}</span>
                 </RouterLink>
-                <RouterLink v-if="canManageOrgSettings" to="/org-settings" class="nav-link" active-class="nav-link--active">
-                  <i class="pi pi-cog" />{{ t('nav.settings') }}
+                <RouterLink v-if="canManageOrgSettings" to="/org-settings" class="nav-link" active-class="nav-link--active" :title="t('nav.settings')">
+                  <i class="pi pi-cog" /><span class="nav-label">{{ t('nav.settings') }}</span>
                 </RouterLink>
               </template>
             </div>
           </div>
 
-          
+
           <div v-if="inWorkspaceShell && workspaceIdStr" class="flex flex-col mt-3 pt-3 border-t border-slate-200">
             <div class="relative flex items-stretch nav-entry">
               <button
                 type="button"
-                class="group flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
+                class="group nav-entry-main flex flex-1 items-center gap-2 px-2 py-2 text-sm text-left min-w-0 transition-colors text-ink-700 hover:bg-brand-50 hover:text-brand-700"
+                :title="wsStore.currentWorkspace?.name ?? 'Workspace'"
                 @click="wsExpanded = !wsExpanded"
               >
                 <span class="relative flex items-center justify-center w-4 h-4 shrink-0">
                   <i class="pi pi-folder-open text-[13px] absolute group-hover:opacity-0 transition-opacity" />
                   <i :class="['pi text-[10px] absolute opacity-0 group-hover:opacity-100 transition-opacity', wsExpanded ? 'pi-chevron-down' : 'pi-chevron-right']" />
                 </span>
-                <span class="truncate font-medium">{{ wsStore.currentWorkspace?.name ?? t('workspace.fallbackName') }}</span>
+                <span class="nav-label truncate font-medium">{{ wsStore.currentWorkspace?.name ?? t('workspace.fallbackName') }}</span>
               </button>
             </div>
 
-            <div v-if="wsExpanded" class="ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
+            <div v-if="wsExpanded" class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
 
               <RouterLink
                 :to="{ name: 'workspace-dashboard', params: { workspaceId: workspaceIdStr } }"
                 class="nav-link"
                 active-class=""
                 exact-active-class="nav-link--active"
+                title="Dashboard"
               >
-                <i class="pi pi-th-large" />{{ t('nav.dashboard') }}
+                <i class="pi pi-th-large" /><span class="nav-label">{{ t('nav.dashboard') }}</span>
               </RouterLink>
 
-              <hr class="border-t border-slate-200 mx-1 my-1" />
+              <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
               <RouterLink
                 :to="{ name: 'workspace-members', params: { workspaceId: workspaceIdStr } }"
                 class="nav-link"
                 active-class="nav-link--active"
+                title="Members"
               >
-                <i class="pi pi-users" />{{ t('nav.members') }}
+                <i class="pi pi-users" /><span class="nav-label">{{ t('nav.members') }}</span>
               </RouterLink>
               <RouterLink
                 :to="{ name: 'workspace-settings', params: { workspaceId: workspaceIdStr } }"
                 class="nav-link"
                 active-class="nav-link--active"
+                title="Settings"
               >
-                <i class="pi pi-cog" />{{ t('nav.settings') }}
+                <i class="pi pi-cog" /><span class="nav-label">{{ t('nav.settings') }}</span>
               </RouterLink>
             </div>
           </div>
 
         </nav>
 
-        
+
         <div class="pt-3 mt-3 border-t border-slate-200 shrink-0">
           <button
             v-if="auth.user"
             type="button"
-            class="w-full flex items-center gap-3 px-2 py-2 hover:bg-surface text-left"
+            class="profile-trigger w-full flex items-center gap-3 px-2 py-2 hover:bg-surface text-left"
+            :title="`${auth.user.firstName} ${auth.user.lastName}`"
             @click="showProfilePanel = true"
           >
             <div class="w-8 h-8 rounded-full bg-brand-600 text-white text-xs font-semibold flex items-center justify-center shrink-0">
@@ -536,7 +534,7 @@ onMounted(async () => {
         </div>
       </aside>
 
-      <main class="flex-1 p-6">
+      <main class="flex-1 p-6 min-w-0">
         <RouterView />
       </main>
     </div>
@@ -564,13 +562,20 @@ onMounted(async () => {
         <Message v-if="createWsError" severity="error" :closable="false" class="!my-0">
           {{ createWsError }}
         </Message>
-        <div class="flex justify-end gap-2">
-          <Button type="button" :label="t('common.cancel')" severity="secondary" text @click="closeCreateWs" />
+        <div class="flex justify-end gap-3">
+          <Button
+            type="button"
+            :label="t('common.cancel')"
+            outlined
+            class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
+            @click="closeCreateWs"
+          />
           <Button
             type="submit"
             :label="t('common.create')"
             :disabled="!newWsName.trim() || creatingWs"
             :loading="creatingWs"
+            class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"
           />
         </div>
       </form>
@@ -661,5 +666,33 @@ onMounted(async () => {
 .entity-nav-leave-to {
   opacity: 0;
   transform: translateX(-8px);
+}
+
+@media (max-width: 1023.98px) {
+  .sidebar .nav-label,
+  .sidebar .nav-divider,
+  .sidebar .nav-entry,
+  .sidebar .nav-scroll {
+    display: none !important;
+  }
+  .sidebar .nav-sub {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+  .sidebar .nav-link {
+    justify-content: center;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    gap: 0;
+  }
+  .sidebar .nav-link--active::before {
+    left: -0.375rem;
+  }
+  .sidebar .profile-trigger {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
 }
 </style>

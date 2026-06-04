@@ -230,7 +230,7 @@ router.beforeEach(async (to) => {
     if (!orgStore.organizations.length) {
       await orgStore.fetchOrganizations();
     }
-    if (!orgStore.hasOrganization) {
+    if (!orgStore.hasOrganization || !orgStore.currentOrgId) {
       return { name: 'onboarding' };
     }
   }
@@ -246,7 +246,9 @@ router.beforeEach(async (to) => {
     if (!orgStore.currentOrgId) {
       return { name: 'onboarding' };
     }
-    await wsStore.fetchWorkspaces(orgStore.currentOrgId);
+    if (!wsStore.workspaces.length) {
+      await wsStore.fetchWorkspaces(orgStore.currentOrgId);
+    }
     if (!wsStore.workspaces.some((w) => w.id === wsId)) {
       return { name: 'workspaces' };
     }

@@ -3,6 +3,7 @@ using FluentValidation;
 using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Core.Application.DTOs.OrgInvitation;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -58,6 +59,7 @@ public sealed class OrgInvitationService(
             invitation.Email,
             invitation.Organization?.Name ?? string.Empty,
             role.Name,
+            role.DisplayName ?? DisplayNameHelper.Humanize(role.Name),
             invitation.Status,
             invitation.Token,
             invitation.ExpiresAt);
@@ -77,6 +79,7 @@ public sealed class OrgInvitationService(
                 i.Email,
                 i.Organization?.Name ?? string.Empty,
                 i.Role?.Name ?? string.Empty,
+                i.Role is { } ir1 ? (ir1.DisplayName ?? DisplayNameHelper.Humanize(ir1.Name)) : string.Empty,
                 i.Status,
                 i.Token,
                 i.ExpiresAt))
@@ -143,6 +146,7 @@ public sealed class OrgInvitationService(
             invitation.Email,
             invitation.Organization?.Name ?? string.Empty,
             invitation.Role?.Name ?? string.Empty,
+            invitation.Role is { } ir2 ? (ir2.DisplayName ?? DisplayNameHelper.Humanize(ir2.Name)) : string.Empty,
             invitation.Status,
             invitation.Token,
             invitation.ExpiresAt);
@@ -239,6 +243,7 @@ public sealed class OrgInvitationService(
                 i.Email ?? string.Empty,
                 i.Organization?.Name ?? string.Empty,
                 i.Role?.Name ?? string.Empty,
+                i.Role is { } ir3 ? (ir3.DisplayName ?? DisplayNameHelper.Humanize(ir3.Name)) : string.Empty,
                 i.Status ?? string.Empty,
                 i.Token ?? string.Empty,
                 i.ExpiresAt))

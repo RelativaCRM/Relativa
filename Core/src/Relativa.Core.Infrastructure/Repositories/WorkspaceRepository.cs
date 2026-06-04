@@ -21,15 +21,10 @@ public sealed class WorkspaceRepository(RelativaDbContext db) : IWorkspaceReposi
             .Where(w => !w.IsArchived)
             .ToListAsync(ct);
 
-        var totalPermissionCount = await db.Permissions
-            .AsNoTracking()
-            .CountAsync(p => !p.IsArchived, ct);
-
         var orgOwnerOrgIds = await db.UserRoleOrganizations
             .AsNoTracking()
-            .Where(uro => uro.UserId == userId && !uro.IsArchived)
-            .Where(uro => uro.Role != null &&
-                          uro.Role.RolePermissions.Count(rp => !rp.Permission.IsArchived) >= totalPermissionCount)
+            .Where(uro => uro.UserId == userId && !uro.IsArchived &&
+                          uro.Role != null && uro.Role.Name == "org_owner")
             .Select(uro => uro.OrganizationId)
             .Distinct()
             .ToListAsync(ct);
@@ -67,16 +62,10 @@ public sealed class WorkspaceRepository(RelativaDbContext db) : IWorkspaceReposi
             .Where(w => !w.IsArchived && w.OrganizationId == organizationId)
             .ToListAsync(ct);
 
-        var totalPermissionCount = await db.Permissions
-            .AsNoTracking()
-            .CountAsync(p => !p.IsArchived, ct);
-
         var isOrgOwner = await db.UserRoleOrganizations
             .AsNoTracking()
             .Where(uro => uro.UserId == userId && uro.OrganizationId == organizationId && !uro.IsArchived)
-            .AnyAsync(uro => uro.Role != null &&
-                             uro.Role.RolePermissions.Count(rp => !rp.Permission.IsArchived) >= totalPermissionCount,
-                ct);
+            .AnyAsync(uro => uro.Role != null && uro.Role.Name == "org_owner", ct);
 
         if (!isOrgOwner)
             return viaMembership;

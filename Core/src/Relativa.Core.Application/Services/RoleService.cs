@@ -2,6 +2,7 @@ using Relativa.Core.Application.Exceptions;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -25,8 +26,12 @@ public sealed class RoleService(
             .Select(r => new RoleDto(
                 r.Id,
                 r.Name,
+                r.DisplayName ?? DisplayNameHelper.Humanize(r.Name),
                 r.WorkspaceId is null,
-                r.RolePermissions.Select(rp => new PermissionDto(rp.Permission.Id, rp.Permission.Name)).ToList()))
+                r.RolePermissions.Select(rp => new PermissionDto(
+                    rp.Permission.Id,
+                    rp.Permission.Name,
+                    rp.Permission.DisplayName ?? DisplayNameHelper.Humanize(rp.Permission.Name))).ToList()))
             .ToList();
     }
 
@@ -81,8 +86,9 @@ public sealed class RoleService(
         return new RoleDto(
             role.Id,
             role.Name,
+            role.DisplayName ?? DisplayNameHelper.Humanize(role.Name),
             false,
-            permissions.Select(p => new PermissionDto(p.Id, p.Name)).ToList());
+            permissions.Select(p => new PermissionDto(p.Id, p.Name, p.DisplayName ?? DisplayNameHelper.Humanize(p.Name))).ToList());
     }
 
     public async Task UpdateAsync(int workspaceId, int roleId, int userId, UpdateRoleRequest request, CancellationToken ct = default)
@@ -181,7 +187,7 @@ public sealed class RoleService(
         var permissions = await permissionRepository.GetAllAsync(ct);
         return permissions
             .Where(p => !p.IsArchived)
-            .Select(p => new PermissionDto(p.Id, p.Name))
+            .Select(p => new PermissionDto(p.Id, p.Name, p.DisplayName ?? DisplayNameHelper.Humanize(p.Name)))
             .ToList();
     }
 

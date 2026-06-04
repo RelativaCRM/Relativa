@@ -16,6 +16,7 @@ public class EntityWorkspaceConfiguration : IEntityTypeConfiguration<EntityWorks
         builder.HasIndex(e => new { e.EntityId, e.WorkspaceId })
             .IsUnique()
             .HasDatabaseName("ix_ew_entity_workspace");
+        builder.HasIndex(e => e.WorkspaceId).HasDatabaseName("ix_ew_workspace_id");
         builder.HasOne(e => e.Entity)
             .WithMany(e => e.EntityWorkspaces)
             .HasForeignKey(e => e.EntityId)

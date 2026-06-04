@@ -4,6 +4,7 @@ using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Organization;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -78,6 +79,7 @@ public sealed class OrganizationService(
             organization.Name,
             1,
             ownerRole.Name,
+            ownerRole.DisplayName ?? DisplayNameHelper.Humanize(ownerRole.Name),
             ownerRole.RolePermissions
                 .Select(rp => rp.Permission?.Name)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -100,6 +102,7 @@ public sealed class OrganizationService(
                 org.Name,
                 memberCount,
                 membership?.Role?.Name,
+                membership?.Role is { } mr ? (mr.DisplayName ?? DisplayNameHelper.Humanize(mr.Name)) : null,
                 membership?.Role?.RolePermissions
                     .Select(rp => rp.Permission?.Name)
                     .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -126,6 +129,7 @@ public sealed class OrganizationService(
             organization.Name,
             members.Count,
             membership?.Role?.Name,
+            membership?.Role is { } mr2 ? (mr2.DisplayName ?? DisplayNameHelper.Humanize(mr2.Name)) : null,
             membership?.Role?.RolePermissions
                 .Select(rp => rp.Permission?.Name)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -187,6 +191,7 @@ public sealed class OrganizationService(
                 m.User.LastName,
                 m.User.Email,
                 m.Role.Name,
+                m.Role.DisplayName ?? DisplayNameHelper.Humanize(m.Role.Name),
                 m.JoinedAt))
             .ToList();
     }

@@ -590,31 +590,31 @@ public sealed class WorkspaceDashboardService(
         var missing = dealIds.Where(id => !linkedDealIds.Contains(id)).ToList();
         if (missing.Count == 0) return;
 
-        foreach (var dealId in missing)
-        {
-            var analysisEntity = new Relativa.Persistence.Entities.Entity
+        var newEntities = missing
+            .Select(_ => new Relativa.Persistence.Entities.Entity
             {
                 EntityTypeId    = analysisType.Id,
                 CreatedByUserId = userId,
                 IsArchived      = false,
-            };
-            db.Entities.Add(analysisEntity);
-            await db.SaveChangesAsync(ct);
+            })
+            .ToList();
+        db.Entities.AddRange(newEntities);
+        await db.SaveChangesAsync(ct);
 
+        for (int i = 0; i < missing.Count; i++)
+        {
             db.EntityWorkspaces.Add(new Relativa.Persistence.Entities.EntityWorkspace
             {
-                EntityId    = analysisEntity.Id,
+                EntityId    = newEntities[i].Id,
                 WorkspaceId = workspaceId,
             });
-
             db.EntityRelationships.Add(new Relativa.Persistence.Entities.EntityRelationship
             {
-                SourceEntityId     = dealId,
-                TargetEntityId     = analysisEntity.Id,
+                SourceEntityId     = missing[i],
+                TargetEntityId     = newEntities[i].Id,
                 RelationshipTypeId = relType.Id,
             });
-
-            await db.SaveChangesAsync(ct);
         }
+        await db.SaveChangesAsync(ct);
     }
 }

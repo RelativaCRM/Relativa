@@ -12,7 +12,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import { normalizeError } from '@/api/errors';
 import type { WorkspaceDto } from '@/api/workspaces';
-import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass } from '@/utils/roleBadge';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -33,8 +33,6 @@ const canCreate = computed(
     !creating.value &&
     !!orgStore.currentOrgId,
 );
-
-const displayRole = roleDisplayName;
 
 function chooseWorkspace(ws: WorkspaceDto) {
   wsStore.setCurrentWorkspace(ws.id);
@@ -196,7 +194,7 @@ onMounted(async () => {
             </span>
           </span>
           <span :class="[roleBadgeFullClass(ws.userRole), 'shrink-0']">
-            {{ displayRole(ws.userRole) }}
+            {{ ws.userRoleDisplayName ?? ws.userRole }}
           </span>
           <i
             class="pi pi-arrow-right text-ink-400 transition-colors group-hover:text-brand-600"

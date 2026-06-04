@@ -4,6 +4,7 @@ public class EntityRelationshipType
 {
     public int Id { get; set; }
     public string Name { get; set; } = null!;
+    public string? DisplayName { get; set; }
     public int SourceEntityTypeId { get; set; }
     public int TargetEntityTypeId { get; set; }
     public bool IsRequired { get; set; }
