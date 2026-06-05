@@ -54,7 +54,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
             var linked = await db.Set<EntityWorkspace>().AsNoTracking()
                 .AnyAsync(x => x.EntityId == entId && x.WorkspaceId == wsId, ct);
             if (!linked)
-                throw new AppException("entity_not_in_workspace", 400, $"Entity {entId} is not linked to workspace {wsId}.");
+                throw new AppException("entity_not_in_workspace", 404, $"Entity {entId} is not linked to workspace {wsId}.");
         }
     }
 

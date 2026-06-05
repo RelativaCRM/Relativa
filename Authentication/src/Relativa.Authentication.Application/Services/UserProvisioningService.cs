@@ -144,7 +144,7 @@ public sealed class UserProvisioningService(
     public async Task<UserProfileDto> UpdateUserProfileAsync(int targetUserId, string firstName, string lastName, int auditActorUserId, CancellationToken ct)
     {
         var user = await userRepository.GetByIdAsync(targetUserId, ct)
-            ?? throw new KeyNotFoundException("User not found.");
+            ?? throw new AuthException("user_not_found", 404, "User not found.");
 
         var oldSnapshot = new { user.FirstName, user.LastName };
         user.FirstName = firstName;
@@ -180,7 +180,7 @@ public sealed class UserProvisioningService(
     public async Task ArchiveUserAsync(int targetUserId, int auditActorUserId, CancellationToken ct)
     {
         var user = await userRepository.GetByIdAsync(targetUserId, ct)
-            ?? throw new KeyNotFoundException("User not found.");
+            ?? throw new AuthException("user_not_found", 404, "User not found.");
 
         user.IsArchived = true;
         await userRepository.UpdateAsync(user, ct);

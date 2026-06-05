@@ -101,7 +101,7 @@ public sealed class AuditLogReadRepositoryTests : IAsyncLifetime
     public async Task EnsureRbacAsync_EntityScope_UserWithoutViewAnalytics_ThrowsForbidden()
     {
         var act = () => Sut().EnsureRbacAsync(callerUserId: 3, "entity", workspaceId: 1, organizationId: null, CancellationToken.None);
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public sealed class AuditLogReadRepositoryTests : IAsyncLifetime
     public async Task EnsureRbacAsync_OrgScope_UserWithoutManageOrgSettings_ThrowsForbidden()
     {
         var act = () => Sut().EnsureRbacAsync(callerUserId: 3, "organization", workspaceId: null, organizationId: 1, CancellationToken.None);
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public sealed class AuditLogReadRepositoryTests : IAsyncLifetime
     {
         var q = new GetAuditLogQuery("workspace", null, null, null, 0, 10, null, null, 9999, null, null, null);
         var act = () => Sut().EnsureResourcesExistAsync(q, "workspace", CancellationToken.None);
-        await act.Should().ThrowAsync<KeyNotFoundException>().WithMessage("*9999*");
+        await act.Should().ThrowAsync<AppException>().WithMessage("*9999*");
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class AuditLogReadRepositoryTests : IAsyncLifetime
     {
         var q = new GetAuditLogQuery("entity", null, null, null, 0, 10, 2, null, 1, null, null, null);
         var act = () => Sut().EnsureResourcesExistAsync(q, "entity", CancellationToken.None);
-        await act.Should().ThrowAsync<KeyNotFoundException>().WithMessage("*not linked*");
+        await act.Should().ThrowAsync<AppException>().WithMessage("*not linked*");
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class AuditLogReadRepositoryTests : IAsyncLifetime
             null, null, targetUserIdFilter: 2,
             callerUserId: 10, 0, 10, 0, null, CancellationToken.None);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
     }
 
     [Fact]

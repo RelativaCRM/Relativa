@@ -20,6 +20,7 @@ public sealed class AuthServiceTests
     private readonly Mock<ITokenService> _tokenService = new();
     private readonly Mock<IPasswordHasher> _passwordHasher = new();
     private readonly Mock<IExternalIdentityVerifier> _externalIdentityVerifier = new();
+    private readonly Mock<ITwoFactorService> _twoFactorService = new();
     private readonly Mock<IEmailSender> _emailSender = new();
     private readonly Mock<IEmailLocalizer> _emailLocalizer = new();
     private readonly Mock<IConfiguration> _configuration = new();
@@ -37,6 +38,7 @@ public sealed class AuthServiceTests
             _tokenService.Object,
             _passwordHasher.Object,
             _externalIdentityVerifier.Object,
+            _twoFactorService.Object,
             _emailSender.Object,
             _emailLocalizer.Object,
             _configuration.Object,
@@ -130,7 +132,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.LoginAsync(request);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("Invalid email or password.");
     }
 
@@ -150,7 +152,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.LoginAsync(request);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("Invalid email or password.");
         _tokenService.Verify(
             t => t.GenerateAccessToken(It.IsAny<User>()),
@@ -231,7 +233,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.GetProfileAsync(99);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("User not found.");
     }
 
@@ -339,7 +341,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.ValidateResetTokenAsync("expired-or-invalid-token");
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("Invalid or expired reset token.");
     }
 
@@ -378,7 +380,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.ResetPasswordAsync("bad-token", "NewPass123!");
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("Invalid or expired reset token.");
     }
 

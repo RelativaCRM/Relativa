@@ -3,6 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using Relativa.Authentication.Application.DTOs;
+using Relativa.Authentication.Application.Exceptions;
 using Relativa.Authentication.Application.Services;
 using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -67,7 +68,7 @@ public sealed class UserProvisioningServiceTests
 
         var act = () => _sut.CreateUserAsync(request, null, CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("A user with this email already exists.");
     }
 
@@ -186,7 +187,7 @@ public sealed class UserProvisioningServiceUpdateTests
 
         var act = () => _sut.UpdateUserProfileAsync(99, "A", "B", auditActorUserId: 1, CancellationToken.None);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>().WithMessage("User not found.");
+        await act.Should().ThrowAsync<AuthException>().WithMessage("User not found.");
     }
 
     [Fact]
@@ -230,7 +231,7 @@ public sealed class UserProvisioningServiceUpdateTests
 
         var act = () => _sut.ArchiveUserAsync(99, auditActorUserId: 1, CancellationToken.None);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>().WithMessage("User not found.");
+        await act.Should().ThrowAsync<AuthException>().WithMessage("User not found.");
     }
 
     [Fact]

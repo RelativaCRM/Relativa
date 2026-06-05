@@ -69,7 +69,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.InviteAsync(5, 3, new InviteToOrgRequest("test@relativa.io"));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*invite_to_org*");
         _invitationRepo.Verify(r => r.AddAsync(It.IsAny<OrganizationInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -121,7 +121,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.CancelAsync(5, 10, 1);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.CancelAsync(5, 99, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Invitation not found.");
     }
 
@@ -148,7 +148,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.CancelAsync(5, 10, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Invitation not found.");
     }
 
@@ -185,7 +185,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.AcceptAsync(1, "a@b.io", "ghost");
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Invitation not found or has expired.");
     }
 
@@ -197,7 +197,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.AcceptAsync(5, "intruder@r.io", "tok");
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*different email address*");
     }
 
@@ -209,7 +209,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.AcceptAsync(5, "u@r.io", "tok");
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*no longer pending*Accepted*");
     }
 
@@ -225,7 +225,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.AcceptAsync(5, "u@r.io", "tok");
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Invitation has expired.");
         invitation.Status.Should().Be("Expired");
         _invitationRepo.Verify(r => r.UpdateAsync(invitation, It.IsAny<CancellationToken>()), Times.Once);
@@ -246,7 +246,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.AcceptAsync(5, "u@r.io", "tok");
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are already a member of this organization.");
         _orgMemberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -296,7 +296,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.ResendAsync(5, 10, 1);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*invite_to_org*");
         _invitationRepo.Verify(r => r.UpdateAsync(It.IsAny<OrganizationInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -309,7 +309,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.ResendAsync(5, 99, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Invitation not found.");
     }
 
@@ -323,7 +323,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.ResendAsync(5, 10, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Invitation not found.");
     }
 
@@ -337,7 +337,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.ResendAsync(5, 10, 1);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*Accepted*");
         _invitationRepo.Verify(r => r.UpdateAsync(It.IsAny<OrganizationInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -383,7 +383,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.CancelAsync(5, 10, 1);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*Accepted*");
         _invitationRepo.Verify(r => r.UpdateAsync(It.IsAny<OrganizationInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -396,7 +396,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.InviteAsync(5, 1, new InviteToOrgRequest("a@b.io", OrgRoleId: 99));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified role does not exist.");
         _invitationRepo.Verify(r => r.AddAsync(It.IsAny<OrganizationInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -411,7 +411,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.InviteAsync(5, 1, new InviteToOrgRequest("a@b.io", OrgRoleId: 7));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*does not belong to this organization*");
     }
 
@@ -425,7 +425,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.InviteAsync(5, 1, new InviteToOrgRequest("a@b.io", OrgRoleId: 7));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*assign_org_roles*");
     }
 
@@ -496,7 +496,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.InviteAsync(5, 1, new InviteToOrgRequest("member@relativa.io"));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("This user is already a member of the organization.");
         _invitationRepo.Verify(r => r.AddAsync(It.IsAny<OrganizationInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -541,7 +541,7 @@ public sealed class OrgInvitationServiceTests
 
         var act = () => _sut.GetByOrganizationAsync(5, 1);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*invite_to_org*");
         _invitationRepo.Verify(r => r.GetByOrganizationIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }

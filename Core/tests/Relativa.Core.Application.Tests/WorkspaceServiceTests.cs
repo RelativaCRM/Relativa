@@ -163,7 +163,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateWorkspaceRequest("Team", 5));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*not a member of this organization*");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -182,7 +182,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateWorkspaceRequest("Team", 5));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*create_workspaces*");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -199,7 +199,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, request);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("System ws_admin role not found.");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -289,7 +289,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 99);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -302,7 +302,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace not found.");
     }
 
@@ -321,7 +321,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateAsync(10, 3, new UpdateWorkspaceRequest("New Name"));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -334,7 +334,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateAsync(7, 2, new UpdateWorkspaceRequest("Renamed"));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace not found.");
     }
 
@@ -405,7 +405,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.ArchiveAsync(3, 5);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Only workspace admins or organization owners can archive a workspace.");
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -441,7 +441,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetByUserAsync(7, organizationId: 3);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*not a member of this organization*");
         _workspaceRepo.Verify(r => r.GetByUserIdAndOrganizationIdAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -515,7 +515,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetSettingsAsync(10, 99);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -527,7 +527,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetSettingsAsync(10, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace settings not found.");
     }
 
@@ -541,7 +541,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetSettingsAsync(10, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace not found.");
     }
 
@@ -610,7 +610,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("Name", null, 0.7m, 0.4m, false));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage($"*{WorkspacePermissions.ManageWsSettings}*");
         _workspaceSettingsRepo.Verify(r => r.UpdateAsync(It.IsAny<WorkspaceSettings>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -624,7 +624,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("Name", null, 0.7m, 0.4m, false));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace settings not found.");
     }
 
@@ -639,7 +639,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("Name", null, 0.7m, 0.4m, false));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace not found.");
     }
 
