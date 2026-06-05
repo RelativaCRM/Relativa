@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
@@ -16,6 +17,7 @@ import EntityReadView from '@/views/EntityReadView.vue';
 import EntityCreateForm from '@/views/EntityCreateForm.vue';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const orgStore = useOrganizationStore();
@@ -85,17 +87,22 @@ function rowPreview(ent: EntityListItemDto): string {
 }
 
 const headingTitle = computed(() => {
-  const ws = wsStore.currentWorkspace?.name ?? 'Workspace';
+  const ws = wsStore.currentWorkspace?.name ?? t('entities.workspaceFallback');
   if (filterType.value) {
-    return `${ws} — ${filterTypeSchema.value?.displayName ?? filterType.value}`;
+    return t('entities.titleType', {
+      ws,
+      type: filterTypeSchema.value?.displayName ?? filterType.value,
+    });
   }
-  return `${ws} — entities`;
+  return t('entities.titleAll', { ws });
 });
 
 const headingSubtitle = computed(() =>
   filterType.value
-    ? `${filterTypeSchema.value?.displayName ?? filterType.value} records in this workspace.`
-    : 'Records (clients, deals, …) in this workspace.',
+    ? t('entities.subtitleType', {
+        type: filterTypeSchema.value?.displayName ?? filterType.value,
+      })
+    : t('entities.subtitleAll'),
 );
 
 const loading = ref(true);
@@ -111,8 +118,7 @@ async function load() {
     }
     const belongs = wsStore.workspaces.some((w) => w.id === workspaceId.value);
     if (!belongs) {
-      errorMessage.value =
-        'You do not have access to this workspace.';
+      errorMessage.value = t('entities.noAccess');
       entityStore.clearWorkspace(workspaceId.value);
       return;
     }
@@ -129,7 +135,7 @@ async function load() {
       await entityStore.fetchTypes();
     }
   } catch (err) {
-    errorMessage.value = normalizeError(err, 'Failed to load entities.').message;
+    errorMessage.value = normalizeError(err, t('entities.loadError')).message;
   } finally {
     loading.value = false;
   }
@@ -199,7 +205,7 @@ onMounted(load);
         <Button
           text
           icon="pi pi-arrow-left"
-          label="Workspaces"
+          :label="t('nav.workspaces')"
           severity="secondary"
           size="small"
           class="!px-1 !mb-1"
@@ -215,7 +221,7 @@ onMounted(load);
       <Button
         v-if="canCreateEntities && !filterTypeUiLocked"
         icon="pi pi-plus"
-        label="New entity"
+        :label="t('entities.newEntity')"
         @click="goCreate"
       />
     </div>
@@ -239,9 +245,9 @@ onMounted(load);
             <i class="pi pi-search text-sm" />
           </span>
           <div class="min-w-0">
-            <p class="text-sm font-medium text-ink-800">Search</p>
+            <p class="text-sm font-medium text-ink-800">{{ t('entities.search') }}</p>
             <p class="text-xs text-ink-500 hidden sm:block">
-              Text match across fields (server-side)
+              {{ t('entities.searchHint') }}
             </p>
           </div>
         </div>
@@ -249,8 +255,8 @@ onMounted(load);
           v-model="searchInput"
           :placeholder="
             filterTypeSchema
-              ? `Search ${filterTypeSchema.displayName}…`
-              : 'Search all listed records…'
+              ? t('entities.searchTypePlaceholder', { type: filterTypeSchema.displayName })
+              : t('entities.searchAllPlaceholder')
           "
           class="w-full flex-1 !h-10"
         />
@@ -272,23 +278,21 @@ onMounted(load);
       <p class="mt-3 text-sm text-ink-500">
         <template v-if="filterType">
           <template v-if="filterTypeUiLocked">
-            No {{ filterTypeSchema?.displayName ?? filterType }} records yet. This type is
-            maintained automatically and cannot be created here.
+            {{ t('entities.emptyTypeLocked', { type: filterTypeSchema?.displayName ?? filterType }) }}
           </template>
           <template v-else>
-            No {{ filterTypeSchema?.displayName ?? filterType }} records yet. Create one to get
-            started.
+            {{ t('entities.emptyType', { type: filterTypeSchema?.displayName ?? filterType }) }}
           </template>
         </template>
         <template v-else>
-          No entities yet. Create one to get started.
+          {{ t('entities.emptyAll') }}
         </template>
       </p>
       <Button
         v-if="canCreateEntities && (!filterTypeUiLocked || !filterType)"
         class="mt-4"
         icon="pi pi-plus"
-        label="Create entity"
+        :label="t('entities.createEntity')"
         @click="goCreate"
       />
     </div>
@@ -302,9 +306,9 @@ onMounted(load);
           <tr
             class="border-b border-line bg-surface text-left text-xs font-medium text-ink-500 uppercase tracking-wider"
           >
-            <th class="px-5 py-3">ID</th>
-            <th class="px-5 py-3">Type</th>
-            <th class="px-5 py-3 w-full">Preview</th>
+            <th class="px-5 py-3">{{ t('entities.colId') }}</th>
+            <th class="px-5 py-3">{{ t('entities.colType') }}</th>
+            <th class="px-5 py-3 w-full">{{ t('entities.colPreview') }}</th>
           </tr>
         </thead>
         <tbody>

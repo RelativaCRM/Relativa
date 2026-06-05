@@ -15,6 +15,9 @@ import {
   saveJson,
   saveString,
 } from '@/api/persistence';
+import { setLocale, currentLocale, consumeLocalePending } from '@/i18n';
+import { rememberAccount, type AccountProvider } from '@/utils/rememberedAccounts';
+import { useInvitationsInbox } from '@/composables/useInvitationsInbox';
 
 const STORAGE_KEY = 'relativa_jwt';
 const EXPIRY_KEY = 'relativa_jwt_expires_at';
@@ -58,11 +61,25 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null;
     useOrganizationStore().clear();
     useWorkspaceStore().clear();
+    useInvitationsInbox().reset();
   }
 
   async function fetchProfile() {
     user.value = await authApi.me();
     return user.value;
+  }
+
+  async function syncLocale() {
+    if (consumeLocalePending()) {
+      const chosen = currentLocale();
+      await authApi.updateMySettings({ locale: chosen });
+      return chosen;
+    }
+    const settings = await authApi.mySettings();
+    if (settings.locale && settings.locale !== currentLocale()) {
+      setLocale(settings.locale);
+    }
+    return settings.locale;
   }
 
   async function login(payload: LoginRequest, rememberMe = false) {
@@ -71,6 +88,22 @@ export const useAuthStore = defineStore('auth', () => {
     setWorkspace('');
     try {
       await fetchProfile();
+      rememberCurrent('password');
+      await syncLocale();
+    } catch {
+      user.value = null;
+    }
+    return res;
+  }
+
+  async function oauthLogin(provider: string, token: string, rememberMe = true) {
+    const res = await authApi.oauthLogin(provider, token);
+    setToken(res.accessToken, rememberMe ? null : res.expiresAt, rememberMe);
+    setWorkspace('');
+    try {
+      await fetchProfile();
+      rememberCurrent(provider === 'google' || provider === 'microsoft' ? provider : null);
+      await syncLocale();
     } catch {
       user.value = null;
     }
@@ -78,7 +111,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(payload: RegisterRequest) {
-    return authApi.register(payload);
+    return authApi.register({ ...payload, locale: payload.locale ?? currentLocale() });
   }
 
   async function updateProfile(payload: UpdateProfilePayload) {
@@ -93,6 +126,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   function logout() {
     clearSession();
+  }
+
+  function rememberCurrent(provider: AccountProvider) {
+    const u = user.value;
+    if (!u?.email || !accessToken.value) return;
+    rememberAccount({
+      email: u.email,
+      firstName: u.firstName ?? '',
+      lastName: u.lastName ?? '',
+      provider,
+      accessToken: accessToken.value,
+      expiresAt: expiresAt.value,
+    });
   }
 
   watch(
@@ -118,9 +164,11 @@ export const useAuthStore = defineStore('auth', () => {
     setRoles,
     clearSession,
     fetchProfile,
+    syncLocale,
     updateProfile,
     deleteAccount,
     login,
+    oauthLogin,
     register,
     logout,
   };

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { verifyUserEmail } from './helpers';
 
 const BASE    = 'http://localhost:3000';
 const GATEWAY = 'http://localhost:8080';
@@ -18,7 +19,12 @@ async function clearSession(page: Page) {
 
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
+  await page.evaluate(() => {
+    localStorage.setItem('relativa.locale', 'en');
+    localStorage.setItem('relativa.localePending', '1');
+  });
   await page.locator('#email').fill(email);
+  await page.locator('button[type="submit"]').click();
   await page.locator('#password').pressSequentially(password);
   await page.locator('button[type="submit"]').click();
 }
@@ -29,17 +35,22 @@ test.describe('Workspace Selector', () => {
     const ctx = await browser.newContext();
 
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'Solo', lastName: 'User', email: SOLO_EMAIL, password: FRESH_PASS },
+      data: { firstName: 'Solo', lastName: 'User', email: SOLO_EMAIL, password: FRESH_PASS, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'Multi', lastName: 'User', email: MULTI_EMAIL, password: FRESH_PASS },
+      data: { firstName: 'Multi', lastName: 'User', email: MULTI_EMAIL, password: FRESH_PASS, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'Empty', lastName: 'User', email: EMPTY_EMAIL, password: FRESH_PASS },
+      data: { firstName: 'Empty', lastName: 'User', email: EMPTY_EMAIL, password: FRESH_PASS, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'EmptyOrg', lastName: 'User', email: EMPTY_ORG_EMAIL, password: FRESH_PASS },
+      data: { firstName: 'EmptyOrg', lastName: 'User', email: EMPTY_ORG_EMAIL, password: FRESH_PASS, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
+
+    await verifyUserEmail(ctx.request, SOLO_EMAIL);
+    await verifyUserEmail(ctx.request, MULTI_EMAIL);
+    await verifyUserEmail(ctx.request, EMPTY_EMAIL);
+    await verifyUserEmail(ctx.request, EMPTY_ORG_EMAIL);
 
     const soloLoginRes = await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/login`, {
       data: { email: SOLO_EMAIL, password: FRESH_PASS },

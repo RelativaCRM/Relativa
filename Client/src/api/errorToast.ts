@@ -1,6 +1,7 @@
 import type { ToastServiceMethods } from 'primevue/toastservice';
 import { useToast } from 'primevue/usetoast';
 import { normalizeError, type NormalizedError } from '@/api/errors';
+import { i18n } from '@/i18n';
 
 export interface NotifyOptions {
   fallback?: string;
@@ -10,15 +11,16 @@ export interface NotifyOptions {
 }
 
 export function summaryForError(err: NormalizedError): string {
-  if (err.isNetwork) return 'Network error';
-  if (err.isUnauthorized) return 'Sign in required';
-  if (err.isForbidden) return 'Access denied';
-  if (err.isNotFound) return 'Not found';
-  if (err.isConflict) return 'Conflict';
-  if (err.isValidation) return 'Validation failed';
-  if (err.isServer) return 'Server error';
+  const t = i18n.global.t;
+  if (err.isNetwork) return t('errors.summary.network');
+  if (err.isUnauthorized) return t('errors.summary.unauthorized');
+  if (err.isForbidden) return t('errors.summary.forbidden');
+  if (err.isNotFound) return t('errors.summary.notFound');
+  if (err.isConflict) return t('errors.summary.conflict');
+  if (err.isValidation) return t('errors.summary.validation');
+  if (err.isServer) return t('errors.summary.server');
   if (err.title) return err.title;
-  return 'Error';
+  return t('errors.summary.generic');
 }
 
 // Singleton toast service — set once from App.vue so non-component code

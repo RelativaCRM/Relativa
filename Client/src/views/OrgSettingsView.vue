@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
 import Select from 'primevue/select';
+import FloatLabel from 'primevue/floatlabel';
 import Message from 'primevue/message';
 import Skeleton from 'primevue/skeleton';
 import { useOrganizationStore } from '@/stores/organization';
 import { normalizeError, firstFieldError, type FieldErrors } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
 
+const { t } = useI18n();
 const orgStore = useOrganizationStore();
 const toast = useToast();
 const { notify } = useApiErrorHandler();
@@ -23,14 +25,14 @@ const canEdit = computed(() =>
   orgStore.currentOrg?.myPermissions?.includes('manage_org_settings') ?? false,
 );
 
-const joinPolicyOptions = [
-  { label: 'Open — anyone can submit a join request', value: 'open' },
-  { label: 'Invite only — join requests are blocked', value: 'invite_only' },
-];
+const joinPolicyOptions = computed(() => [
+  { label: t('orgSettings.joinPolicyOpenOption'), value: 'open' },
+  { label: t('orgSettings.joinPolicyInviteOnlyOption'), value: 'invite_only' },
+]);
 
 const defaultRoleOptions = computed(() => {
-  const memberDisplayName = orgStore.roles.find((r) => r.name === 'org_member')?.displayName ?? 'Member';
-  const none = { label: `System default (${memberDisplayName})`, value: null as number | null };
+  const memberDisplayName = orgStore.roles.find((r) => r.name === 'org_member')?.displayName ?? t('orgSettings.memberFallback');
+  const none = { label: t('orgSettings.systemDefault', { role: memberDisplayName }), value: null as number | null };
   return [
     none,
     ...orgStore.roles
@@ -70,7 +72,7 @@ onMounted(async () => {
     ]);
     populateForm();
   } catch (err) {
-    notify(err, { fallback: 'Could not load organization settings.' });
+    notify(err, { fallback: t('orgSettings.loadError') });
   } finally {
     loading.value = false;
   }
@@ -89,15 +91,15 @@ async function handleSave() {
     });
     toast.add({
       severity: 'success',
-      summary: 'Settings saved',
-      detail: 'Organization settings have been updated.',
+      summary: t('settings.savedSummary'),
+      detail: t('orgSettings.savedDetail'),
       life: 4000,
     });
   } catch (err) {
-    const n = normalizeError(err, 'Could not save settings.');
+    const n = normalizeError(err, t('settings.saveError'));
     fieldErrors.value = n.fieldErrors;
     if (!Object.keys(n.fieldErrors).length) {
-      toast.add({ severity: 'error', summary: 'Error', detail: n.message, life: 6000 });
+      toast.add({ severity: 'error', summary: t('settings.errorSummary'), detail: n.message, life: 6000 });
     }
   } finally {
     submitting.value = false;
@@ -106,119 +108,124 @@ async function handleSave() {
 </script>
 
 <template>
-  <section class="max-w-xl">
-    <h1 class="text-2xl font-bold text-ink-900">Organization Settings</h1>
-    <p class="mt-2 text-sm text-ink-500">
-      Configure organization-wide behavior and policies.
-    </p>
+  <section class="max-w-2xl mx-auto px-4">
+    <header class="mb-6">
+      <h1 class="text-xl font-bold text-ink-900 leading-tight">{{ t('orgSettings.title') }}</h1>
+      <p class="mt-1 text-[13px] text-ink-500">
+        {{ t('orgSettings.subtitle') }}
+      </p>
+    </header>
 
     <Message
       v-if="!canEdit && !loading"
       severity="info"
       :closable="false"
-      class="mt-4"
+      class="mb-4"
     >
-      You do not have permission to edit organization settings.
+      {{ t('orgSettings.noPermission') }}
     </Message>
 
-    <div v-if="loading" class="mt-8 flex flex-col gap-3">
-      <Skeleton height="2.5rem" />
+    <div v-if="loading" class="flex flex-col gap-3">
+      <Skeleton height="2.75rem" />
       <Skeleton height="6rem" />
-      <Skeleton height="2.5rem" />
+      <Skeleton height="2.75rem" />
     </div>
 
-    <form v-else class="mt-8 flex flex-col gap-6" novalidate @submit.prevent="handleSave">
-
-      <!-- General -->
-      <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-sm font-semibold text-ink-900">General</h2>
-        <div class="mt-4 flex flex-col gap-1.5">
-          <label for="orgName" class="text-xs font-medium text-ink-600">Organization name</label>
-          <InputText
-            id="orgName"
-            v-model="form.name"
-            :disabled="!canEdit"
-            class="w-full"
-            maxlength="100"
-            placeholder="Organization name"
-            :invalid="!!firstFieldError(fieldErrors, 'name')"
-            @update:model-value="clearField('name')"
-          />
+    <form v-else class="flex flex-col gap-5" novalidate @submit.prevent="handleSave">
+      <div class="border border-line bg-white p-6">
+        <h2 class="text-sm font-semibold text-ink-900">{{ t('orgSettings.general') }}</h2>
+        <div class="mt-5 flex flex-col gap-1.5">
+          <FloatLabel variant="on">
+            <InputText
+              id="orgName"
+              v-model="form.name"
+              :disabled="!canEdit"
+              class="!h-11 w-full"
+              maxlength="100"
+              :invalid="!!firstFieldError(fieldErrors, 'name')"
+              @update:model-value="clearField('name')"
+            />
+            <label for="orgName">{{ t('orgSettings.nameLabel') }}</label>
+          </FloatLabel>
           <small v-if="firstFieldError(fieldErrors, 'name')" class="text-xs text-danger">
             <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'name') }}
           </small>
         </div>
-        <div class="mt-4 flex flex-col gap-1.5">
-          <label for="orgDesc" class="text-xs font-medium text-ink-600">Description</label>
-          <Textarea
-            id="orgDesc"
-            v-model="form.description"
-            rows="3"
-            maxlength="500"
-            :disabled="!canEdit"
-            class="w-full resize-none"
-            placeholder="Optional description shown to members"
-            :invalid="!!firstFieldError(fieldErrors, 'description')"
-            @update:model-value="clearField('description')"
-          />
+        <div class="mt-5 flex flex-col gap-1.5">
+          <FloatLabel variant="on">
+            <Textarea
+              id="orgDesc"
+              v-model="form.description"
+              rows="3"
+              maxlength="500"
+              :disabled="!canEdit"
+              class="w-full resize-none"
+              :invalid="!!firstFieldError(fieldErrors, 'description')"
+              @update:model-value="clearField('description')"
+            />
+            <label for="orgDesc">{{ t('orgSettings.descriptionLabel') }}</label>
+          </FloatLabel>
           <small v-if="firstFieldError(fieldErrors, 'description')" class="text-xs text-danger">
             <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'description') }}
           </small>
         </div>
       </div>
 
-      <!-- Membership -->
+      <div class="border border-line bg-white p-6">
+        <h2 class="text-sm font-semibold text-ink-900">{{ t('orgSettings.membership') }}</h2>
 
-      <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-sm font-semibold text-ink-900">Membership</h2>
-
-        <div class="mt-4 flex flex-col gap-1.5">
-          <label for="joinPolicy" class="text-xs font-medium text-ink-600">Join policy</label>
-          <Select
-            id="joinPolicy"
-            v-model="form.joinPolicy"
-            :options="joinPolicyOptions"
-            option-label="label"
-            option-value="value"
-            :disabled="!canEdit"
-            class="w-full"
-            :invalid="!!firstFieldError(fieldErrors, 'joinPolicy')"
-            @update:model-value="clearField('joinPolicy')"
-          />
+        <div class="mt-5 flex flex-col gap-1.5">
+          <FloatLabel variant="on">
+            <Select
+              input-id="joinPolicy"
+              v-model="form.joinPolicy"
+              :options="joinPolicyOptions"
+              option-label="label"
+              option-value="value"
+              :disabled="!canEdit"
+              class="w-full"
+              :invalid="!!firstFieldError(fieldErrors, 'joinPolicy')"
+              @update:model-value="clearField('joinPolicy')"
+            />
+            <label for="joinPolicy">{{ t('orgSettings.joinPolicyLabel') }}</label>
+          </FloatLabel>
           <small v-if="firstFieldError(fieldErrors, 'joinPolicy')" class="text-xs text-danger">
             <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'joinPolicy') }}
           </small>
           <small class="text-xs text-ink-500">
-            When set to <strong>Invite only</strong>, users cannot submit join requests — only invited users can join.
+            {{ t('orgSettings.joinPolicyHint') }}
           </small>
         </div>
 
-        <div class="mt-4 flex flex-col gap-1.5">
-          <label for="defaultRole" class="text-xs font-medium text-ink-600">
-            Default member role
-          </label>
-          <Select
-            id="defaultRole"
-            v-model="form.defaultOrgRoleId"
-            :options="defaultRoleOptions"
-            option-label="label"
-            option-value="value"
-            :disabled="!canEdit"
-            class="w-full"
-            :invalid="!!firstFieldError(fieldErrors, 'defaultOrgRoleId')"
-            @update:model-value="clearField('defaultOrgRoleId')"
-          />
+        <div class="mt-5 flex flex-col gap-1.5">
+          <FloatLabel variant="on">
+            <Select
+              input-id="defaultRole"
+              v-model="form.defaultOrgRoleId"
+              :options="defaultRoleOptions"
+              option-label="label"
+              option-value="value"
+              :disabled="!canEdit"
+              class="w-full"
+              :invalid="!!firstFieldError(fieldErrors, 'defaultOrgRoleId')"
+              @update:model-value="clearField('defaultOrgRoleId')"
+            />
+            <label for="defaultRole">{{ t('orgSettings.defaultRoleLabel') }}</label>
+          </FloatLabel>
           <small v-if="firstFieldError(fieldErrors, 'defaultOrgRoleId')" class="text-xs text-danger">
             <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'defaultOrgRoleId') }}
           </small>
           <small class="text-xs text-ink-500">
-            Role assigned to new members when no specific role is specified (join request approvals, default invitations).
+            {{ t('orgSettings.defaultRoleHint') }}
           </small>
         </div>
       </div>
 
       <div v-if="canEdit" class="flex justify-end">
-        <Button type="submit" label="Save settings" :loading="submitting" />
+        <button type="submit" class="btn btn-primary" :disabled="submitting">
+          <i v-if="submitting" class="pi pi-spin pi-spinner text-xs" />
+          {{ t('settings.save') }}
+        </button>
       </div>
     </form>
   </section>

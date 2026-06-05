@@ -8,16 +8,21 @@ const ts          = Date.now();
 
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
+  await page.evaluate(() => {
+    localStorage.setItem('relativa.locale', 'en');
+    localStorage.setItem('relativa.localePending', '1');
+  });
   await page.locator('#email').fill(email);
+  await page.locator('button[type="submit"]').click();
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
 }
 
 async function loginAsAdmin(page: Page) {
   await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-  await page.waitForURL(/\/(workspace-select)?$/, { timeout: 10000 });
-  if (page.url().includes('workspace-select')) {
-    await page.locator('li button[type="button"]').first().click();
+  await page.waitForURL(/\/(onboarding)?$/, { timeout: 15000 });
+  if (page.url().includes('onboarding')) {
+    await page.locator('main ul').first().locator('li button').first().click();
     await page.waitForURL(`${BASE}/`, { timeout: 10000 });
   }
 }
@@ -75,11 +80,12 @@ test.describe('Workspaces Page', () => {
     ).toBeVisible();
   });
 
-  test('clicking a workspace card navigates to its members page', async ({ page }) => {
+  test('clicking a workspace opens its brief drawer and Open navigates to the workspace', async ({ page }) => {
     await page.getByText(`E2E Workspaces ${ts}`).click();
-    await expect(page).toHaveURL(
-      new RegExp(`/w/${workspaceId}/members`),
-    );
+    const openBtn = page.getByRole('button', { name: 'Open' });
+    await expect(openBtn).toBeVisible();
+    await openBtn.click();
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}`), { timeout: 10000 });
   });
 
   test('create workspace dialog opens with empty name and disabled submit', async ({ page }) => {
@@ -91,18 +97,20 @@ test.describe('Workspaces Page', () => {
     ).toBeDisabled();
   });
 
-  test('creating a workspace via dialog redirects to its members page', async ({ page }) => {
+  test('creating a workspace via dialog redirects to the new workspace dashboard', async ({ page }) => {
     const newName = `Created ${ts}`;
     await page.getByRole('button', { name: /new workspace/i }).click();
     const dialog = page.locator('.p-dialog');
     await dialog.locator('#wsName').fill(newName);
     await dialog.getByRole('button', { name: /^create$/i }).click();
-    await expect(page).toHaveURL(/\/w\/\d+\/members/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/\d+$/, { timeout: 10000 });
   });
 
-  test('clicking Entities on a workspace card navigates to its entities page', async ({ page }) => {
-    const card = page.locator('div.grid > div').filter({ hasText: `E2E Workspaces ${ts}` }).first();
-    await card.getByRole('button', { name: /entities/i }).click();
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}`), { timeout: 10000 });
+  test('workspace brief drawer exposes a settings action', async ({ page }) => {
+    await page.getByText(`E2E Workspaces ${ts}`).click();
+    const settingsBtn = page.getByRole('button', { name: 'Settings' });
+    await expect(settingsBtn).toBeVisible();
+    await settingsBtn.click();
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/settings`), { timeout: 10000 });
   });
 });

@@ -32,6 +32,30 @@
   }
 }
 
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-5 text-sm font-semibold border transition-colors select-none disabled:cursor-not-allowed;
+  }
+
+  .btn-sm {
+    @apply h-9 px-4 text-[13px];
+  }
+
+  .btn-primary {
+    @apply bg-brand-600 border-brand-600 text-white hover:bg-brand-700 active:bg-brand-700
+      disabled:bg-slate-200 disabled:border-slate-200 disabled:text-slate-400;
+  }
+
+  .btn-outline {
+    @apply bg-white border-ink-400 text-ink-700 hover:bg-surface hover:border-ink-600
+      disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply bg-white border-danger/50 text-danger hover:bg-red-50 disabled:opacity-50;
+  }
+}
+
 .nav-scroll {
   scrollbar-width: thin;
   scrollbar-color: #e2e8f0 transparent;
@@ -54,24 +78,28 @@
 }
 
 .p-inputtext,
-.p-password-input {
+.p-password-input,
+.p-textarea {
   border: 1px solid #94a3b8 !important;
 }
 
 .p-inputtext:focus,
 .p-inputtext.p-focused,
+.p-textarea:focus,
 .p-password:has(.p-inputtext:focus) .p-inputtext {
   border-color: #2563eb !important;
   box-shadow: none !important;
   outline: none !important;
 }
 
-.p-inputtext.p-invalid {
+.p-inputtext.p-invalid,
+.p-textarea.p-invalid {
   border-color: #ef4444 !important;
 }
 
 .p-select {
   border: 1px solid #94a3b8 !important;
+  min-height: 2.75rem;
 }
 
 .p-select.p-focused {
@@ -103,18 +131,35 @@
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2563eb !important;
 }
 
+.p-dialog-header-close {
+  border: 1px solid #e2e8f0 !important;
+  width: 2rem !important;
+  height: 2rem !important;
+}
+
+.p-dialog-header-close:hover {
+  border-color: #94a3b8 !important;
+  background: #f1f5f9 !important;
+}
+
+.p-dialog-header-close:focus:not(:focus-visible) {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.p-toast {
+  width: 22rem;
+  max-width: calc(100vw - 2rem);
+}
+
 .p-toast-message {
-  border: 1px solid;
+  margin-bottom: 0.75rem;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
-.p-toast-message-success {
-  border-color: #16a34a !important;
-}
-.p-toast-message-info {
-  border-color: #2563eb !important;
-}
-.p-toast-message-warn {
-  border-color: #d97706 !important;
-}
-.p-toast-message-error {
-  border-color: #dc2626 !important;
+
+.p-floatlabel:has(.p-invalid) label,
+.p-floatlabel:has([data-p-invalid='true']) label {
+  color: #ef4444;
 }

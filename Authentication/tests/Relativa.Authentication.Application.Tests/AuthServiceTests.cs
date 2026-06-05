@@ -19,7 +19,10 @@ public sealed class AuthServiceTests
     private readonly Mock<IUserProvisioningService> _userProvisioning = new();
     private readonly Mock<ITokenService> _tokenService = new();
     private readonly Mock<IPasswordHasher> _passwordHasher = new();
+    private readonly Mock<IExternalIdentityVerifier> _externalIdentityVerifier = new();
+    private readonly Mock<ITwoFactorService> _twoFactorService = new();
     private readonly Mock<IEmailSender> _emailSender = new();
+    private readonly Mock<IEmailLocalizer> _emailLocalizer = new();
     private readonly Mock<IConfiguration> _configuration = new();
     private readonly Mock<IValidator<LoginRequestDto>> _loginValidator = new();
     private readonly Mock<IValidator<UpdateMyProfileRequest>> _updateProfileValidator = new();
@@ -34,12 +37,19 @@ public sealed class AuthServiceTests
             _userProvisioning.Object,
             _tokenService.Object,
             _passwordHasher.Object,
+            _externalIdentityVerifier.Object,
+            _twoFactorService.Object,
             _emailSender.Object,
+            _emailLocalizer.Object,
             _configuration.Object,
             _loginValidator.Object,
             _updateProfileValidator.Object,
             _forgotPasswordValidator.Object,
             _resetPasswordValidator.Object);
+
+        _emailLocalizer
+            .Setup(l => l.Get(It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<object[]>()))
+            .Returns((string? _, string key, object[] _) => key);
     }
 
     private void SetupValidLogin() =>
@@ -67,7 +77,7 @@ public sealed class AuthServiceTests
     public async Task LoginAsync_ValidCredentials_ReturnsTokenWithExpiry()
     {
         var request = new LoginRequestDto("kovalenko@relativa.io", "Str0ngP@ss");
-        var user = new User { Id = 7, Email = request.Email, Password = "bcrypt-hash" };
+        var user = new User { Id = 7, Email = request.Email, Password = "bcrypt-hash", EmailVerified = true };
         var expiresAt = DateTime.UtcNow.AddHours(1);
 
         SetupValidLogin();
@@ -122,7 +132,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.LoginAsync(request);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("Invalid email or password.");
     }
 
@@ -142,7 +152,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.LoginAsync(request);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("Invalid email or password.");
         _tokenService.Verify(
             t => t.GenerateAccessToken(It.IsAny<User>()),
@@ -152,7 +162,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task RegisterAsync_NewEmail_CreatesUserWithHashedPassword()
     {
-        var request = new RegisterRequestDto("Taras", "Melnyk", "melnyk@relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Taras", "Melnyk", "melnyk@relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
         var ct = CancellationToken.None;
 
         _userProvisioning
@@ -170,7 +180,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task RegisterAsync_InvalidRequest_ThrowsValidationException()
     {
-        var request = new RegisterRequestDto("", "", "not-an-email", "123");
+        var request = new RegisterRequestDto("", "", "not-an-email", "123", "+380501234567", new DateOnly(1990, 1, 1));
         var ct = CancellationToken.None;
 
         _userProvisioning
@@ -189,7 +199,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task RegisterAsync_DuplicateEmail_ThrowsInvalidOperationException()
     {
-        var request = new RegisterRequestDto("Oksana", "Petrenko", "petrenko@relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Oksana", "Petrenko", "petrenko@relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
         var ct = CancellationToken.None;
 
         _userProvisioning
@@ -223,7 +233,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.GetProfileAsync(99);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("User not found.");
     }
 
@@ -331,7 +341,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.ValidateResetTokenAsync("expired-or-invalid-token");
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("Invalid or expired reset token.");
     }
 
@@ -370,7 +380,7 @@ public sealed class AuthServiceTests
 
         var act = () => _sut.ResetPasswordAsync("bad-token", "NewPass123!");
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("Invalid or expired reset token.");
     }
 

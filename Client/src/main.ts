@@ -11,6 +11,8 @@ import ConfirmationService from 'primevue/confirmationservice';
 
 import App from './App.vue';
 import router from './router';
+import { i18n, setLocale, detectLocale } from '@/i18n';
+import { primeVueLocaleFor } from '@/i18n/primevue';
 import { notifyGlobal } from '@/api/errorToast';
 import { ApiError } from '@/api/http';
 
@@ -57,8 +59,11 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 app.use(createPinia());
+app.use(i18n);
+setLocale(detectLocale());
 app.use(router);
 app.use(PrimeVue, {
+  locale: primeVueLocaleFor(detectLocale()),
   theme: {
     preset: RelativaAura,
     options: {

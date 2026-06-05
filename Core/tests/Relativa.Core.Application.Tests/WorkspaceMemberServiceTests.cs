@@ -70,7 +70,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.GetMembersAsync(3, 10);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -115,7 +115,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.UpdateRoleAsync(4, 9, 5, new UpdateMemberRoleRequest(2));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
         _roleRepo.Verify(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -127,7 +127,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.UpdateRoleAsync(4, 99, 1, new UpdateMemberRoleRequest(3));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Target user is not a member of this workspace.");
     }
 
@@ -142,7 +142,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.UpdateRoleAsync(4, 2, 1, new UpdateMemberRoleRequest(99));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified role does not exist.");
     }
 
@@ -158,7 +158,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.UpdateRoleAsync(4, 2, 1, new UpdateMemberRoleRequest(7));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified role does not belong to this workspace.");
     }
 
@@ -205,7 +205,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.UpdateRoleAsync(4, 2, 1, new UpdateMemberRoleRequest(5));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Cannot demote the last workspace admin.");
         _memberRepo.Verify(r => r.UpdateAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -255,7 +255,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.RemoveAsync(6, 8, 1);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
         _memberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -267,7 +267,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.RemoveAsync(6, 77, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Target user is not a member of this workspace.");
     }
 
@@ -312,7 +312,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(10, 2));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*add_ws_members*");
     }
 
@@ -324,7 +324,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(10, 2));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace not found.");
     }
 
@@ -339,7 +339,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(10, 2));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*not a member of this organization*");
     }
 
@@ -357,7 +357,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(10, 2));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*already a member*");
     }
 
@@ -375,7 +375,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(10, 99));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified role does not exist.");
     }
 
@@ -394,7 +394,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.AddMemberAsync(5, 1, new AddWorkspaceMemberRequest(10, 7));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified role does not belong to this workspace.");
     }
 
@@ -506,7 +506,7 @@ public sealed class WorkspaceMemberServiceTests
 
         var act = () => _sut.RemoveAsync(6, 8, 1);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*remove_ws_members*");
         _memberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleWorkspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }

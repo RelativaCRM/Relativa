@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import DataTable, { type DataTablePageEvent } from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -10,6 +11,7 @@ import { useApiErrorHandler } from '@/api/errorToast';
 import { ApiError } from '@/api/http';
 import type { WorkspaceMemberDto } from '@/api/workspaces';
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const wsStore = useWorkspaceStore();
@@ -49,7 +51,7 @@ async function loadAll() {
       router.replace({ name: 'workspaces' });
       return;
     }
-    notify(err, { fallback: 'Не вдалося завантажити список користувачів.' });
+    notify(err, { fallback: t('userList.loadError') });
   } finally {
     loading.value = false;
   }
@@ -88,26 +90,26 @@ onMounted(loadAll);
         <Button
           text
           icon="pi pi-arrow-left"
-          label="Workspaces"
+          :label="t('nav.workspaces')"
           severity="secondary"
           size="small"
           class="!px-1 !mb-1"
           @click="router.push({ name: 'workspaces' })"
         />
-        <h1 class="text-2xl font-bold text-ink-900">Users</h1>
+        <h1 class="text-2xl font-bold text-ink-900">{{ t('userList.title') }}</h1>
         <p class="mt-1 text-sm text-ink-500">
-          Workspace:
+          {{ t('userList.workspaceLabel') }}:
           <span class="font-medium text-ink-700">
-            {{ wsStore.currentWorkspace?.name ?? 'Workspace' }}
+            {{ wsStore.currentWorkspace?.name ?? t('userList.workspaceFallback') }}
           </span>
         </p>
         <p class="mt-1 text-sm text-ink-500">
-          Click a row to open the user profile.
+          {{ t('userList.rowHint') }}
         </p>
       </div>
       <Button
         icon="pi pi-user-edit"
-        label="Manage members"
+        :label="t('userList.manageMembers')"
         severity="secondary"
         @click="
           router.push({
@@ -135,23 +137,23 @@ onMounted(loadAll);
       >
         <template #empty>
           <div class="text-center py-10 text-ink-500">
-            No users in this workspace yet.
+            {{ t('userList.empty') }}
           </div>
         </template>
 
-        <Column field="firstName" header="Name" sortable>
+        <Column field="firstName" :header="t('userList.colName')" sortable>
           <template #body="{ data }">
             <span class="font-medium text-ink-900">{{ fullName(data) }}</span>
           </template>
         </Column>
 
-        <Column field="email" header="Email" sortable>
+        <Column field="email" :header="t('userList.colEmail')" sortable>
           <template #body="{ data }">
             <span class="text-ink-600">{{ data.email }}</span>
           </template>
         </Column>
 
-        <Column field="roleName" header="Role" sortable style="width: 140px">
+        <Column field="roleName" :header="t('userList.colRole')" sortable style="width: 140px">
           <template #body="{ data }">
             <Tag
               :value="data.roleDisplayName"
@@ -160,9 +162,9 @@ onMounted(loadAll);
           </template>
         </Column>
 
-        <Column header="Status" style="width: 120px">
+        <Column :header="t('userList.colStatus')" style="width: 120px">
           <template #body>
-            <Tag value="Active" severity="success" />
+            <Tag :value="t('userList.active')" severity="success" />
           </template>
         </Column>
 

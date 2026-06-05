@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
-import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Textarea from 'primevue/textarea';
+import FloatLabel from 'primevue/floatlabel';
 import ToggleSwitch from 'primevue/toggleswitch';
 import Message from 'primevue/message';
 import Skeleton from 'primevue/skeleton';
@@ -13,6 +14,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { normalizeError, firstFieldError, type FieldErrors } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
 
+const { t } = useI18n();
 const route = useRoute();
 const wsStore = useWorkspaceStore();
 const toast = useToast();
@@ -58,7 +60,7 @@ onMounted(async () => {
     await wsStore.fetchSettings(workspaceId.value);
     populateForm();
   } catch (err) {
-    notify(err, { fallback: 'Could not load workspace settings.' });
+    notify(err, { fallback: t('wsSettings.loadError') });
   } finally {
     loading.value = false;
   }
@@ -78,15 +80,15 @@ async function handleSave() {
     });
     toast.add({
       severity: 'success',
-      summary: 'Settings saved',
-      detail: 'Workspace settings have been updated.',
+      summary: t('settings.savedSummary'),
+      detail: t('wsSettings.savedDetail'),
       life: 4000,
     });
   } catch (err) {
-    const n = normalizeError(err, 'Could not save settings.');
+    const n = normalizeError(err, t('settings.saveError'));
     fieldErrors.value = n.fieldErrors;
     if (!Object.keys(n.fieldErrors).length) {
-      toast.add({ severity: 'error', summary: 'Error', detail: n.message, life: 6000 });
+      toast.add({ severity: 'error', summary: t('settings.errorSummary'), detail: n.message, life: 6000 });
     }
   } finally {
     submitting.value = false;
@@ -95,123 +97,119 @@ async function handleSave() {
 </script>
 
 <template>
-  <section class="max-w-xl">
-    <h1 class="text-2xl font-bold text-ink-900">Workspace Settings</h1>
-    <p class="mt-2 text-sm text-ink-500">
-      Configure how this workspace behaves for all its members.
-    </p>
+  <section class="max-w-2xl mx-auto px-4">
+    <header class="mb-6">
+      <h1 class="text-xl font-bold text-ink-900 leading-tight">{{ t('wsSettings.title') }}</h1>
+      <p class="mt-1 text-[13px] text-ink-500">{{ t('wsSettings.subtitle') }}</p>
+    </header>
 
     <Message
       v-if="!canEdit && !loading"
       severity="info"
       :closable="false"
-      class="mt-4"
+      class="mb-4"
     >
-      You do not have permission to edit workspace settings.
+      {{ t('wsSettings.noPermission') }}
     </Message>
 
-    <div v-if="loading" class="mt-8 flex flex-col gap-3">
-      <Skeleton height="2.5rem" />
+    <div v-if="loading" class="flex flex-col gap-3">
+      <Skeleton height="2.75rem" />
       <Skeleton height="6rem" />
-      <Skeleton height="2.5rem" />
+      <Skeleton height="2.75rem" />
     </div>
 
-    <form v-else class="mt-8 flex flex-col gap-6" novalidate @submit.prevent="handleSave">
-
-      <!-- General -->
-      <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-sm font-semibold text-ink-900">General</h2>
-        <div class="mt-4 flex flex-col gap-1.5">
-          <label for="wsName" class="text-xs font-medium text-ink-600">Workspace name</label>
-          <InputText
-            id="wsName"
-            v-model="form.name"
-            :disabled="!canEdit"
-            class="w-full"
-            maxlength="100"
-            placeholder="Workspace name"
-            :invalid="!!firstFieldError(fieldErrors, 'name')"
-            @update:model-value="clearField('name')"
-          />
+    <form v-else class="flex flex-col gap-5" novalidate @submit.prevent="handleSave">
+      <div class="border border-line bg-white p-6">
+        <h2 class="text-sm font-semibold text-ink-900">{{ t('wsSettings.general') }}</h2>
+        <div class="mt-5 flex flex-col gap-1.5">
+          <FloatLabel variant="on">
+            <InputText
+              id="wsName"
+              v-model="form.name"
+              :disabled="!canEdit"
+              class="!h-11 w-full"
+              maxlength="100"
+              :invalid="!!firstFieldError(fieldErrors, 'name')"
+              @update:model-value="clearField('name')"
+            />
+            <label for="wsName">{{ t('wsSettings.nameLabel') }}</label>
+          </FloatLabel>
           <small v-if="firstFieldError(fieldErrors, 'name')" class="text-xs text-danger">
             <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'name') }}
           </small>
         </div>
-        <div class="mt-4 flex flex-col gap-1.5">
-          <label for="wsDesc" class="text-xs font-medium text-ink-600">Description</label>
-          <Textarea
-            id="wsDesc"
-            v-model="form.description"
-            rows="3"
-            maxlength="500"
-            :disabled="!canEdit"
-            class="w-full resize-none"
-            placeholder="Optional description visible to workspace members"
-            :invalid="!!firstFieldError(fieldErrors, 'description')"
-            @update:model-value="clearField('description')"
-          />
+        <div class="mt-5 flex flex-col gap-1.5">
+          <FloatLabel variant="on">
+            <Textarea
+              id="wsDesc"
+              v-model="form.description"
+              rows="3"
+              maxlength="500"
+              :disabled="!canEdit"
+              class="w-full resize-none"
+              :invalid="!!firstFieldError(fieldErrors, 'description')"
+              @update:model-value="clearField('description')"
+            />
+            <label for="wsDesc">{{ t('wsSettings.descriptionLabel') }}</label>
+          </FloatLabel>
           <small v-if="firstFieldError(fieldErrors, 'description')" class="text-xs text-danger">
             <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'description') }}
           </small>
         </div>
       </div>
 
-      <!-- Risk Scoring -->
-      <div class="rounded-xl border border-line bg-white p-6">
-        <h2 class="text-sm font-semibold text-ink-900">Risk Scoring</h2>
-        <p class="mt-1 text-xs text-ink-500">
-          ML-based closure and churn scores are shown on deals in this workspace.
-        </p>
+      <div class="border border-line bg-white p-6">
+        <h2 class="text-sm font-semibold text-ink-900">{{ t('wsSettings.riskScoring') }}</h2>
+        <p class="mt-1 text-xs text-ink-500">{{ t('wsSettings.riskScoringHint') }}</p>
 
         <div class="mt-4 flex items-center justify-between gap-4">
-          <span class="text-sm text-ink-700">Enable risk scoring</span>
-          <ToggleSwitch
-            v-model="form.riskScoringEnabled"
-            :disabled="!canEdit"
-          />
+          <span class="text-sm text-ink-700">{{ t('wsSettings.enableRiskScoring') }}</span>
+          <ToggleSwitch v-model="form.riskScoringEnabled" :disabled="!canEdit" />
         </div>
 
         <template v-if="form.riskScoringEnabled">
-          <div class="mt-5 flex flex-col gap-4">
+          <div class="mt-6 flex flex-col gap-5">
             <div class="flex flex-col gap-1.5">
-              <label for="highThreshold" class="text-xs font-medium text-ink-600">
-                High risk threshold (0 – 1)
-              </label>
-              <InputNumber
-                id="highThreshold"
-                v-model="form.highRiskThreshold"
-                :min="0"
-                :max="1"
-                :step="0.01"
-                :min-fraction-digits="2"
-                :max-fraction-digits="2"
-                :disabled="!canEdit"
-                class="w-full"
-                :invalid="!!firstFieldError(fieldErrors, 'highRiskThreshold')"
-                @update:model-value="clearField('highRiskThreshold')"
-              />
+              <FloatLabel variant="on">
+                <InputNumber
+                  input-id="highThreshold"
+                  v-model="form.highRiskThreshold"
+                  :min="0"
+                  :max="1"
+                  :step="0.01"
+                  :min-fraction-digits="2"
+                  :max-fraction-digits="2"
+                  :disabled="!canEdit"
+                  class="w-full"
+                  input-class="!h-11 w-full"
+                  :invalid="!!firstFieldError(fieldErrors, 'highRiskThreshold')"
+                  @update:model-value="clearField('highRiskThreshold')"
+                />
+                <label for="highThreshold">{{ t('wsSettings.highThresholdLabel') }}</label>
+              </FloatLabel>
               <small v-if="firstFieldError(fieldErrors, 'highRiskThreshold')" class="text-xs text-danger">
                 <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'highRiskThreshold') }}
               </small>
             </div>
 
             <div class="flex flex-col gap-1.5">
-              <label for="medThreshold" class="text-xs font-medium text-ink-600">
-                Medium risk threshold (0 – 1, must be less than high)
-              </label>
-              <InputNumber
-                id="medThreshold"
-                v-model="form.mediumRiskThreshold"
-                :min="0"
-                :max="1"
-                :step="0.01"
-                :min-fraction-digits="2"
-                :max-fraction-digits="2"
-                :disabled="!canEdit"
-                class="w-full"
-                :invalid="!!firstFieldError(fieldErrors, 'mediumRiskThreshold')"
-                @update:model-value="clearField('mediumRiskThreshold')"
-              />
+              <FloatLabel variant="on">
+                <InputNumber
+                  input-id="medThreshold"
+                  v-model="form.mediumRiskThreshold"
+                  :min="0"
+                  :max="1"
+                  :step="0.01"
+                  :min-fraction-digits="2"
+                  :max-fraction-digits="2"
+                  :disabled="!canEdit"
+                  class="w-full"
+                  input-class="!h-11 w-full"
+                  :invalid="!!firstFieldError(fieldErrors, 'mediumRiskThreshold')"
+                  @update:model-value="clearField('mediumRiskThreshold')"
+                />
+                <label for="medThreshold">{{ t('wsSettings.mediumThresholdLabel') }}</label>
+              </FloatLabel>
               <small v-if="firstFieldError(fieldErrors, 'mediumRiskThreshold')" class="text-xs text-danger">
                 <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(fieldErrors, 'mediumRiskThreshold') }}
               </small>
@@ -221,7 +219,10 @@ async function handleSave() {
       </div>
 
       <div v-if="canEdit" class="flex justify-end">
-        <Button type="submit" label="Save settings" :loading="submitting" />
+        <button type="submit" class="btn btn-primary" :disabled="submitting">
+          <i v-if="submitting" class="pi pi-spin pi-spinner text-xs" />
+          {{ t('settings.save') }}
+        </button>
       </div>
     </form>
   </section>

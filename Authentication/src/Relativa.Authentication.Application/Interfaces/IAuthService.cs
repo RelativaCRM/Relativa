@@ -5,6 +5,9 @@ namespace Relativa.Authentication.Application.Interfaces;
 public interface IAuthService
 {
     Task<LoginResponseDto> LoginAsync(LoginRequestDto request, CancellationToken ct = default);
+    Task<LoginResponseDto> OAuthLoginAsync(string provider, OAuthLoginRequestDto request, CancellationToken ct = default);
+    Task LinkProviderAsync(int userId, string provider, OAuthLoginRequestDto request, CancellationToken ct = default);
+    Task<bool> EmailExistsAsync(string email, CancellationToken ct = default);
     Task<RegisterResponseDto> RegisterAsync(RegisterRequestDto request, CancellationToken ct = default);
     Task<UserProfileDto> GetProfileAsync(int userId, CancellationToken ct = default);
     Task<UserProfileDto> UpdateMyProfileAsync(int userId, UpdateMyProfileRequest request, CancellationToken ct = default);

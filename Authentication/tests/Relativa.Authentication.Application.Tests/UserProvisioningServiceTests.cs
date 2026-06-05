@@ -3,6 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using Relativa.Authentication.Application.DTOs;
+using Relativa.Authentication.Application.Exceptions;
 using Relativa.Authentication.Application.Services;
 using Relativa.Authentication.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
@@ -30,7 +31,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_PersistsNormalizedEmail()
     {
-        var request = new RegisterRequestDto("Taras", "Melnyk", "Melnyk@Relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Taras", "Melnyk", "Melnyk@Relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
 
         _registerValidator
             .Setup(v => v.ValidateAsync(
@@ -55,7 +56,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_DuplicateEmailNormalized_ThrowsInvalidOperationException()
     {
-        var request = new RegisterRequestDto("A", "B", "DUPLICATE@Relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("A", "B", "DUPLICATE@Relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
 
         _registerValidator
             .Setup(v => v.ValidateAsync(
@@ -67,14 +68,14 @@ public sealed class UserProvisioningServiceTests
 
         var act = () => _sut.CreateUserAsync(request, null, CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AuthException>()
             .WithMessage("A user with this email already exists.");
     }
 
     [Fact]
     public async Task CreateUserAsync_WhenRepositoryReportsEmailFree_AllowsCreate()
     {
-        var request = new RegisterRequestDto("Olena", "Koval", "Olena@Relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Olena", "Koval", "Olena@Relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
 
         _registerValidator
             .Setup(v => v.ValidateAsync(
@@ -101,7 +102,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_WithAuditWriter_NullActor_EnqueuesWithNewUserIdAsActor()
     {
-        var request = new RegisterRequestDto("Ivan", "Franko", "ivan@relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Ivan", "Franko", "ivan@relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
         var auditWriter = new Mock<IOutboxWriter>();
 
         var sut = new UserProvisioningService(
@@ -125,7 +126,7 @@ public sealed class UserProvisioningServiceTests
     [Fact]
     public async Task CreateUserAsync_WithAuditWriter_ActorProvided_EnqueuesProvisionedAction()
     {
-        var request = new RegisterRequestDto("Lesya", "Ukrainka", "lesya@relativa.io", "Secur3P@ss");
+        var request = new RegisterRequestDto("Lesya", "Ukrainka", "lesya@relativa.io", "Secur3P@ss", "+380501234567", new DateOnly(1990, 1, 1));
         var auditWriter = new Mock<IOutboxWriter>();
 
         var sut = new UserProvisioningService(
@@ -186,7 +187,7 @@ public sealed class UserProvisioningServiceUpdateTests
 
         var act = () => _sut.UpdateUserProfileAsync(99, "A", "B", auditActorUserId: 1, CancellationToken.None);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>().WithMessage("User not found.");
+        await act.Should().ThrowAsync<AuthException>().WithMessage("User not found.");
     }
 
     [Fact]
@@ -230,7 +231,7 @@ public sealed class UserProvisioningServiceUpdateTests
 
         var act = () => _sut.ArchiveUserAsync(99, auditActorUserId: 1, CancellationToken.None);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>().WithMessage("User not found.");
+        await act.Should().ThrowAsync<AuthException>().WithMessage("User not found.");
     }
 
     [Fact]

@@ -28,7 +28,7 @@ public sealed class OrganizationService(
         var ownerRole = (await orgRoleRepository.GetSystemRolesAsync(ct))
             .OrderBy(r => r.Priority)
             .FirstOrDefault()
-            ?? throw new InvalidOperationException("No system organization role is configured.");
+            ?? throw new AppException("no_system_org_role", 409, "No system organization role is configured.");
 
         var organization = new Organization
         {
@@ -119,7 +119,7 @@ public sealed class OrganizationService(
         await RequireOrgMembership(userId, organizationId, ct);
 
         var organization = await organizationRepository.GetByIdAsync(organizationId, ct)
-            ?? throw new KeyNotFoundException("Organization not found.");
+            ?? throw new AppException("organization_not_found", 404, "Organization not found.");
 
         var membership = await orgMemberRepository.GetAsync(userId, organizationId, ct);
         var members = await orgMemberRepository.GetByOrganizationIdAsync(organizationId, ct);
@@ -144,7 +144,7 @@ public sealed class OrganizationService(
         await RequireOrgPermission(userId, organizationId, "manage_org_settings", ct);
 
         var organization = await organizationRepository.GetByIdAsync(organizationId, ct)
-            ?? throw new KeyNotFoundException("Organization not found.");
+            ?? throw new AppException("organization_not_found", 404, "Organization not found.");
 
         var previousName = organization.Name;
         organization.Name = request.Name;
@@ -174,7 +174,7 @@ public sealed class OrganizationService(
     {
         var hits = await organizationRepository.SearchAsync(query, ct);
         return hits
-            .Select(h => new OrganizationSearchResultDto(h.Id, h.Name, h.MemberCount))
+            .Select(h => new OrganizationSearchResultDto(h.Id, h.Name, h.MemberCount, h.JoinPolicy))
             .ToList();
     }
 
@@ -201,7 +201,7 @@ public sealed class OrganizationService(
         if (targetUserId == callerUserId)
         {
             var selfMember = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
-                ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
+                ?? throw new AppException("target_not_org_member", 404, "Target user is not a member of this organization.");
 
             await orgMemberRepository.RemoveAsync(selfMember, ct);
 
@@ -230,13 +230,13 @@ public sealed class OrganizationService(
         await RequireOrgPermission(callerUserId, organizationId, "remove_org_members", ct);
 
         var callerMembership = await orgMemberRepository.GetAsync(callerUserId, organizationId, ct)
-            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
+            ?? throw new AppException("not_org_member", 403, "You are not a member of this organization.");
         var targetMember = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
-            ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
+            ?? throw new AppException("target_not_org_member", 404, "Target user is not a member of this organization.");
 
         if (callerMembership.Role!.Priority >= targetMember.Role!.Priority)
         {
-            throw new ForbiddenAccessException(
+            throw new AppException("insufficient_role_authority", 403, 
                 "You cannot perform this action on a member whose organization role has equal or higher authority than yours.");
         }
 
@@ -267,13 +267,13 @@ public sealed class OrganizationService(
         await RequireOrgPermission(callerUserId, organizationId, "assign_org_roles", ct);
 
         var targetMember = await orgMemberRepository.GetAsync(targetUserId, organizationId, ct)
-            ?? throw new KeyNotFoundException("Target user is not a member of this organization.");
+            ?? throw new AppException("target_not_org_member", 404, "Target user is not a member of this organization.");
 
         var role = await orgRoleRepository.GetByIdAsync(request.RoleId, ct)
-            ?? throw new ArgumentException("The specified role does not exist.");
+            ?? throw new AppException("role_not_found", 400, "The specified role does not exist.");
 
         if (role.OrganizationId.HasValue && role.OrganizationId.Value != organizationId)
-            throw new ArgumentException("The specified role does not belong to this organization.");
+            throw new AppException("role_not_in_organization", 400, "The specified role does not belong to this organization.");
 
         targetMember.OrgRoleId = role.Id;
         await orgMemberRepository.UpdateAsync(targetMember, ct);
@@ -303,10 +303,10 @@ public sealed class OrganizationService(
         await RequireOrgMembership(userId, organizationId, ct);
 
         var settings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct)
-            ?? throw new KeyNotFoundException("Organization settings not found.");
+            ?? throw new AppException("organization_settings_not_found", 404, "Organization settings not found.");
 
         var org = await organizationRepository.GetByIdAsync(organizationId, ct)
-            ?? throw new KeyNotFoundException("Organization not found.");
+            ?? throw new AppException("organization_not_found", 404, "Organization not found.");
 
         if (auditOutboxWriter is not null)
         {
@@ -342,18 +342,18 @@ public sealed class OrganizationService(
         await RequireOrgPermission(userId, organizationId, OrganizationPermissions.ManageOrgSettings, ct);
 
         var settings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct)
-            ?? throw new KeyNotFoundException("Organization settings not found.");
+            ?? throw new AppException("organization_settings_not_found", 404, "Organization settings not found.");
 
         var org = await organizationRepository.GetByIdAsync(organizationId, ct)
-            ?? throw new KeyNotFoundException("Organization not found.");
+            ?? throw new AppException("organization_not_found", 404, "Organization not found.");
 
         if (request.DefaultOrgRoleId.HasValue)
         {
             var role = await orgRoleRepository.GetByIdAsync(request.DefaultOrgRoleId.Value, ct);
             if (role is null)
-                throw new ArgumentException("The specified default org role does not exist.");
+                throw new AppException("default_org_role_not_found", 400, "The specified default org role does not exist.");
             if (role.OrganizationId.HasValue && role.OrganizationId.Value != organizationId)
-                throw new ArgumentException("The specified default org role does not belong to this organization.");
+                throw new AppException("default_org_role_not_in_org", 400, "The specified default org role does not belong to this organization.");
         }
 
         var oldJson = JsonSerializer.Serialize(new
@@ -416,7 +416,7 @@ public sealed class OrganizationService(
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)
     {
         return await orgMemberRepository.GetAsync(userId, orgId, ct)
-            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
+            ?? throw new AppException("not_org_member", 403, "You are not a member of this organization.");
     }
 
     private async Task RequireOrgPermission(int userId, int orgId, string permission, CancellationToken ct)
@@ -425,6 +425,6 @@ public sealed class OrganizationService(
         var hasPermission = membership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
-            throw new ForbiddenAccessException($"You do not have the '{permission}' permission in this organization.");
+            throw new AppException("permission_denied", 403, $"You do not have the '{permission}' permission in this organization.");
     }
 }

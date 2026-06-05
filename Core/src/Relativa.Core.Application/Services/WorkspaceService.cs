@@ -28,18 +28,18 @@ public sealed class WorkspaceService(
         await createValidator.ValidateAndThrowAsync(request, ct);
 
         var orgMembership = await orgMemberRepository.GetAsync(userId, request.OrganizationId, ct)
-            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
+            ?? throw new AppException("not_org_member", 403, "You are not a member of this organization.");
 
         var hasPermission = orgMembership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == OrganizationPermissions.CreateWorkspaces) ?? false;
         if (!hasPermission)
-            throw new ForbiddenAccessException($"You do not have the '{OrganizationPermissions.CreateWorkspaces}' permission in this organization.");
+            throw new AppException("permission_denied", 403, $"You do not have the '{OrganizationPermissions.CreateWorkspaces}' permission in this organization.");
 
         var adminRole = await roleRepository.GetSystemRoleWithPermissionsSupersetAsync(
                 WorkspacePermissions.FullWorkspaceAuthority,
                 ct)
             ?? await roleRepository.GetSystemRoleByNameAsync("ws_admin", ct)
-            ?? throw new InvalidOperationException("System ws_admin role not found.");
+            ?? throw new AppException("system_ws_admin_role_not_found", 409, "System ws_admin role not found.");
 
         var workspace = new Workspace
         {
@@ -111,7 +111,7 @@ public sealed class WorkspaceService(
             var orgMembership = await orgMemberRepository.GetAsync(userId, organizationId.Value, ct);
             if (orgMembership is null)
             {
-                throw new ForbiddenAccessException("You are not a member of this organization.");
+                throw new AppException("not_org_member", 403, "You are not a member of this organization.");
             }
 
             workspaces = await workspaceRepository.GetByUserIdAndOrganizationIdAsync(
@@ -150,7 +150,7 @@ public sealed class WorkspaceService(
         await workspaceAccess.EnsureCanAccessWorkspaceAsync(userId, workspaceId, ct);
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new AppException("workspace_not_found", 404, "Workspace not found.");
 
         var membership = await memberRepository.GetAsync(userId, workspaceId, ct);
         var members = await memberRepository.GetByWorkspaceIdAsync(workspaceId, ct);
@@ -170,10 +170,10 @@ public sealed class WorkspaceService(
     {
         await updateValidator.ValidateAndThrowAsync(request, ct);
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, WorkspacePermissions.ManageWsSettings, ct))
-            throw new ForbiddenAccessException($"You do not have the '{WorkspacePermissions.ManageWsSettings}' permission in this workspace.");
+            throw new AppException("permission_denied", 403, $"You do not have the '{WorkspacePermissions.ManageWsSettings}' permission in this workspace.");
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new AppException("workspace_not_found", 404, "Workspace not found.");
 
         var previousName = workspace.Name;
         workspace.Name = request.Name;
@@ -221,11 +221,11 @@ public sealed class WorkspaceService(
             WorkspacePermissions.DeleteWorkspace,
             ct);
         if (!canDeleteWorkspace && !isOrgOwner && !isWsAdminFallback)
-            throw new ForbiddenAccessException(
+            throw new AppException("archive_workspace_admins_only", 403, 
                 "Only workspace admins or organization owners can archive a workspace.");
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new AppException("workspace_not_found", 404, "Workspace not found.");
 
         workspace.IsArchived = true;
         await workspaceRepository.UpdateAsync(workspace, ct);
@@ -264,10 +264,10 @@ public sealed class WorkspaceService(
         await workspaceAccess.EnsureCanAccessWorkspaceAsync(userId, workspaceId, ct);
 
         var settings = await workspaceSettingsRepository.GetByWorkspaceIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace settings not found.");
+            ?? throw new AppException("workspace_settings_not_found", 404, "Workspace settings not found.");
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new AppException("workspace_not_found", 404, "Workspace not found.");
 
         if (auditOutboxWriter is not null)
         {
@@ -302,13 +302,13 @@ public sealed class WorkspaceService(
         await updateSettingsValidator.ValidateAndThrowAsync(request, ct);
 
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, WorkspacePermissions.ManageWsSettings, ct))
-            throw new ForbiddenAccessException($"You do not have the '{WorkspacePermissions.ManageWsSettings}' permission in this workspace.");
+            throw new AppException("permission_denied", 403, $"You do not have the '{WorkspacePermissions.ManageWsSettings}' permission in this workspace.");
 
         var settings = await workspaceSettingsRepository.GetByWorkspaceIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace settings not found.");
+            ?? throw new AppException("workspace_settings_not_found", 404, "Workspace settings not found.");
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new AppException("workspace_not_found", 404, "Workspace not found.");
 
         var oldJson = JsonSerializer.Serialize(new
         {

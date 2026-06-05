@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
 import Password from 'primevue/password';
 import Button from 'primevue/button';
 import AuthLayout from '@/layouts/AuthLayout.vue';
+import FormError from '@/components/feedback/FormError.vue';
 import { authApi } from '@/api/auth';
 import { normalizeError } from '@/api/errors';
 
+const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 
@@ -52,7 +55,7 @@ async function handleSubmit() {
     await authApi.resetPassword(token.value, newPassword.value);
     await router.push({ name: 'login', query: { reset: 'success' } });
   } catch (err) {
-    const normalized = normalizeError(err, 'Something went wrong. Please try again.');
+    const normalized = normalizeError(err);
     if (normalized.isValidation) {
       expired.value = true;
     } else {
@@ -77,20 +80,19 @@ async function handleSubmit() {
         <div class="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4">
           <i class="pi pi-clock text-danger text-xl" />
         </div>
-        <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">Link expired</h1>
+        <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">{{ t('auth.linkExpiredTitle') }}</h1>
         <p class="mt-2 text-[13px] text-ink-500 leading-relaxed">
-          This password reset link is invalid or has already been used.
-          Reset links expire after 1 hour.
+          {{ t('auth.linkExpiredBody') }}
         </p>
         <RouterLink
           :to="{ name: 'forgot-password' }"
           class="mt-5 inline-block text-[13px] font-medium text-brand-600 hover:underline"
         >
-          Request a new reset link
+          {{ t('auth.requestNewLink') }}
         </RouterLink>
         <div class="mt-3 border-t border-line w-full pt-4">
           <RouterLink :to="{ name: 'login' }" class="text-[13px] text-ink-500 hover:text-ink-700">
-            Back to sign in
+            {{ t('auth.backToSignIn') }}
           </RouterLink>
         </div>
       </div>
@@ -98,16 +100,16 @@ async function handleSubmit() {
 
     <template v-else-if="!expired">
       <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">
-        Set a new password
+        {{ t('auth.resetTitle') }}
       </h1>
       <p class="mt-1 text-[13px] text-ink-500">
-        Choose a strong password for your account.
+        {{ t('auth.resetSubtitle') }}
       </p>
 
       <form class="mt-6 flex flex-col gap-5" novalidate @submit.prevent="handleSubmit">
         <div class="flex flex-col gap-1.5">
           <label for="newPassword" class="text-xs font-medium text-ink-600">
-            New password
+            {{ t('auth.newPasswordLabel') }}
           </label>
           <Password
             v-model="newPassword"
@@ -115,18 +117,18 @@ async function handleSubmit() {
             :feedback="false"
             toggle-mask
             autocomplete="new-password"
-            placeholder="At least 8 characters"
+            :placeholder="t('auth.passwordMinPlaceholder')"
             input-class="!h-10 w-full"
             class="w-full"
           />
           <small v-if="newPassword.length > 0 && newPassword.length < 8" class="text-xs text-danger">
-            <i class="pi pi-exclamation-circle mr-1" />Password must be at least 8 characters
+            <i class="pi pi-exclamation-circle mr-1" />{{ t('auth.passwordTooShort') }}
           </small>
         </div>
 
         <div class="flex flex-col gap-1.5">
           <label for="confirmPassword" class="text-xs font-medium text-ink-600">
-            Confirm password
+            {{ t('auth.confirmPasswordLabel') }}
           </label>
           <Password
             v-model="confirmPassword"
@@ -139,17 +141,15 @@ async function handleSubmit() {
             :invalid="confirmMismatch"
           />
           <small v-if="confirmMismatch" class="text-xs text-danger">
-            <i class="pi pi-exclamation-circle mr-1" />Passwords do not match
+            <i class="pi pi-exclamation-circle mr-1" />{{ t('auth.passwordsMismatch') }}
           </small>
         </div>
 
-        <p v-if="serverError" class="text-xs text-danger flex items-start gap-1.5">
-          <i class="pi pi-exclamation-circle mt-0.5 shrink-0" />{{ serverError }}
-        </p>
+        <FormError v-if="serverError" :message="serverError" />
 
         <Button
           type="submit"
-          label="Reset password"
+          :label="t('auth.resetPassword')"
           :loading="submitting"
           :class="[
             '!h-11 !rounded-none !font-semibold w-full transition-colors',

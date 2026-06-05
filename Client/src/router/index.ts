@@ -17,6 +17,7 @@ const WorkspaceSelectorView = () =>
 const MembersView = () => import('@/views/MembersView.vue');
 const MemberView = () => import('@/views/MemberView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
+const OrganizationsView = () => import('@/views/OrganizationsView.vue');
 const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
 const UserListView = () => import('@/views/UserListView.vue');
@@ -99,6 +100,12 @@ const router = createRouter({
           name: 'workspaces',
           component: WorkspacesView,
           meta: orgMeta,
+        },
+        {
+          path: 'organizations',
+          name: 'organizations',
+          component: OrganizationsView,
+          meta: { navScope: 'user' as const, skipOrgCheck: true, skipWorkspaceCheck: true },
         },
         {
           path: 'audit-log',
@@ -195,6 +202,8 @@ const router = createRouter({
   ],
 });
 
+let localeRevalidated = false;
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const orgStore = useOrganizationStore();
@@ -217,6 +226,11 @@ router.beforeEach(async (to) => {
       const query = to.fullPath !== '/' ? { redirect: to.fullPath } : {};
       return { name: 'login', query };
     }
+  }
+
+  if (auth.isAuthenticated && !localeRevalidated) {
+    localeRevalidated = true;
+    void auth.syncLocale().catch(() => undefined);
   }
 
   if (auth.isAuthenticated && !to.meta.public && !to.meta.skipOrgCheck) {

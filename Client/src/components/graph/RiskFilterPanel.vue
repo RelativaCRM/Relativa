@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { GraphRiskLevel } from '@/api/graph';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   modelValue: GraphRiskLevel | null;
@@ -17,11 +21,11 @@ type RiskOption = {
   border: string;
 };
 
-const RISK_OPTIONS: ReadonlyArray<RiskOption> = [
-  { value: 'high',   label: 'High',   fill: '#ef4444', border: '#b91c1c' },
-  { value: 'medium', label: 'Medium', fill: '#f59e0b', border: '#b45309' },
-  { value: 'low',    label: 'Low',    fill: '#10b981', border: '#047857' },
-];
+const RISK_OPTIONS = computed<ReadonlyArray<RiskOption>>(() => [
+  { value: 'high',   label: t('graph.risk.high'),   fill: '#ef4444', border: '#b91c1c' },
+  { value: 'medium', label: t('graph.risk.medium'), fill: '#f59e0b', border: '#b45309' },
+  { value: 'low',    label: t('graph.risk.low'),    fill: '#10b981', border: '#047857' },
+]);
 
 function toggle(level: GraphRiskLevel) {
   emit('update:modelValue', props.modelValue === level ? null : level);
@@ -35,13 +39,13 @@ function reset() {
 <template>
   <div class="flex flex-wrap items-center gap-2">
     <span class="text-xs font-semibold text-ink-600 uppercase tracking-wide">
-      Filter deals by risk
+      {{ t('graph.filterByRisk') }}
     </span>
 
     <div
       class="inline-flex items-center rounded-lg border border-line bg-white p-0.5"
       role="group"
-      aria-label="Risk level filter"
+      :aria-label="t('graph.riskFilterLabel')"
     >
       <button
         v-for="opt in RISK_OPTIONS"
@@ -81,7 +85,7 @@ function reset() {
       @click="reset"
     >
       <i class="pi pi-times text-[10px]" />
-      Reset
+      {{ t('graph.reset') }}
     </button>
 
   </div>

@@ -124,7 +124,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateOrganizationRequest("Orphan Org"));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("No system organization role is configured.");
         _orgRepo.Verify(r => r.AddAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -184,7 +184,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 99);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this organization.");
     }
 
@@ -205,7 +205,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Organization not found.");
     }
 
@@ -243,7 +243,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateAsync(10, 3, new UpdateOrganizationRequest("New Name"));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*manage_org_settings*");
         _orgRepo.Verify(r => r.UpdateAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -258,7 +258,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateAsync(3, 1, new UpdateOrganizationRequest("Ghost"));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Organization not found.");
     }
 
@@ -294,7 +294,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.GetMembersAsync(2, 5);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
     }
 
     [Fact]
@@ -349,7 +349,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.RemoveMemberAsync(6, 99, 1);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
         _orgMemberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -363,7 +363,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.RemoveMemberAsync(6, 77, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Target user is not a member of this organization.");
     }
 
@@ -410,7 +410,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.RemoveMemberAsync(6, 77, 1);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*equal or higher authority*");
         _orgMemberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -432,7 +432,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.RemoveMemberAsync(6, 77, 1);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>();
+        await act.Should().ThrowAsync<AppException>();
         _orgMemberRepo.Verify(r => r.RemoveAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -447,7 +447,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.ChangeMemberRoleAsync(4, 2, 1, new ChangeOrgMemberRoleRequest(3));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*assign_org_roles*");
     }
 
@@ -461,7 +461,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.ChangeMemberRoleAsync(4, 99, 1, new ChangeOrgMemberRoleRequest(3));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Target user is not a member of this organization.");
     }
 
@@ -477,7 +477,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.ChangeMemberRoleAsync(4, 2, 1, new ChangeOrgMemberRoleRequest(99));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified role does not exist.");
     }
 
@@ -494,7 +494,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.ChangeMemberRoleAsync(4, 2, 1, new ChangeOrgMemberRoleRequest(7));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified role does not belong to this organization.");
     }
 
@@ -581,7 +581,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.GetSettingsAsync(5, 99);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this organization.");
     }
 
@@ -593,7 +593,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.GetSettingsAsync(5, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Organization settings not found.");
     }
 
@@ -607,7 +607,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.GetSettingsAsync(5, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Organization not found.");
     }
 
@@ -669,7 +669,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(5, 99, new UpdateOrganizationSettingsRequest("Name", null, "open", null));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this organization.");
     }
 
@@ -680,7 +680,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Name", null, "open", null));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage($"*{OrganizationPermissions.ManageOrgSettings}*");
         _orgSettingsRepo.Verify(r => r.UpdateAsync(It.IsAny<OrganizationSettings>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -694,7 +694,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Name", null, "open", null));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Organization settings not found.");
     }
 
@@ -709,7 +709,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("Name", null, "open", null));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Organization not found.");
     }
 
@@ -727,7 +727,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("New Name", null, "open", 99));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified default org role does not exist.");
     }
 
@@ -746,7 +746,7 @@ public sealed class OrganizationServiceTests
 
         var act = () => _sut.UpdateSettingsAsync(5, 1, new UpdateOrganizationSettingsRequest("New Name", null, "open", 7));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The specified default org role does not belong to this organization.");
     }
 

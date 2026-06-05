@@ -47,7 +47,7 @@ export const useOrganizationStore = defineStore('organization', () => {
     // Auto-select only when the user belongs to exactly one org —
     // multi-org users are redirected to the org picker instead.
     if (!currentOrgId.value && organizations.value.length === 1) {
-      setCurrentOrg(organizations.value[0].id);
+      setCurrentOrg(organizations.value[0]!.id);
     }
 
     return organizations.value;
@@ -58,6 +58,14 @@ export const useOrganizationStore = defineStore('organization', () => {
     organizations.value.push(org);
     setCurrentOrg(org.id);
     return org;
+  }
+
+  async function updateOrganization(id: number, name: string) {
+    await orgApi.update(id, name);
+    const idx = organizations.value.findIndex((o) => o.id === id);
+    if (idx !== -1) {
+      organizations.value[idx] = { ...organizations.value[idx]!, name };
+    }
   }
 
   async function fetchMembers() {
@@ -163,6 +171,7 @@ export const useOrganizationStore = defineStore('organization', () => {
     setCurrentOrg,
     fetchOrganizations,
     createOrganization,
+    updateOrganization,
     fetchMembers,
     fetchRoles,
     fetchInvitations,

@@ -31,13 +31,13 @@ public static class OrganizationEndpoints
         .WithSummary("List organizations for the authenticated user")
         .Produces<List<OrganizationDto>>();
 
-        group.MapGet("/search", async (string q, IOrganizationService service, CancellationToken ct) =>
+        group.MapGet("/search", async (string? q, IOrganizationService service, CancellationToken ct) =>
         {
-            var result = await service.SearchAsync(q, ct);
+            var result = await service.SearchAsync(q ?? string.Empty, ct);
             return Results.Ok(result);
         })
         .WithName("SearchOrganizations")
-        .WithSummary("Search organizations by name")
+        .WithSummary("Search organizations by name, or browse when no query is given")
         .Produces<List<OrganizationSearchResultDto>>();
 
         group.MapGet("/{id:int}", async (int id, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>

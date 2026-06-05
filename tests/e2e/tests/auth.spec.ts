@@ -10,7 +10,12 @@ const FRESH_EMAIL = `testuser.${ts}@example.com`;
 
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
+  await page.evaluate(() => {
+    localStorage.setItem('relativa.locale', 'en');
+    localStorage.setItem('relativa.localePending', '1');
+  });
   await page.locator('#email').fill(email);
+  await page.locator('button[type="submit"]').click();
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
 }
@@ -22,29 +27,28 @@ async function clearSession(page: Page) {
 
 async function loginAsAdmin(page: Page) {
   await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-  await page.waitForURL(/\/(workspace-select)?$/, { timeout: 10000 });
-  if (page.url().includes('workspace-select')) {
-    await page.locator('li button[type="button"]').first().click();
+  await page.waitForURL(/\/(onboarding)?$/, { timeout: 15000 });
+  if (page.url().includes('onboarding')) {
+    await page.locator('main ul').first().locator('li button').first().click();
     await page.waitForURL(`${BASE}/`, { timeout: 10000 });
   }
 }
 
 
 test.describe('Rendering', () => {
-  test('login page renders email, password fields and submit button', async ({ page }) => {
+  test('login page renders email and submit, password appears only after the email step', async ({ page }) => {
     await page.goto(`${BASE}/login`);
     await expect(page.locator('#email')).toBeVisible();
-    await expect(page.locator('#password')).toBeVisible();
     await expect(page.locator('button[type="submit"]')).toBeVisible();
+    await expect(page.locator('#password')).toBeHidden();
   });
 
-  test('register page renders firstName, lastName, email, password fields', async ({ page }) => {
+  test('register page renders identity fields first, credentials after', async ({ page }) => {
     await page.goto(`${BASE}/register`);
     await expect(page.locator('#firstName')).toBeVisible();
     await expect(page.locator('#lastName')).toBeVisible();
-    await expect(page.locator('#email')).toBeVisible();
-    await expect(page.locator('#password')).toBeVisible();
-    await expect(page.locator('button[type="submit"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: /next/i })).toBeVisible();
+    await expect(page.locator('#email')).toBeHidden();
   });
 });
 
@@ -66,11 +70,19 @@ test.describe('Router Guards', () => {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const workspaces = await wsRes.json();
+    const orgsRes = await page.request.get(`${GATEWAY}/core/api/v1/organizations`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const orgs = await orgsRes.json();
     await page.goto(BASE);
-    await page.evaluate((id) => localStorage.setItem('relativa_ws_id', String(id)), workspaces[0].id);
+    await page.evaluate(({ wsId, orgId }) => {
+      localStorage.setItem('relativa_ws_id', String(wsId));
+      localStorage.setItem('relativa_org_id', String(orgId));
+    }, { wsId: workspaces[0].id, orgId: orgs[0].id });
     await page.goto(`${BASE}/members`);
     await expect(page).toHaveURL(/\/login\?redirect=.*members/);
     await page.locator('#email').fill(ADMIN_EMAIL);
+    await page.locator('button[type="submit"]').click();
     await page.locator('#password').fill(ADMIN_PASS);
     await page.locator('button[type="submit"]').click();
     await expect(page).toHaveURL(`${BASE}/members`, { timeout: 10000 });
@@ -79,15 +91,20 @@ test.describe('Router Guards', () => {
 
 
 test.describe('Registration', () => {
-  test('new user registers and is redirected to login or onboarding', async ({ page }) => {
+  test('new user completes two-step registration and reaches email verification', async ({ page }) => {
     await page.goto(`${BASE}/register`);
     await page.locator('#firstName').fill('Test');
     await page.locator('#lastName').fill('User');
-    await page.locator('#email').fill(FRESH_EMAIL);
-    await page.locator('#password').pressSequentially(FRESH_PASS);
+    await page.locator('#birthDate').fill('1990-01-01');
+    await page.locator('#birthDate').press('Enter');
     await page.keyboard.press('Escape');
-    await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/login|\/onboarding/, { timeout: 10000 });
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.locator('#email').fill(FRESH_EMAIL);
+    await page.locator('.vue-tel-input input').fill('+380501234567');
+    await page.locator('#password').fill(FRESH_PASS);
+    await page.locator('#password').press('Escape');
+    await page.getByRole('button', { name: /create account/i }).click();
+    await expect(page.getByText(/verify your email/i)).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -96,12 +113,11 @@ test.describe('Login', () => {
   test('valid credentials store token, load profile, redirect to home', async ({ page }) => {
     await clearSession(page);
     await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-    await expect(page).toHaveURL(/\/(workspace-select|onboarding|members|graph|$)/, { timeout: 10000 });
-    if (page.url().includes('workspace-select')) {
-      await page.locator('li button[type="button"]').first().click();
+    await page.waitForURL(/\/(onboarding)?$/, { timeout: 15000 });
+    if (page.url().includes('onboarding')) {
+      await page.locator('main ul').first().locator('li button').first().click();
       await page.waitForURL(`${BASE}/`, { timeout: 10000 });
     }
-    await page.waitForLoadState('networkidle');
     await expect(page.getByText(/admin@relativa\.com/i).first()).toBeVisible();
   });
 
@@ -109,9 +125,7 @@ test.describe('Login', () => {
     await clearSession(page);
     await fillLogin(page, ADMIN_EMAIL, 'wrongpassword');
     await expect(page).toHaveURL(/\/login/);
-    await expect(
-      page.getByRole('alert').or(page.locator('.p-message-error'))
-    ).toBeVisible();
+    await expect(page.getByText(/invalid email or password/i)).toBeVisible();
   });
 });
 
@@ -175,7 +189,6 @@ test.describe('Reset Password', () => {
   test('successful reset redirects to login with ?reset=success and shows banner', async ({ page }) => {
     await page.goto(`${BASE}/login?reset=success`);
     await expect(page).toHaveURL(/reset=success/);
-    await expect(page.locator('.p-message-success, [class*="success"]').first()).toBeVisible();
     await expect(page.getByText(/password has been reset/i)).toBeVisible();
   });
 });

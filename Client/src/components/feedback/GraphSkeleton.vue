@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import Skeleton from 'primevue/skeleton';
 
 const props = withDefaults(
@@ -9,9 +10,11 @@ const props = withDefaults(
     showLegend?: boolean;
     fill?: boolean;
   }>(),
-  { height: '24rem', label: 'Loading visualization…', showLegend: true, fill: false },
+  { height: '24rem', showLegend: true, fill: false },
 );
 
+const { t } = useI18n();
+const displayLabel = computed(() => props.label ?? t('common.loadingViz'));
 const chartStyle = computed(() =>
   props.fill ? undefined : { height: props.height },
 );
@@ -21,7 +24,7 @@ const chartStyle = computed(() =>
   <div
     :class="['flex flex-col gap-2', fill ? 'min-h-0' : '']"
     role="status"
-    :aria-label="label"
+    :aria-label="displayLabel"
   >
     <div v-if="showLegend" class="flex flex-wrap gap-3 shrink-0">
       <div
@@ -44,11 +47,11 @@ const chartStyle = computed(() =>
       <div class="absolute inset-0 chart-grid" />
       <div class="absolute inset-0 flex items-center justify-center gap-3">
         <i class="pi pi-spin pi-spinner text-2xl text-brand-600/70" aria-hidden="true" />
-        <span class="text-sm text-ink-500">{{ label }}</span>
+        <span class="text-sm text-ink-500">{{ displayLabel }}</span>
       </div>
     </div>
 
-    <span class="sr-only">{{ label }}</span>
+    <span class="sr-only">{{ displayLabel }}</span>
   </div>
 </template>
 

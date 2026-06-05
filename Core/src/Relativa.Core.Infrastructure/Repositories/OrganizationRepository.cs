@@ -24,14 +24,20 @@ public sealed class OrganizationRepository(RelativaDbContext db) : IOrganization
 
     public async Task<List<OrganizationSearchHit>> SearchAsync(string query, CancellationToken ct = default)
     {
-        return await db.Organizations
-            .Where(o => EF.Functions.ILike(o.Name, $"%{query}%") && !o.IsArchived)
-            .OrderBy(o => o.Name)
+        var organizations = db.Organizations.Where(o => !o.IsArchived);
+
+        var trimmed = query?.Trim();
+        organizations = string.IsNullOrEmpty(trimmed)
+            ? organizations.OrderByDescending(o => o.Members.Count(m => !m.IsArchived)).ThenBy(o => o.Name)
+            : organizations.Where(o => EF.Functions.ILike(o.Name, $"%{trimmed}%")).OrderBy(o => o.Name);
+
+        return await organizations
             .Take(20)
             .Select(o => new OrganizationSearchHit(
                 o.Id,
                 o.Name,
-                o.Members.Count(m => !m.IsArchived)))
+                o.Members.Count(m => !m.IsArchived),
+                o.Settings != null ? o.Settings.JoinPolicy : "open"))
             .ToListAsync(ct);
     }
 

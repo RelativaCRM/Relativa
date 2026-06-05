@@ -1,6 +1,4 @@
-// Badge classes for role identifiers (org_*, ws_*) across the SPA.
-// Tiered in blue only — never reach for emerald/amber severities to express seniority.
-// Display names are served by the API (role.displayName / member.roleDisplayName).
+import { i18n } from '@/i18n';
 
 export type RoleName =
   | 'org_owner'
@@ -37,4 +35,14 @@ export function roleBadgeClass(roleName: RoleName | null | undefined): string {
 // Use this when you don't already have a wrapping <span> with sizing classes.
 export function roleBadgeFullClass(roleName: RoleName | null | undefined): string {
   return `inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold tracking-tight ${roleBadgeClass(roleName)}`;
+}
+
+export function roleLabel(
+  roleName: string | null | undefined,
+  fallback?: string | null,
+): string {
+  if (!roleName) return fallback ?? '';
+  const key = `roles.${roleName.toLowerCase()}`;
+  const translated = i18n.global.t(key);
+  return translated === key ? (fallback ?? roleName) : translated;
 }

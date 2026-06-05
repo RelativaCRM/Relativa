@@ -126,7 +126,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.GetByWorkspaceAsync(1, 1, null, null, 0, 50))
-            .Should().ThrowAsync<ForbiddenAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*view_entities*");
     }
 
@@ -184,7 +184,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(new Dictionary<int, int> { [1] = 4, [2] = 4 });
 
         await _sut.Invoking(s => s.GetByIdAsync(5, 1, 1))
-            .Should().ThrowAsync<ForbiddenAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("Access denied");
     }
 
@@ -218,10 +218,10 @@ public sealed class EntityServiceTests
     {
         _workspaceAccess.Setup(x =>
                 x.HasWorkspacePermissionAsync(2, 1, "view_entities", It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new ForbiddenAccessException("You are not a member of this workspace."));
+            .ThrowsAsync(new AppException("not_ws_member", 403, "You are not a member of this workspace."));
 
         await _sut.Invoking(s => s.GetByIdAsync(5, 1, 2))
-            .Should().ThrowAsync<ForbiddenAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*not a member*");
     }
 
@@ -234,7 +234,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.CreateAsync(2, 5, new CreateEntityRequest(0, [])))
-            .Should().ThrowAsync<ForbiddenAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*create_entities*");
 
         _createValidator.Verify(
@@ -249,7 +249,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync([]);
 
         await _sut.Invoking(s => s.CreateAsync(3, 1, new CreateEntityRequest(99, [])))
-            .Should().ThrowAsync<KeyNotFoundException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*99*");
     }
 
@@ -347,7 +347,7 @@ public sealed class EntityServiceTests
         var request = new CreateEntityRequest(1, [new PropertyValueInput(1, "Ivan")]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*last_name*");
     }
 
@@ -369,7 +369,7 @@ public sealed class EntityServiceTests
         ]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*empty or whitespace*");
     }
 
@@ -391,7 +391,7 @@ public sealed class EntityServiceTests
         ]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*empty or whitespace*");
     }
 
@@ -414,7 +414,7 @@ public sealed class EntityServiceTests
         ]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*99*");
     }
 
@@ -437,7 +437,7 @@ public sealed class EntityServiceTests
         ]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*Duplicate*");
     }
 
@@ -457,7 +457,7 @@ public sealed class EntityServiceTests
         ]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*closure_score*decimal*");
     }
 
@@ -469,7 +469,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest(null!)))
-            .Should().ThrowAsync<ForbiddenAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*edit_entities*");
 
         _updateValidator.Verify(
@@ -536,7 +536,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "New")])))
-            .Should().ThrowAsync<ForbiddenAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*edit_archived_entities*");
     }
 
@@ -571,7 +571,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(typeProps);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(99, "bad")])))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*99*");
     }
 
@@ -587,7 +587,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(typeProps);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "")])))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*empty or whitespace*");
     }
 
@@ -603,7 +603,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(typeProps);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, " ")])))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*empty or whitespace*");
     }
 
@@ -627,7 +627,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.ArchiveAsync(1, 1, 1))
-            .Should().ThrowAsync<ForbiddenAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*delete_entities*");
     }
 
@@ -654,7 +654,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(new Dictionary<int, int> { [1] = 4, [2] = 4 });
 
         await _sut.Invoking(s => s.ArchiveAsync(1, 1, 1))
-            .Should().ThrowAsync<ForbiddenAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("Access denied");
     }
 
@@ -909,7 +909,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(typeProps);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(10, "0.99")])))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*closure_score*read-only*");
     }
 
@@ -929,7 +929,7 @@ public sealed class EntityServiceTests
             new PropertyValueInput(7,  "opened"),
             new PropertyValueInput(10, "0.75")
         ])))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*closure_score*read-only*");
     }
 }

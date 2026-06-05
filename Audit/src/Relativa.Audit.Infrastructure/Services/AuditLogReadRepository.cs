@@ -28,25 +28,25 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
         if (q.WorkspaceId is { } wId)
         {
             if (!await db.Set<Workspace>().AsNoTracking().AnyAsync(x => x.Id == wId, ct))
-                throw new KeyNotFoundException($"Workspace with id {wId} was not found.");
+                throw new AppException("workspace_not_found", 404, $"Workspace with id {wId} was not found.");
         }
 
         if (q.OrganizationId is { } oId)
         {
             if (!await db.Set<Organization>().AsNoTracking().AnyAsync(x => x.Id == oId, ct))
-                throw new KeyNotFoundException($"Organization with id {oId} was not found.");
+                throw new AppException("organization_not_found", 404, $"Organization with id {oId} was not found.");
         }
 
         if (q.EntityId is { } eId)
         {
             if (!await db.Set<Entity>().AsNoTracking().AnyAsync(x => x.Id == eId, ct))
-                throw new KeyNotFoundException($"Entity with id {eId} was not found.");
+                throw new AppException("entity_not_found", 404, $"Entity with id {eId} was not found.");
         }
 
         if (q.TargetUserId is { } tuId)
         {
             if (!await db.Set<User>().AsNoTracking().AnyAsync(x => x.Id == tuId, ct))
-                throw new KeyNotFoundException($"User with id {tuId} was not found.");
+                throw new AppException("user_not_found", 404, $"User with id {tuId} was not found.");
         }
 
         if (category == "entity" && q.EntityId is { } entId && q.WorkspaceId is { } wsId)
@@ -54,7 +54,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
             var linked = await db.Set<EntityWorkspace>().AsNoTracking()
                 .AnyAsync(x => x.EntityId == entId && x.WorkspaceId == wsId, ct);
             if (!linked)
-                throw new KeyNotFoundException($"Entity {entId} is not linked to workspace {wsId}.");
+                throw new AppException("entity_not_in_workspace", 404, $"Entity {entId} is not linked to workspace {wsId}.");
         }
     }
 
@@ -245,7 +245,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
         if (targetUserIdFilter.HasValue)
         {
             if (!visibleTargets.Contains(targetUserIdFilter.Value))
-                throw new ForbiddenAccessException("You are not allowed to view audit for this user.");
+                throw new AppException("audit_forbidden_user", 403, "You are not allowed to view audit for this user.");
         }
 
         var query = db.UserAuditLogs.AsNoTracking()
@@ -284,7 +284,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
             select urw.Id).AnyAsync(ct);
 
         if (!ok)
-            throw new ForbiddenAccessException($"Audit log requires '{ViewAnalyticsPermission}' permission in workspace scope.");
+            throw new AppException("permission_denied", 403, $"Audit log requires '{ViewAnalyticsPermission}' permission in workspace scope.");
     }
 
     private async Task RequireOrgOwnerOrAdminAsync(int userId, int organizationId, CancellationToken ct)
@@ -298,7 +298,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
             select uro.Id).AnyAsync(ct);
 
         if (!ok)
-            throw new ForbiddenAccessException($"Audit log requires '{ManageOrgSettingsPermission}' permission in organization scope.");
+            throw new AppException("permission_denied", 403, $"Audit log requires '{ManageOrgSettingsPermission}' permission in organization scope.");
     }
 
     private async Task<HashSet<int>> GetVisibleTargetUserIdsAsync(int callerUserId, CancellationToken ct)

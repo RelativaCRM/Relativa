@@ -41,13 +41,13 @@ public sealed class WorkspaceMemberService(
         await RequirePermission(callerUserId, workspaceId, "assign_ws_roles", ct);
 
         var targetMember = await memberRepository.GetAsync(targetUserId, workspaceId, ct)
-            ?? throw new KeyNotFoundException("Target user is not a member of this workspace.");
+            ?? throw new AppException("target_not_ws_member", 404, "Target user is not a member of this workspace.");
 
         var role = await roleRepository.GetByIdAsync(request.RoleId, ct)
-            ?? throw new ArgumentException("The specified role does not exist.");
+            ?? throw new AppException("role_not_found", 400, "The specified role does not exist.");
 
         if (role.WorkspaceId.HasValue && role.WorkspaceId.Value != workspaceId)
-            throw new ArgumentException("The specified role does not belong to this workspace.");
+            throw new AppException("role_not_in_workspace", 400, "The specified role does not belong to this workspace.");
 
         var targetHasFullAuthority = RolePermissionEvaluator.HasAllPermissions(
             targetMember.Role,
@@ -72,7 +72,7 @@ public sealed class WorkspaceMemberService(
             }
             if (fullAuthorityCount <= 1)
             {
-                throw new InvalidOperationException("Cannot demote the last workspace admin.");
+                throw new AppException("cannot_demote_last_admin", 409, "Cannot demote the last workspace admin.");
             }
         }
 
@@ -104,7 +104,7 @@ public sealed class WorkspaceMemberService(
             await RequireRemoveMemberPermissionAsync(callerUserId, workspaceId, ct);
 
         var member = await memberRepository.GetAsync(targetUserId, workspaceId, ct)
-            ?? throw new KeyNotFoundException("Target user is not a member of this workspace.");
+            ?? throw new AppException("target_not_ws_member", 404, "Target user is not a member of this workspace.");
 
         await memberRepository.RemoveAsync(member, ct);
         if (auditOutboxWriter is not null)
@@ -132,20 +132,20 @@ public sealed class WorkspaceMemberService(
         await RequireAddMemberPermissionAsync(callerUserId, workspaceId, ct);
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new AppException("workspace_not_found", 404, "Workspace not found.");
 
         var targetOrgMembership = await orgMemberRepository.GetAsync(request.UserId, workspace.OrganizationId, ct)
-            ?? throw new ArgumentException("The target user is not a member of this organization.");
+            ?? throw new AppException("target_not_org_member", 400, "The target user is not a member of this organization.");
 
         var existingMembership = await memberRepository.GetAsync(request.UserId, workspaceId, ct);
         if (existingMembership is not null)
-            throw new InvalidOperationException("User is already a member of this workspace.");
+            throw new AppException("already_ws_member", 409, "User is already a member of this workspace.");
 
         var role = await roleRepository.GetByIdAsync(request.RoleId, ct)
-            ?? throw new ArgumentException("The specified role does not exist.");
+            ?? throw new AppException("role_not_found", 400, "The specified role does not exist.");
 
         if (role.WorkspaceId.HasValue && role.WorkspaceId.Value != workspaceId)
-            throw new ArgumentException("The specified role does not belong to this workspace.");
+            throw new AppException("role_not_in_workspace", 400, "The specified role does not belong to this workspace.");
 
         var member = new UserRoleWorkspace
         {
@@ -190,7 +190,7 @@ public sealed class WorkspaceMemberService(
     private async Task RequirePermission(int userId, int workspaceId, string permission, CancellationToken ct)
     {
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, permission, ct))
-            throw new ForbiddenAccessException($"You do not have the '{permission}' permission in this workspace.");
+            throw new AppException("permission_denied", 403, $"You do not have the '{permission}' permission in this workspace.");
     }
 
     private async Task<bool> WorkspaceMemberHasOrOrgOwnerPermissionAsync(int userId, int workspaceId, string permission,
@@ -224,12 +224,12 @@ public sealed class WorkspaceMemberService(
             return;
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new AppException("workspace_not_found", 404, "Workspace not found.");
 
         _ = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
-            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
+            ?? throw new AppException("not_org_member", 403, "You are not a member of this organization.");
 
-        throw new ForbiddenAccessException("You do not have the 'add_ws_members' permission in this workspace.");
+        throw new AppException("permission_denied", 403, "You do not have the 'add_ws_members' permission in this workspace.");
     }
 
     private async Task RequireRemoveMemberPermissionAsync(int callerUserId, int workspaceId, CancellationToken ct)
@@ -241,11 +241,11 @@ public sealed class WorkspaceMemberService(
             return;
 
         var workspace = await workspaceRepository.GetByIdAsync(workspaceId, ct)
-            ?? throw new KeyNotFoundException("Workspace not found.");
+            ?? throw new AppException("workspace_not_found", 404, "Workspace not found.");
 
         _ = await orgMemberRepository.GetAsync(callerUserId, workspace.OrganizationId, ct)
-            ?? throw new ForbiddenAccessException("You are not a member of this organization.");
+            ?? throw new AppException("not_org_member", 403, "You are not a member of this organization.");
 
-        throw new ForbiddenAccessException("You do not have the 'remove_ws_members' permission in this workspace.");
+        throw new AppException("permission_denied", 403, "You do not have the 'remove_ws_members' permission in this workspace.");
     }
 }

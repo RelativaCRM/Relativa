@@ -95,7 +95,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.CreateOrgUserAsync(10, callerUserId: 5, ValidCreateRequest());
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*not a member*");
     }
 
@@ -106,7 +106,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.CreateOrgUserAsync(10, callerUserId: 5, ValidCreateRequest());
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage($"*{OrganizationPermissions.CreateOrgUsers}*");
     }
 
@@ -133,7 +133,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.CreateOrgUserAsync(10, 5, ValidCreateRequest(orgRoleId: 9));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage($"*{OrganizationPermissions.AssignOrgRoles}*");
     }
 
@@ -170,7 +170,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.CreateOrgUserAsync(10, 5, ValidCreateRequest(orgRoleId: 9));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*archived*");
     }
 
@@ -188,7 +188,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.CreateOrgUserAsync(10, 5, ValidCreateRequest(orgRoleId: 9));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*does not belong to this organization*");
     }
 
@@ -230,7 +230,7 @@ public sealed class OrganizationUserAdminServiceTests
         var act = () => _sut.UpdateOtherUserProfileAsync(10, targetUserId: 7, callerUserId: 5,
             new UpdateOrgUserProfileRequest("Jane", "Doe"));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage($"*{OrganizationPermissions.EditOtherOrgUsersProfile}*");
     }
 
@@ -242,7 +242,7 @@ public sealed class OrganizationUserAdminServiceTests
         var act = () => _sut.UpdateOtherUserProfileAsync(10, targetUserId: 5, callerUserId: 5,
             new UpdateOrgUserProfileRequest("Jane", "Doe"));
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*own profile*");
     }
 
@@ -257,7 +257,7 @@ public sealed class OrganizationUserAdminServiceTests
         var act = () => _sut.UpdateOtherUserProfileAsync(10, targetUserId: 7, callerUserId: 5,
             new UpdateOrgUserProfileRequest("Jane", "Doe"));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*not a member*");
     }
 
@@ -291,7 +291,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, targetUserId: 7, callerUserId: 5);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage($"*{OrganizationPermissions.DeleteOrgUsers}*");
     }
 
@@ -305,7 +305,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, targetUserId: 7, callerUserId: 5);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*not a member*");
     }
 
@@ -328,7 +328,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, targetUserId: 7, callerUserId: 5);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*Caller*");
     }
 
@@ -354,7 +354,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, targetUserId: 7, callerUserId: 5);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*Target*");
     }
 
@@ -372,7 +372,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, 7, 5);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*same email domain*");
     }
 
@@ -383,7 +383,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, targetUserId: 5, callerUserId: 5);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*account settings*");
     }
 
@@ -425,7 +425,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, 7, 5);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*equal or higher authority*");
     }
 
@@ -491,7 +491,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, 7, 5);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*same email domain*");
     }
 
@@ -515,7 +515,7 @@ public sealed class OrganizationUserAdminServiceTests
 
         var act = () => _sut.DeleteOrgUserAsync(10, 7, 5);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*same email domain*");
     }
 }
