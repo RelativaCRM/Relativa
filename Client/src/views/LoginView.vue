@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, computed, watch, nextTick, onMounted } from 'vue';
+import { reactive, ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
 import InputText from 'primevue/inputtext';
@@ -13,7 +13,6 @@ import FormSuccess from '@/components/feedback/FormSuccess.vue';
 import EmailVerifyPanel from '@/components/feedback/EmailVerifyPanel.vue';
 import TwoFactorChallenge from '@/components/feedback/TwoFactorChallenge.vue';
 import { useAuthStore } from '@/stores/auth';
-import { authApi } from '@/api/auth';
 import { normalizeError } from '@/api/errors';
 import { EMAIL_PATTERN } from '@/utils/email';
 import { useOAuth } from '@/composables/useOAuth';
@@ -21,13 +20,11 @@ import { useOAuth } from '@/composables/useOAuth';
 const { t } = useI18n();
 const router = useRouter();
 const rememberInfo = ref<InstanceType<typeof Popover>>();
-const passwordWrap = ref<HTMLElement>();
 const route = useRoute();
 const auth = useAuthStore();
 
 const resetSuccess = computed(() => route.query.reset === 'success');
 
-const step = ref<'email' | 'password'>('email');
 const form = reactive({
   email: '',
   password: '',
@@ -43,55 +40,9 @@ const twoFactorError = ref<string | null>(null);
 const emailInvalid = computed(
   () => form.email.length > 0 && !EMAIL_PATTERN.test(form.email),
 );
-const isStepValid = computed(() =>
-  step.value === 'email'
-    ? EMAIL_PATTERN.test(form.email)
-    : form.password.length > 0,
+const isStepValid = computed(
+  () => EMAIL_PATTERN.test(form.email) && form.password.length > 0,
 );
-const submitLabel = computed(() =>
-  step.value === 'email' ? t('auth.next') : t('auth.signIn'),
-);
-
-watch(
-  () => form.email,
-  () => {
-    if (step.value === 'password') {
-      step.value = 'email';
-      form.password = '';
-      serverError.value = null;
-      needsTwoFactor.value = false;
-      twoFactorError.value = null;
-    }
-  },
-);
-
-function focusPassword() {
-  passwordWrap.value?.querySelector('input')?.focus();
-}
-
-async function handleNext() {
-  showValidation.value = true;
-  serverError.value = null;
-  if (!EMAIL_PATTERN.test(form.email)) {
-    serverError.value = t('auth.enterValidEmail');
-    return;
-  }
-  submitting.value = true;
-  try {
-    const { exists } = await authApi.emailExists(form.email);
-    if (!exists) {
-      router.push({ name: 'register', query: { email: form.email } });
-      return;
-    }
-    step.value = 'password';
-    await nextTick();
-    focusPassword();
-  } catch (err) {
-    serverError.value = normalizeError(err, t('auth.emailCheckFailed')).message;
-  } finally {
-    submitting.value = false;
-  }
-}
 
 async function signIn() {
   showValidation.value = true;
@@ -151,11 +102,7 @@ async function onVerified() {
 
 function onSubmit() {
   if (submitting.value) return;
-  if (step.value === 'email') {
-    void handleNext();
-  } else {
-    void signIn();
-  }
+  void signIn();
 }
 
 const {
@@ -245,53 +192,51 @@ onMounted(() => {
         </small>
       </div>
 
-      <template v-if="step === 'password'">
-        <div ref="passwordWrap" class="flex flex-col gap-1.5">
-          <FloatLabel variant="on">
-            <Password
-              v-model="form.password"
-              input-id="password"
-              :feedback="false"
-              toggle-mask
-              autocomplete="current-password"
-              input-class="!h-11 w-full"
-              class="w-full"
-              :invalid="showValidation && !form.password"
-            />
-            <label for="password">{{ t('auth.passwordLabel') }}</label>
-          </FloatLabel>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <input
-            id="remember"
-            v-model="form.rememberMe"
-            type="checkbox"
+      <div class="flex flex-col gap-1.5">
+        <FloatLabel variant="on">
+          <Password
+            v-model="form.password"
+            input-id="password"
+            :feedback="false"
+            toggle-mask
+            autocomplete="current-password"
+            input-class="!h-11 w-full"
+            class="w-full"
+            :invalid="showValidation && !form.password"
           />
-          <label for="remember" class="text-[13px] font-medium text-ink-600 cursor-pointer">
-            {{ t('auth.rememberMe') }}
-          </label>
-          <button
-            type="button"
-            class="w-4 h-4 flex items-center justify-center text-brand-600 hover:text-brand-700"
-            :aria-label="t('auth.rememberMeInfo')"
-            @click="rememberInfo?.toggle($event)"
-          >
-            <i class="pi pi-info-circle text-[13px]" />
-          </button>
-          <Popover ref="rememberInfo">
-            <p class="max-w-[260px] text-[13px] text-ink-600 leading-relaxed">
-              {{ t('auth.rememberMeInfo') }}
-            </p>
-          </Popover>
-        </div>
-      </template>
+          <label for="password">{{ t('auth.passwordLabel') }}</label>
+        </FloatLabel>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input
+          id="remember"
+          v-model="form.rememberMe"
+          type="checkbox"
+        />
+        <label for="remember" class="text-[13px] font-medium text-ink-600 cursor-pointer">
+          {{ t('auth.rememberMe') }}
+        </label>
+        <button
+          type="button"
+          class="w-4 h-4 flex items-center justify-center text-brand-600 hover:text-brand-700"
+          :aria-label="t('auth.rememberMeInfo')"
+          @click="rememberInfo?.toggle($event)"
+        >
+          <i class="pi pi-info-circle text-[13px]" />
+        </button>
+        <Popover ref="rememberInfo">
+          <p class="max-w-[260px] text-[13px] text-ink-600 leading-relaxed">
+            {{ t('auth.rememberMeInfo') }}
+          </p>
+        </Popover>
+      </div>
 
       <FormError v-if="serverError" :message="serverError" />
 
       <Button
         type="submit"
-        :label="submitLabel"
+        :label="t('auth.signIn')"
         :loading="submitting"
         :disabled="!isStepValid"
         :class="[

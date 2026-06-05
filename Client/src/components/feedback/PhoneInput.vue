@@ -38,6 +38,7 @@ function onInput(_: string, phone: PhoneObject) {
       mode="international"
       default-country="UA"
       :auto-default-country="false"
+      :ignored-countries="['RU', 'BY']"
       :input-options="{ placeholder: '' }"
       @on-input="onInput"
     />

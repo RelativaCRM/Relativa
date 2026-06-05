@@ -383,7 +383,8 @@ function scoreBar(score?: number) {
 <template>
   <div class="space-y-8">
     
-    <section class="max-w-3xl">
+    <div class="flex flex-col xl:flex-row gap-8 items-start">
+    <section class="w-full xl:w-auto xl:min-w-[28rem] xl:max-w-[42rem] xl:shrink-0">
       <div class="relative overflow-hidden rounded-2xl border border-line bg-white px-7 py-8 shadow-sm">
         <div
           class="pointer-events-none absolute -top-12 -right-12 h-48 w-48 rounded-full bg-brand-100/60 blur-3xl"
@@ -470,7 +471,32 @@ function scoreBar(score?: number) {
       </div>
     </section>
 
-    
+      <div v-if="canView" class="flex-1 min-w-0">
+        <div v-if="dashStore.isLoading" class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div v-for="i in 6" :key="i" class="h-24 rounded-xl bg-slate-100 animate-pulse" />
+        </div>
+        <div
+          v-else-if="dashStore.summary"
+          :class="['grid gap-4', hasFullAccess ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-3']"
+        >
+          <div
+            v-for="kpi in kpis"
+            :key="kpi.label"
+            class="flex flex-col gap-2 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
+          >
+            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
+              <i :class="['pi text-sm', kpi.icon, kpi.color]" />
+            </div>
+            <div>
+              <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-none mb-1">{{ kpi.label }}</p>
+              <p :class="['text-xl font-semibold leading-none', kpi.color]">{{ kpi.value }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
     <template v-if="canView">
       <div class="flex items-center justify-between">
         <div>
@@ -490,9 +516,6 @@ function scoreBar(score?: number) {
 
       
       <div v-if="dashStore.isLoading" class="space-y-4">
-        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div v-for="i in 6" :key="i" class="h-24 rounded-xl bg-slate-100 animate-pulse" />
-        </div>
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div class="h-52 rounded-xl bg-slate-100 animate-pulse" />
           <div class="h-52 rounded-xl bg-slate-100 animate-pulse" />
@@ -517,24 +540,7 @@ function scoreBar(score?: number) {
           {{ t('home.limitedAccess') }}
         </div>
 
-        
-        <div v-if="dashStore.summary" :class="['grid gap-4', hasFullAccess ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6' : 'grid-cols-1 sm:grid-cols-3']">
-          <div
-            v-for="kpi in kpis"
-            :key="kpi.label"
-            class="flex flex-col gap-2 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
-          >
-            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
-              <i :class="['pi text-sm', kpi.icon, kpi.color]" />
-            </div>
-            <div>
-              <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-none mb-1">{{ kpi.label }}</p>
-              <p :class="['text-xl font-semibold leading-none', kpi.color]">{{ kpi.value }}</p>
-            </div>
-          </div>
-        </div>
 
-        
         <div v-if="isFullOrg && workspaceComparisonChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
           <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('home.workspaceComparison') }}</h3>
           <div style="height: 220px">
