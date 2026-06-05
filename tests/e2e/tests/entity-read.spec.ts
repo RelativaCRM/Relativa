@@ -8,16 +8,21 @@ const ts          = Date.now();
 
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
+  await page.evaluate(() => {
+    localStorage.setItem('relativa.locale', 'en');
+    localStorage.setItem('relativa.localePending', '1');
+  });
   await page.locator('#email').fill(email);
+  await page.locator('button[type="submit"]').click();
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
 }
 
 async function loginAsAdmin(page: Page) {
   await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-  await page.waitForURL(/\/(workspace-select)?$/, { timeout: 10000 });
-  if (page.url().includes('workspace-select')) {
-    await page.locator('li button[type="button"]').first().click();
+  await page.waitForURL(/\/(onboarding)?$/, { timeout: 15000 });
+  if (page.url().includes('onboarding')) {
+    await page.locator('main ul').first().locator('li button').first().click();
     await page.waitForURL(`${BASE}/`, { timeout: 10000 });
   }
 }
@@ -64,28 +69,23 @@ test.describe('Entity Read View', () => {
 
   test('entity detail page renders properties', async ({ page }) => {
     await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&id=${entityId}`);
-    await page.waitForLoadState('networkidle');
     await expect(page.getByText('Read-Test')).toBeVisible();
   });
 
   test('edit string property and save persists change', async ({ page }) => {
     await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&id=${entityId}`);
-    await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Edit' }).click();
     const firstInput = page.locator('input.p-inputtext').first();
     await firstInput.click({ clickCount: 3 });
     await firstInput.pressSequentially('Updated-Name', { delay: 20 });
     await page.getByRole('button', { name: 'Save' }).click();
     await page.locator('.p-toast').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-    await page.waitForLoadState('networkidle');
     await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&id=${entityId}`);
-    await page.waitForLoadState('networkidle');
     await expect(page.getByText('Updated-Name')).toBeVisible();
   });
 
   test('delete entity button triggers confirmation dialog', async ({ page }) => {
     await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&id=${entityId}`);
-    await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Delete' }).click();
     await expect(page.locator('.p-confirmdialog')).toBeVisible();
     await expect(page.getByText(/delete entity/i)).toBeVisible();
@@ -102,7 +102,6 @@ test.describe('Entity Read View', () => {
 
   test('entity heading shows entity type and id', async ({ page }) => {
     await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&id=${entityId}`);
-    await page.waitForLoadState('networkidle');
     await expect(page.locator('h1').first()).toContainText(String(entityId));
   });
 });

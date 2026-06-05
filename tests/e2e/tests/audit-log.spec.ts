@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { verifyUserEmail } from './helpers';
 
 const BASE        = 'http://localhost:3000';
 const GATEWAY     = 'http://localhost:8080';
@@ -7,16 +8,21 @@ const ADMIN_PASS  = 'Demo1234!';
 
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
+  await page.evaluate(() => {
+    localStorage.setItem('relativa.locale', 'en');
+    localStorage.setItem('relativa.localePending', '1');
+  });
   await page.locator('#email').fill(email);
+  await page.locator('button[type="submit"]').click();
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
 }
 
 async function loginAsAdmin(page: Page) {
   await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-  await page.waitForURL(/\/(workspace-select)?$/, { timeout: 10000 });
-  if (page.url().includes('workspace-select')) {
-    await page.locator('li button[type="button"]').first().click();
+  await page.waitForURL(/\/(onboarding)?$/, { timeout: 15000 });
+  if (page.url().includes('onboarding')) {
+    await page.locator('main ul').first().locator('li button').first().click();
     await page.waitForURL(`${BASE}/`, { timeout: 10000 });
   }
 }
@@ -60,8 +66,9 @@ test.describe('Audit Log Page — restricted access', () => {
   test.beforeAll(async ({ browser }) => {
     const ctx = await browser.newContext();
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'Audit', lastName: 'Guest', email: freshEmail, password: freshPass },
+      data: { firstName: 'Audit', lastName: 'Guest', email: freshEmail, password: freshPass, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
+    await verifyUserEmail(ctx.request, freshEmail);
     await ctx.close();
   });
 
