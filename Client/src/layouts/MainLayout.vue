@@ -3,11 +3,13 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter, RouterLink, RouterView, type RouteLocationRaw } from 'vue-router';
 import BrandMark from '@/components/layout/BrandMark.vue';
-import SettingsDialog from '@/components/layout/SettingsDialog.vue';
+import SwitchAccountDialog from '@/components/layout/SwitchAccountDialog.vue';
+import InvitationsInbox from '@/components/layout/InvitationsInbox.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
+import { useInvitationsInbox } from '@/composables/useInvitationsInbox';
 import { useLocaleSwitch } from '@/i18n/useLocale';
 import type { AppLocale } from '@/i18n';
 
@@ -20,8 +22,10 @@ const route = useRoute();
 const router = useRouter();
 
 const showProfilePanel = ref(false);
-const showSettings = ref(false);
+const showSwitchAccount = ref(false);
 const showNotifications = ref(false);
+
+const { inboxCount, hasInbox, ensureLoaded } = useInvitationsInbox();
 
 const userInitials = computed(() => {
   if (!auth.user) return '';
@@ -29,6 +33,10 @@ const userInitials = computed(() => {
 });
 
 const inWorkspaceShell = computed(() => /\/w\/\d+/.test(route.path));
+
+const isOrgMembersActive = computed(() =>
+  ['members', 'member'].includes(String(route.name)),
+);
 
 const workspaceIdStr = computed(() =>
   wsStore.currentWorkspaceId != null
@@ -57,17 +65,12 @@ function handleLogout() {
 
 function switchAccount() {
   showProfilePanel.value = false;
-  handleLogout();
+  showSwitchAccount.value = true;
 }
 
 function openAccount() {
   showProfilePanel.value = false;
   router.push('/account');
-}
-
-function openSettings() {
-  showProfilePanel.value = false;
-  showSettings.value = true;
 }
 
 const { current: currentLocale, changeLocale, locales } = useLocaleSwitch();
@@ -187,6 +190,7 @@ watch(
 );
 
 onMounted(async () => {
+  ensureLoaded();
   if (orgStore.currentOrgId) {
     try {
       await wsStore.fetchWorkspaces(orgStore.currentOrgId);
@@ -209,15 +213,9 @@ onMounted(async () => {
 
     <div
       v-if="showNotifications"
-      class="fixed right-4 top-[60px] z-50 w-80 max-w-[calc(100vw-2rem)] bg-white shadow-xl border border-line"
+      class="fixed right-4 top-[60px] z-50 w-80 max-w-[calc(100vw-2rem)] bg-white shadow-xl border border-line p-4"
     >
-      <div class="flex items-center justify-between px-4 py-3 border-b border-line">
-        <span class="text-sm font-semibold text-ink-900">{{ t('nav.notifications') }}</span>
-      </div>
-      <div class="px-4 py-10 text-center text-sm text-ink-400">
-        <i class="pi pi-bell-slash text-2xl block mb-2 text-ink-300" />
-        {{ t('notifications.empty') }}
-      </div>
+      <InvitationsInbox @accepted="showNotifications = false" />
     </div>
 
 
@@ -257,6 +255,12 @@ onMounted(async () => {
         @click="showNotifications = !showNotifications"
       >
         <i class="pi pi-bell text-base" />
+        <span
+          v-if="hasInbox"
+          class="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center bg-brand-600 px-1 text-[10px] font-semibold leading-none text-white"
+        >
+          {{ inboxCount }}
+        </span>
       </button>
     </header>
 
@@ -296,7 +300,7 @@ onMounted(async () => {
             </RouterLink>
 
             <div class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
-              <RouterLink to="/members" class="nav-link" active-class="nav-link--active" :title="t('nav.members')">
+              <RouterLink to="/members" class="nav-link" active-class="" :class="{ 'nav-link--active': isOrgMembersActive }" :title="t('nav.members')">
                 <i class="pi pi-users" /><span class="nav-label">{{ t('nav.members') }}</span>
               </RouterLink>
               <RouterLink to="/graph" class="nav-link" active-class="nav-link--active" :title="t('nav.graph')">
@@ -308,12 +312,15 @@ onMounted(async () => {
               <i class="pi pi-folder" /><span class="nav-label">{{ t('nav.workspaces') }}</span>
             </RouterLink>
 
-            <template v-if="canViewAuditLog || canManageOrgSettings">
-              <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
-              <RouterLink v-if="canViewAuditLog" to="/audit-log" class="nav-link" active-class="nav-link--active" :title="t('nav.auditLog')">
+            <div v-if="canViewAuditLog" class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
+              <RouterLink to="/audit-log" class="nav-link" active-class="nav-link--active" :title="t('nav.auditLog')">
                 <i class="pi pi-history" /><span class="nav-label">{{ t('nav.auditLog') }}</span>
               </RouterLink>
-              <RouterLink v-if="canManageOrgSettings" to="/org-settings" class="nav-link" active-class="nav-link--active" :title="t('nav.orgSettings')">
+            </div>
+
+            <template v-if="canManageOrgSettings">
+              <hr class="nav-divider border-t border-slate-200 mx-1 my-1" />
+              <RouterLink to="/org-settings" class="nav-link" active-class="nav-link--active" :title="t('nav.orgSettings')">
                 <i class="pi pi-cog" /><span class="nav-label">{{ t('nav.settings') }}</span>
               </RouterLink>
             </template>
@@ -325,7 +332,7 @@ onMounted(async () => {
               :to="{ name: 'workspace-dashboard', params: { workspaceId: workspaceIdStr } }"
               class="nav-link"
               active-class=""
-              exact-active-class="nav-link--active"
+              exact-active-class=""
               :title="wsStore.currentWorkspace?.name ?? t('workspace.fallbackName')"
             >
               <i class="pi pi-folder-open" /><span class="nav-label truncate font-medium">{{ wsStore.currentWorkspace?.name ?? t('workspace.fallbackName') }}</span>
@@ -355,7 +362,7 @@ onMounted(async () => {
                 active-class="nav-link--active"
                 :title="t('nav.workspaceSettings')"
               >
-                <i class="pi pi-sliders-h" /><span class="nav-label">{{ t('nav.settings') }}</span>
+                <i class="pi pi-cog" /><span class="nav-label">{{ t('nav.settings') }}</span>
               </RouterLink>
             </div>
           </div>
@@ -378,9 +385,6 @@ onMounted(async () => {
             <div class="py-1">
               <button type="button" class="profile-item" @click="openAccount">
                 <i class="pi pi-user" /><span class="flex-1">{{ t('nav.account') }}</span>
-              </button>
-              <button type="button" class="profile-item" @click="openSettings">
-                <i class="pi pi-cog" /><span class="flex-1">{{ t('nav.settings') }}</span>
               </button>
             </div>
 
@@ -490,7 +494,7 @@ onMounted(async () => {
     </div>
 
 
-    <SettingsDialog v-model:visible="showSettings" />
+    <SwitchAccountDialog v-model:visible="showSwitchAccount" />
   </div>
 </template>
 

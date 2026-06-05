@@ -12,7 +12,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { orgApi, type OrganizationDto, type OrganizationSettingsDto } from '@/api/organizations';
 import { normalizeError } from '@/api/errors';
 import { useApiErrorHandler } from '@/api/errorToast';
-import { roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass, roleLabel } from '@/utils/roleBadge';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 const { t } = useI18n();
@@ -194,7 +194,7 @@ onMounted(async () => {
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <span :class="roleBadgeFullClass(org.userRole)">
-                  {{ org.userRoleDisplayName ?? org.userRole }}
+                  {{ roleLabel(org.userRole, org.userRoleDisplayName) }}
                 </span>
                 <span class="text-sm font-medium text-ink-900 truncate group-hover:text-brand-700" :title="org.name">{{ org.name }}</span>
                 <i class="pi pi-chevron-right text-[10px] text-ink-300 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -264,7 +264,7 @@ onMounted(async () => {
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2 flex-wrap">
             <span :class="roleBadgeFullClass(briefOrg.userRole)">
-              {{ briefOrg.userRoleDisplayName ?? briefOrg.userRole }}
+              {{ roleLabel(briefOrg.userRole, briefOrg.userRoleDisplayName) }}
             </span>
             <span
               v-if="briefOrg.id === orgStore.currentOrgId"

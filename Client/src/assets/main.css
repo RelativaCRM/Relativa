@@ -131,6 +131,22 @@
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2563eb !important;
 }
 
+.p-dialog-header-close {
+  border: 1px solid #e2e8f0 !important;
+  width: 2rem !important;
+  height: 2rem !important;
+}
+
+.p-dialog-header-close:hover {
+  border-color: #94a3b8 !important;
+  background: #f1f5f9 !important;
+}
+
+.p-dialog-header-close:focus:not(:focus-visible) {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 .p-toast {
   width: 22rem;
   max-width: calc(100vw - 2rem);

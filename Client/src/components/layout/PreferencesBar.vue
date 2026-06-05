@@ -24,18 +24,47 @@ const supportPanel = ref<InstanceType<typeof Popover>>();
 const theme = ref<'light' | 'dark' | 'system'>('system');
 
 const support = reactive({ name: '', email: '', subject: '', message: '' });
+type SupportField = 'email' | 'subject' | 'message';
+const supportErrors = reactive({ email: '', subject: '', message: '' });
+const supportTouched = reactive({ email: false, subject: false, message: false });
 const supportSubmitting = ref(false);
 const supportSent = ref(false);
 const supportError = ref<string | null>(null);
-const supportValid = computed(
-  () =>
-    isValidEmail(support.email) &&
-    support.subject.trim().length > 0 &&
-    support.message.trim().length > 0,
-);
+
+function validateSupportField(field: SupportField) {
+  if (field === 'email') {
+    supportErrors.email = !support.email.trim()
+      ? t('support.emailRequired')
+      : !isValidEmail(support.email)
+        ? t('support.emailInvalid')
+        : '';
+  } else if (field === 'subject') {
+    supportErrors.subject = support.subject.trim() ? '' : t('support.subjectRequired');
+  } else {
+    supportErrors.message = support.message.trim() ? '' : t('support.messageRequired');
+  }
+}
+
+function onSupportInput(field: SupportField) {
+  if (supportTouched[field]) validateSupportField(field);
+}
+
+function onSupportBlur(field: SupportField) {
+  supportTouched[field] = true;
+  validateSupportField(field);
+}
+
+function validateSupport(): boolean {
+  (['email', 'subject', 'message'] as const).forEach((f) => {
+    supportTouched[f] = true;
+    validateSupportField(f);
+  });
+  return !supportErrors.email && !supportErrors.subject && !supportErrors.message;
+}
 
 async function submitSupport() {
-  if (!supportValid.value || supportSubmitting.value) return;
+  if (supportSubmitting.value) return;
+  if (!validateSupport()) return;
   supportError.value = null;
   supportSubmitting.value = true;
   try {
@@ -179,7 +208,7 @@ async function selectLanguage(next: AppLocale) {
     </Popover>
 
     <Popover ref="supportPanel" append-to="body" @show="activeTile = 'support'" @hide="activeTile = null">
-      <div class="w-[300px] p-1">
+      <div class="min-w-[300px] p-1">
         <template v-if="supportSent">
           <div class="flex flex-col items-center text-center py-4">
             <i class="pi pi-check-circle text-emerald-600 text-2xl mb-2" />
@@ -189,29 +218,65 @@ async function selectLanguage(next: AppLocale) {
         <template v-else>
           <p class="text-sm font-semibold text-ink-900 mb-4">{{ t('support.title') }}</p>
           <div class="flex flex-col gap-4">
-            <FloatLabel variant="on">
-              <InputText id="support-email" v-model="support.email" type="email" class="!h-10 w-full text-sm" />
-              <label for="support-email">{{ t('support.emailLabel') }}</label>
-            </FloatLabel>
-            <FloatLabel variant="on">
-              <InputText id="support-subject" v-model="support.subject" class="!h-10 w-full text-sm" />
-              <label for="support-subject">{{ t('support.subjectLabel') }}</label>
-            </FloatLabel>
-            <FloatLabel variant="on">
-              <Textarea id="support-message" v-model="support.message" rows="4" class="w-full text-sm !border-ink-400" auto-resize />
-              <label for="support-message">{{ t('support.messageLabel') }}</label>
-            </FloatLabel>
+            <div class="flex flex-col gap-1">
+              <FloatLabel variant="on">
+                <InputText
+                  id="support-email"
+                  v-model="support.email"
+                  type="email"
+                  :invalid="!!supportErrors.email"
+                  class="!h-10 w-full text-sm"
+                  @update:model-value="onSupportInput('email')"
+                  @blur="onSupportBlur('email')"
+                />
+                <label for="support-email">{{ t('support.emailLabel') }}</label>
+              </FloatLabel>
+              <small v-if="supportErrors.email" class="text-xs text-danger">
+                <i class="pi pi-exclamation-circle mr-1" />{{ supportErrors.email }}
+              </small>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <FloatLabel variant="on">
+                <InputText
+                  id="support-subject"
+                  v-model="support.subject"
+                  :invalid="!!supportErrors.subject"
+                  class="!h-10 w-full text-sm"
+                  @update:model-value="onSupportInput('subject')"
+                  @blur="onSupportBlur('subject')"
+                />
+                <label for="support-subject">{{ t('support.subjectLabel') }}</label>
+              </FloatLabel>
+              <small v-if="supportErrors.subject" class="text-xs text-danger">
+                <i class="pi pi-exclamation-circle mr-1" />{{ supportErrors.subject }}
+              </small>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <FloatLabel variant="on">
+                <Textarea
+                  id="support-message"
+                  v-model="support.message"
+                  rows="4"
+                  :invalid="!!supportErrors.message"
+                  class="text-sm !border-ink-400"
+                  style="resize: both; min-height: 5.5rem; min-width: 280px; max-width: 70vw; width: 100%"
+                  @update:model-value="onSupportInput('message')"
+                  @blur="onSupportBlur('message')"
+                />
+                <label for="support-message">{{ t('support.messageLabel') }}</label>
+              </FloatLabel>
+              <small v-if="supportErrors.message" class="text-xs text-danger">
+                <i class="pi pi-exclamation-circle mr-1" />{{ supportErrors.message }}
+              </small>
+            </div>
+
             <p v-if="supportError" class="text-xs text-danger -mt-1">{{ supportError }}</p>
             <Button
               :label="t('support.send')"
               :loading="supportSubmitting"
-              :disabled="!supportValid"
-              :class="[
-                '!h-10 !rounded-none !font-semibold w-full transition-colors',
-                supportValid
-                  ? '!bg-blue-600 !border-blue-600 hover:!bg-blue-700 hover:!border-blue-700 active:!bg-blue-800 !text-white'
-                  : '!bg-slate-200 !border-slate-200 !text-slate-400',
-              ]"
+              class="!h-10 !rounded-none !font-semibold w-full transition-colors !bg-blue-600 !border-blue-600 hover:!bg-blue-700 hover:!border-blue-700 active:!bg-blue-800 !text-white"
               @click="submitSupport"
             />
           </div>

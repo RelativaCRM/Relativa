@@ -200,7 +200,13 @@ function onGoogle() {
   signInWithGoogle((accessToken) => completeOAuth('google', accessToken));
 }
 
-onMounted(() => warmGoogle());
+onMounted(() => {
+  const prefill = route.query.email;
+  if (typeof prefill === 'string' && prefill) {
+    form.email = prefill;
+  }
+  warmGoogle();
+});
 </script>
 
 <template>

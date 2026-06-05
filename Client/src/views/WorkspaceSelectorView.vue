@@ -13,7 +13,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
 import { normalizeError } from '@/api/errors';
 import type { WorkspaceDto } from '@/api/workspaces';
-import { roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass, roleLabel } from '@/utils/roleBadge';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -195,7 +195,7 @@ onMounted(async () => {
             </span>
           </span>
           <span :class="[roleBadgeFullClass(ws.userRole), 'shrink-0']">
-            {{ ws.userRoleDisplayName ?? ws.userRole }}
+            {{ roleLabel(ws.userRole, ws.userRoleDisplayName) }}
           </span>
           <i
             class="pi pi-arrow-right text-ink-400 transition-colors group-hover:text-brand-600"

@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useDashboardStore } from '@/stores/dashboard';
+import { roleLabel } from '@/utils/roleBadge';
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -428,7 +429,7 @@ function scoreBar(score?: number) {
                     v-if="orgStore.currentOrg?.userRole"
                     class="session-card__role-badge"
                   >
-                    {{ orgStore.currentOrg.userRoleDisplayName ?? orgStore.currentOrg.userRole }}
+                    {{ roleLabel(orgStore.currentOrg.userRole, orgStore.currentOrg.userRoleDisplayName) }}
                   </span>
                 </div>
                 <p class="mt-0.5 text-sm text-ink-500 truncate">{{ auth.user.email }}</p>

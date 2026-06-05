@@ -3,27 +3,21 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import InputText from 'primevue/inputtext';
-import FloatLabel from 'primevue/floatlabel';
-import Button from 'primevue/button';
 import Tag from 'primevue/tag';
 import Popover from 'primevue/popover';
 import AppHeader from '@/components/layout/AppHeader.vue';
 import FormError from '@/components/feedback/FormError.vue';
-import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
-import { currentLocale } from '@/i18n';
+import SwitchAccountDialog from '@/components/layout/SwitchAccountDialog.vue';
+import InvitationsInbox from '@/components/layout/InvitationsInbox.vue';
+import { roleBadgeFullClass, roleLabel } from '@/utils/roleBadge';
 import { useLocaleSwitch } from '@/i18n/useLocale';
 import type { AppLocale } from '@/i18n';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 import { useEntityStore } from '@/stores/entity';
-import {
-  orgApi,
-  type OrganizationDto,
-  type OrgSearchResultDto,
-  type OrgInvitationDto,
-  type JoinRequestDto,
-} from '@/api/organizations';
+import { useInvitationsInbox } from '@/composables/useInvitationsInbox';
+import { orgApi, type OrgSearchResultDto } from '@/api/organizations';
 import { normalizeError } from '@/api/errors';
 import { notifyGlobal, useApiErrorHandler } from '@/api/errorToast';
 
@@ -37,131 +31,53 @@ const { notify } = useApiErrorHandler();
 const { current, changeLocale, locales } = useLocaleSwitch();
 
 const year = new Date().getFullYear();
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString(currentLocale());
-}
-
-const langPopover = ref<InstanceType<typeof Popover>>();
+const profilePopover = ref<InstanceType<typeof Popover>>();
+const openLangFlyout = ref(false);
+const showSwitchAccount = ref(false);
 const languageOptions = computed(() =>
   locales.map((code) => ({ value: code, label: t(`language.${code}`) })),
 );
+const localeLabel = computed(() => t(`language.${current.value}`));
+
 async function selectLanguage(next: AppLocale) {
-  langPopover.value?.hide();
-  if (next === current.value) return;
-  try {
-    await changeLocale(next);
-  } catch (err) {
-    notifyGlobal(err, { fallback: normalizeError(err).message });
+  if (next !== current.value) {
+    try {
+      await changeLocale(next);
+    } catch (err) {
+      notifyGlobal(err, { fallback: normalizeError(err).message });
+    }
   }
+  openLangFlyout.value = false;
+  profilePopover.value?.hide();
 }
+
+function openSwitchAccount() {
+  profilePopover.value?.hide();
+  showSwitchAccount.value = true;
+}
+
+const userInitials = computed(() => {
+  const u = auth.user;
+  if (!u) return '';
+  const fl = `${u.firstName?.[0] ?? ''}${u.lastName?.[0] ?? ''}`.toUpperCase();
+  return fl || (u.email?.[0] ?? '?').toUpperCase();
+});
+const fullName = computed(
+  () => [auth.user?.firstName, auth.user?.lastName].filter(Boolean).join(' ') || auth.user?.email || '',
+);
 
 const inboxPopover = ref<InstanceType<typeof Popover>>();
-const orgInvitations = ref<OrgInvitationDto[]>([]);
-const pendingJoinRequests = ref<JoinRequestDto[]>([]);
-const inboxLoading = ref(true);
-const inboxError = ref<string | null>(null);
-const inboxFilter = ref('');
-const busyToken = ref<string | null>(null);
-const busyRequestId = ref<number | null>(null);
-
-const inboxCount = computed(
-  () => orgInvitations.value.length + pendingJoinRequests.value.length,
-);
-const hasInbox = computed(() => inboxCount.value > 0);
-
-const filteredInvitations = computed(() => {
-  const q = inboxFilter.value.trim().toLowerCase();
-  if (!q) return orgInvitations.value;
-  return orgInvitations.value.filter((i) => i.organizationName.toLowerCase().includes(q));
-});
-const filteredRequests = computed(() => {
-  const q = inboxFilter.value.trim().toLowerCase();
-  if (!q) return pendingJoinRequests.value;
-  return pendingJoinRequests.value.filter((r) => r.organizationName.toLowerCase().includes(q));
-});
-
-async function loadInbox() {
-  inboxLoading.value = true;
-  try {
-    const [invitations, joinReqs] = await Promise.all([
-      orgApi.myOrganizationInvitations(),
-      orgApi.myJoinRequests(),
-    ]);
-    orgInvitations.value = invitations;
-    pendingJoinRequests.value = joinReqs.filter((r) => r.status === 'Pending');
-  } catch {
-    orgInvitations.value = [];
-    pendingJoinRequests.value = [];
-  } finally {
-    inboxLoading.value = false;
-  }
-}
-
-async function acceptInvite(invitation: OrgInvitationDto) {
-  busyToken.value = invitation.token;
-  inboxError.value = null;
-  try {
-    await orgApi.acceptOrgInvitation(invitation.token);
-    await orgStore.fetchOrganizations();
-    router.push({ name: 'home' });
-  } catch (err) {
-    inboxError.value = normalizeError(err, t('onboarding.acceptFailed')).message;
-  } finally {
-    busyToken.value = null;
-  }
-}
-
-async function declineInvite(invitation: OrgInvitationDto) {
-  busyToken.value = invitation.token;
-  inboxError.value = null;
-  try {
-    await orgApi.declineOrgInvitation(invitation.token);
-    orgInvitations.value = orgInvitations.value.filter((i) => i.id !== invitation.id);
-  } catch (err) {
-    inboxError.value = normalizeError(err, t('onboarding.declineFailed')).message;
-  } finally {
-    busyToken.value = null;
-  }
-}
-
-async function cancelRequest(request: JoinRequestDto) {
-  busyRequestId.value = request.id;
-  inboxError.value = null;
-  try {
-    await orgApi.cancelMyJoinRequest(request.id);
-    pendingJoinRequests.value = pendingJoinRequests.value.filter((r) => r.id !== request.id);
-  } catch (err) {
-    inboxError.value = normalizeError(err, t('onboarding.cancelFailed')).message;
-  } finally {
-    busyRequestId.value = null;
-  }
-}
-
-async function clearAll() {
-  inboxError.value = null;
-  const tokens = orgInvitations.value.map((i) => i.token);
-  const ids = pendingJoinRequests.value.map((r) => r.id);
-  try {
-    await Promise.all([
-      ...tokens.map((tk) => orgApi.declineOrgInvitation(tk)),
-      ...ids.map((id) => orgApi.cancelMyJoinRequest(id)),
-    ]);
-    orgInvitations.value = [];
-    pendingJoinRequests.value = [];
-    inboxPopover.value?.hide();
-  } catch (err) {
-    inboxError.value = normalizeError(err, t('onboarding.declineFailed')).message;
-    await loadInbox();
-  }
-}
+const { inboxCount, hasInbox, ensureLoaded, loadInbox, pendingJoinRequests } =
+  useInvitationsInbox();
 
 const myOrgs = computed(() => orgStore.organizations);
-const selectedOrgId = ref<number | null>(null);
-const selectedOrg = computed(
-  () => myOrgs.value.find((o) => o.id === selectedOrgId.value) ?? null,
-);
+const myOrgIds = computed(() => new Set(myOrgs.value.map((o) => o.id)));
+
+function enterOrg(orgId: number) {
+  orgStore.setCurrentOrg(orgId);
+  router.push({ name: 'home' });
+}
 
 const newOrgName = ref('');
 const creating = ref(false);
@@ -174,56 +90,11 @@ async function handleCreate() {
   try {
     const org = await orgStore.createOrganization(newOrgName.value.trim());
     newOrgName.value = '';
-    if (org) selectedOrgId.value = org.id;
+    if (org) enterOrg(org.id);
   } catch (err) {
     createError.value = normalizeError(err, t('onboarding.createFailed')).message;
   } finally {
     creating.value = false;
-  }
-}
-
-function openOrg() {
-  if (!selectedOrg.value) return;
-  orgStore.setCurrentOrg(selectedOrg.value.id);
-  router.push({ name: 'home' });
-}
-
-function openSettings() {
-  if (!selectedOrg.value) return;
-  orgStore.setCurrentOrg(selectedOrg.value.id);
-  router.push({ name: 'org-settings' });
-}
-
-const invitePopover = ref<InstanceType<typeof Popover>>();
-const inviteEmail = ref('');
-const inviteSending = ref(false);
-const inviteError = ref<string | null>(null);
-const inviteSuccess = ref<string | null>(null);
-
-function toggleInvite(event: Event) {
-  inviteError.value = null;
-  inviteSuccess.value = null;
-  invitePopover.value?.toggle(event);
-}
-
-async function sendInvite() {
-  if (!selectedOrg.value) return;
-  const email = inviteEmail.value.trim();
-  inviteError.value = null;
-  inviteSuccess.value = null;
-  if (!emailPattern.test(email)) {
-    inviteError.value = t('onboarding.inviteInvalidEmail');
-    return;
-  }
-  inviteSending.value = true;
-  try {
-    await orgApi.invite(selectedOrg.value.id, email);
-    inviteSuccess.value = t('onboarding.inviteSent', { email });
-    inviteEmail.value = '';
-  } catch (err) {
-    inviteError.value = normalizeError(err, t('onboarding.inviteFailed')).message;
-  } finally {
-    inviteSending.value = false;
   }
 }
 
@@ -236,6 +107,10 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const requestedOrgIds = computed(
   () => new Set(pendingJoinRequests.value.map((r) => r.organizationId)),
+);
+
+const visibleSearchResults = computed(() =>
+  searchResults.value.filter((o) => !myOrgIds.value.has(o.id)),
 );
 
 watch(searchQuery, () => {
@@ -278,7 +153,7 @@ function handleLogout() {
 }
 
 onMounted(() => {
-  loadInbox();
+  ensureLoaded();
   runSearch();
   orgStore.fetchOrganizations().catch(() => undefined);
 });
@@ -293,377 +168,198 @@ onMounted(() => {
         <button
           type="button"
           class="hdr-icon"
-          :aria-label="t('language.label')"
-          @click="langPopover?.toggle($event)"
-        >
-          <i class="pi pi-globe text-[17px]" />
-        </button>
-
-        <button
-          type="button"
-          class="hdr-icon"
           :aria-label="t('onboarding.invitations')"
           @click="inboxPopover?.toggle($event)"
         >
-          <i class="pi pi-envelope text-[17px]" />
+          <i class="pi pi-bell text-[17px]" />
           <span v-if="hasInbox" class="hdr-badge">{{ inboxCount }}</span>
         </button>
 
         <button
+          v-if="auth.user"
           type="button"
-          class="hdr-icon"
-          :aria-label="t('onboarding.signOut')"
-          @click="handleLogout"
+          class="hdr-avatar rounded-full"
+          :aria-label="fullName"
+          @click="profilePopover?.toggle($event)"
         >
-          <i class="pi pi-sign-out text-[17px]" />
+          {{ userInitials }}
         </button>
       </template>
     </AppHeader>
 
-    <Popover ref="langPopover">
-      <ul class="nav-scroll min-w-[160px] max-h-60 overflow-y-auto py-1">
-        <li v-for="opt in languageOptions" :key="opt.value">
-          <button
-            type="button"
-            :class="[
-              'flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-brand-50',
-              opt.value === current ? 'font-medium text-brand-700' : 'text-ink-700',
-            ]"
-            @click="selectLanguage(opt.value)"
-          >
-            <span class="truncate">{{ opt.label }}</span>
-            <i v-if="opt.value === current" class="pi pi-check shrink-0 text-xs text-brand-600" />
+    <Popover ref="profilePopover" @hide="openLangFlyout = false">
+      <div class="w-[252px]">
+        <div class="profile-head">
+          <span class="profile-avatar rounded-full">{{ userInitials }}</span>
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-ink-900">{{ fullName }}</p>
+            <p class="truncate text-xs text-ink-400">{{ auth.user?.email }}</p>
+          </div>
+        </div>
+
+        <div class="py-1">
+          <div class="relative">
+            <button type="button" class="profile-item" @click="openLangFlyout = !openLangFlyout">
+              <i class="pi pi-globe" /><span class="flex-1">{{ t('nav.language') }}</span>
+              <span class="text-xs text-ink-400">{{ localeLabel }}</span>
+              <i
+                :class="['pi text-[10px] text-ink-400', openLangFlyout ? 'pi-chevron-down' : 'pi-chevron-left']"
+              />
+            </button>
+            <div v-if="openLangFlyout" class="profile-flyout">
+              <button
+                v-for="opt in languageOptions"
+                :key="opt.value"
+                type="button"
+                class="profile-item"
+                @click="selectLanguage(opt.value)"
+              >
+                <span class="flex-1 truncate">{{ opt.label }}</span>
+                <i v-if="opt.value === current" class="pi pi-check text-xs text-brand-600" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-line py-1">
+          <button type="button" class="profile-item" @click="openSwitchAccount">
+            <i class="pi pi-sync" /><span class="flex-1">{{ t('nav.switchAccount') }}</span>
           </button>
-        </li>
-      </ul>
+          <button type="button" class="profile-item" @click="handleLogout">
+            <i class="pi pi-sign-out" /><span class="flex-1">{{ t('nav.signOut') }}</span>
+          </button>
+        </div>
+      </div>
     </Popover>
 
     <Popover ref="inboxPopover">
-      <div class="w-[320px]">
-        <div class="mb-2 flex items-center justify-between">
-          <span class="text-xs font-semibold uppercase tracking-wide text-ink-500">
-            {{ t('onboarding.invitations') }}
-          </span>
-          <button
-            v-if="hasInbox"
-            type="button"
-            class="text-xs font-medium text-brand-600 hover:underline"
-            @click="clearAll"
-          >
-            {{ t('onboarding.clearAll') }}
-          </button>
-        </div>
-
-        <InputText
-          v-if="hasInbox"
-          v-model="inboxFilter"
-          :placeholder="t('onboarding.filterPlaceholder')"
-          class="!h-8 w-full !text-sm"
-        />
-
-        <LoadingSkeleton
-          v-if="inboxLoading"
-          variant="list"
-          :rows="2"
-          class="mt-3"
-          :label="t('onboarding.invitations')"
-        />
-
-        <p v-else-if="!hasInbox" class="py-6 text-center text-sm text-ink-500">
-          <i class="pi pi-inbox mb-2 block text-2xl text-ink-400" />
-          {{ t('onboarding.invitationsEmpty') }}
-        </p>
-
-        <div v-else class="nav-scroll mt-2 max-h-72 overflow-y-auto">
-          <template v-if="filteredInvitations.length">
-            <p class="px-0.5 pb-1 pt-1 text-[11px] font-semibold uppercase text-ink-400">
-              {{ t('onboarding.incomingHeading') }}
-            </p>
-            <div
-              v-for="inv in filteredInvitations"
-              :key="`inv-${inv.id}`"
-              class="flex items-center justify-between gap-2 border-b border-line py-2 last:border-0"
-            >
-              <div class="min-w-0">
-                <p class="truncate text-sm font-medium text-ink-900">{{ inv.organizationName }}</p>
-                <p class="text-[11px] text-ink-500">
-                  {{ t('onboarding.expires', { date: formatDate(inv.expiresAt) }) }}
-                </p>
-              </div>
-              <div class="flex shrink-0 items-center gap-1">
-                <Button
-                  size="small"
-                  severity="secondary"
-                  text
-                  :loading="busyToken === inv.token"
-                  :aria-label="t('onboarding.revoke')"
-                  @click="declineInvite(inv)"
-                >
-                  <i class="pi pi-times text-xs" />
-                </Button>
-                <Button
-                  size="small"
-                  :label="t('onboarding.accept')"
-                  :loading="busyToken === inv.token"
-                  @click="acceptInvite(inv)"
-                />
-              </div>
-            </div>
-          </template>
-
-          <template v-if="filteredRequests.length">
-            <p class="px-0.5 pb-1 pt-3 text-[11px] font-semibold uppercase text-ink-400">
-              {{ t('onboarding.myRequestsHeading') }}
-            </p>
-            <div
-              v-for="req in filteredRequests"
-              :key="`req-${req.id}`"
-              class="flex items-center justify-between gap-2 border-b border-line py-2 last:border-0"
-            >
-              <div class="min-w-0">
-                <p class="truncate text-sm font-medium text-ink-900">{{ req.organizationName }}</p>
-                <p class="text-[11px] text-ink-500">
-                  {{ t('onboarding.requested', { date: formatDate(req.createdAt) }) }}
-                </p>
-              </div>
-              <div class="flex shrink-0 items-center gap-1.5">
-                <Tag :value="t('onboarding.pendingReview')" severity="warn" class="!text-[10px]" />
-                <Button
-                  size="small"
-                  severity="secondary"
-                  text
-                  :loading="busyRequestId === req.id"
-                  :aria-label="t('onboarding.revoke')"
-                  @click="cancelRequest(req)"
-                >
-                  <i class="pi pi-times text-xs" />
-                </Button>
-              </div>
-            </div>
-          </template>
-        </div>
-
-        <FormError v-if="inboxError" :message="inboxError" class="mt-2" />
-      </div>
+      <InvitationsInbox class="w-[320px]" @accepted="router.push({ name: 'home' })" />
     </Popover>
 
-    <Popover ref="invitePopover">
-      <div class="w-[280px]">
-        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
-          {{ t('onboarding.invitePeople') }}
-        </p>
-        <form class="flex flex-col gap-2" novalidate @submit.prevent="sendInvite">
-          <FloatLabel variant="on">
-            <InputText id="inviteEmail" v-model="inviteEmail" type="email" class="!h-10 w-full" />
-            <label for="inviteEmail">{{ t('onboarding.inviteEmailLabel') }}</label>
-          </FloatLabel>
-          <FormError v-if="inviteError" :message="inviteError" />
-          <p v-if="inviteSuccess" class="text-xs text-emerald-600">{{ inviteSuccess }}</p>
-          <Button
-            type="submit"
-            size="small"
-            :label="t('onboarding.sendInvite')"
-            :loading="inviteSending"
-            class="w-full"
-          />
-        </form>
-      </div>
-    </Popover>
-
-    <main class="relative flex flex-1 items-center justify-center px-4 py-10">
-      <div class="w-full max-w-[940px]">
-        <header class="mb-7 text-center">
-          <h1 class="text-[26px] font-bold leading-tight text-ink-900">
-            {{ t('onboarding.title') }}
-          </h1>
+    <main class="relative flex flex-1 items-start justify-center px-4 py-10">
+      <div class="w-full max-w-2xl space-y-6">
+        <header class="text-center">
+          <h1 class="text-2xl font-bold leading-tight text-ink-900">{{ t('onboarding.title') }}</h1>
           <p class="mt-1.5 text-sm text-ink-500">{{ t('onboarding.subtitle') }}</p>
         </header>
 
-        <div
-          class="grid border border-line/80 bg-white/95 shadow-card backdrop-blur-sm md:grid-cols-[1fr_auto_1fr]"
-        >
-          <section class="flex flex-col p-7">
-            <div class="flex items-center gap-2">
-              <span class="flex h-8 w-8 items-center justify-center bg-brand-50 text-brand-600">
-                <i class="pi pi-building text-sm" />
-              </span>
-              <h2 class="text-base font-semibold text-ink-900">{{ t('onboarding.create') }}</h2>
-            </div>
-            <p class="mt-1.5 text-[13px] text-ink-500">{{ t('onboarding.createHint') }}</p>
-
-            <form class="mt-5 flex items-end gap-2" novalidate @submit.prevent="handleCreate">
-              <FloatLabel variant="on" class="flex-1">
-                <InputText id="orgName" v-model="newOrgName" class="!h-11 w-full" />
-                <label for="orgName">{{ t('onboarding.orgNameLabel') }}</label>
-              </FloatLabel>
-              <Button
-                type="submit"
-                :loading="creating"
-                :disabled="!newOrgName.trim()"
-                :aria-label="t('onboarding.createButton')"
-                :class="[
-                  '!h-11 !w-11 !rounded-none transition-colors',
-                  newOrgName.trim()
-                    ? '!bg-blue-600 !border-blue-600 hover:!bg-blue-700 hover:!border-blue-700 active:!bg-blue-800 !text-white'
-                    : '!bg-slate-200 !border-slate-200 !text-slate-400',
-                ]"
-              >
-                <i class="pi pi-plus" />
-              </Button>
-            </form>
-            <FormError v-if="createError" :message="createError" class="mt-2" />
-
-            <div class="mt-6 flex min-h-0 flex-1 flex-col">
-              <span class="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">
-                {{ t('onboarding.myOrganizations') }}
-              </span>
-
-              <div class="mb-2 flex items-center gap-1 border border-line bg-surface px-2 py-1.5">
-                <button
-                  type="button"
-                  class="tb-btn"
-                  :disabled="!selectedOrg"
-                  :aria-label="t('onboarding.openOrg')"
-                  @click="openOrg"
-                >
-                  <i class="pi pi-sign-in" />
-                  <span>{{ t('onboarding.openOrg') }}</span>
-                </button>
-                <button
-                  type="button"
-                  class="tb-btn"
-                  :disabled="!selectedOrg"
-                  :aria-label="t('onboarding.invitePeople')"
-                  @click="toggleInvite"
-                >
-                  <i class="pi pi-user-plus" />
-                  <span>{{ t('onboarding.invitePeople') }}</span>
-                </button>
-                <button
-                  type="button"
-                  class="tb-btn"
-                  :disabled="!selectedOrg"
-                  :aria-label="t('onboarding.orgSettingsAction')"
-                  @click="openSettings"
-                >
-                  <i class="pi pi-cog" />
-                  <span>{{ t('onboarding.orgSettingsAction') }}</span>
-                </button>
-              </div>
-
-              <ul
-                v-if="myOrgs.length"
-                class="nav-scroll flex max-h-[220px] flex-1 flex-col gap-1 overflow-y-auto pr-0.5"
-              >
-                <li v-for="org in myOrgs" :key="org.id">
-                  <button
-                    type="button"
-                    :class="[
-                      'flex w-full items-center justify-between gap-2 border px-3 py-2.5 text-left transition-colors',
-                      selectedOrgId === org.id
-                        ? 'border-brand-300 bg-brand-50'
-                        : 'border-line hover:border-brand-200 hover:bg-surface',
-                    ]"
-                    @click="selectedOrgId = org.id"
-                  >
-                    <span class="min-w-0">
-                      <span class="block truncate text-sm font-medium text-ink-900">{{ org.name }}</span>
-                      <span class="text-xs text-ink-500">
-                        {{ t('onboarding.members', { n: org.memberCount }, org.memberCount) }}
-                      </span>
-                    </span>
-                    <span
-                      v-if="org.userRole"
-                      class="shrink-0 text-[11px] font-medium uppercase text-ink-400"
-                    >
-                      {{ org.userRole }}
-                    </span>
-                  </button>
-                </li>
-              </ul>
-
-              <p v-else class="py-4 text-center text-sm text-ink-500">
-                {{ t('onboarding.noOrganizationsYet') }}
-              </p>
-            </div>
-          </section>
-
-          <div class="flex items-center justify-center px-4 py-2 md:flex-col md:px-2 md:py-6">
-            <span class="h-px w-full bg-line md:h-full md:w-px" />
-            <span class="px-3 text-[11px] font-semibold uppercase tracking-wide text-ink-400 md:py-3">
-              {{ t('onboarding.or') }}
-            </span>
-            <span class="h-px w-full bg-line md:h-full md:w-px" />
+        <div v-if="myOrgs.length" class="border border-line bg-white">
+          <div class="flex items-center gap-2 border-b border-line px-6 py-4">
+            <i class="pi pi-building text-brand-600" />
+            <h2 class="text-sm font-semibold text-ink-900">{{ t('onboarding.myOrganizations') }}</h2>
           </div>
-
-          <section class="flex flex-col p-7">
-            <div class="flex items-center gap-2">
-              <span class="flex h-8 w-8 items-center justify-center bg-brand-50 text-brand-600">
-                <i class="pi pi-compass text-sm" />
-              </span>
-              <h2 class="text-base font-semibold text-ink-900">{{ t('onboarding.join') }}</h2>
-            </div>
-            <p class="mt-1.5 text-[13px] text-ink-500">{{ t('onboarding.joinHint') }}</p>
-
-            <div class="mt-5 flex min-h-0 flex-1 flex-col gap-3">
-              <FloatLabel variant="on">
-                <InputText id="searchOrg" v-model="searchQuery" class="!h-11 w-full" />
-                <label for="searchOrg">{{ t('onboarding.explorePlaceholder') }}</label>
-              </FloatLabel>
-
-              <p v-if="searching" class="py-4 text-center text-sm text-ink-500">
-                {{ searchQuery.trim() ? t('onboarding.searching') : t('onboarding.browsing') }}
-              </p>
-
-              <ul
-                v-else-if="searchResults.length"
-                class="nav-scroll flex max-h-[268px] flex-1 flex-col gap-2 overflow-y-auto pr-0.5"
+          <ul class="divide-y divide-line">
+            <li v-for="org in myOrgs" :key="org.id">
+              <button
+                type="button"
+                class="flex w-full items-center justify-between gap-3 px-6 py-3.5 text-left transition-colors hover:bg-brand-50"
+                @click="enterOrg(org.id)"
               >
-                <li
-                  v-for="org in searchResults"
-                  :key="org.id"
-                  class="flex items-center justify-between gap-3 rounded-lg border border-line px-4 py-3"
-                >
-                  <div class="min-w-0 flex-1">
-                    <p class="truncate text-sm font-medium text-ink-900">{{ org.name }}</p>
-                    <div class="mt-0.5 flex items-center gap-2">
-                      <span class="text-xs text-ink-500">
-                        {{ t('onboarding.members', { n: org.memberCount }, org.memberCount) }}
-                      </span>
-                      <Tag
-                        :value="org.joinPolicy === 'open' ? t('onboarding.open') : t('onboarding.inviteOnly')"
-                        :severity="org.joinPolicy === 'open' ? 'success' : 'secondary'"
-                        class="!text-[10px]"
-                      />
-                    </div>
-                  </div>
-                  <Tag
-                    v-if="requestedOrgIds.has(org.id)"
-                    :value="t('onboarding.requestSent')"
-                    severity="warn"
-                    class="shrink-0 !text-[11px]"
-                  />
-                  <Button
-                    v-else
-                    size="small"
-                    outlined
-                    severity="secondary"
-                    :label="t('onboarding.requestToJoin')"
-                    :disabled="org.joinPolicy !== 'open'"
-                    :loading="joinSending === org.id"
-                    class="shrink-0"
-                    @click="handleJoinRequest(org)"
-                  />
-                </li>
-              </ul>
+                <span class="min-w-0">
+                  <span class="block truncate text-sm font-medium text-ink-900">{{ org.name }}</span>
+                  <span class="text-xs text-ink-500">
+                    {{ t('onboarding.members', { n: org.memberCount }, org.memberCount) }}
+                  </span>
+                </span>
+                <span class="flex shrink-0 items-center gap-3">
+                  <span v-if="org.userRole" :class="roleBadgeFullClass(org.userRole.toLowerCase())">
+                    {{ roleLabel(org.userRole, org.userRoleDisplayName) }}
+                  </span>
+                  <i class="pi pi-angle-right text-ink-300" />
+                </span>
+              </button>
+            </li>
+          </ul>
+        </div>
 
-              <p v-else class="py-4 text-center text-sm text-ink-500">
-                {{ t('onboarding.noOrgsFound') }}
-              </p>
-
-              <FormError v-if="joinError" :message="joinError" />
+        <div class="border border-line bg-white">
+          <div class="flex items-center gap-2 border-b border-line px-6 py-4">
+            <i class="pi pi-plus-circle text-brand-600" />
+            <h2 class="text-sm font-semibold text-ink-900">{{ t('onboarding.create') }}</h2>
+          </div>
+          <form class="p-6" novalidate @submit.prevent="handleCreate">
+            <p class="mb-4 text-[13px] text-ink-500">{{ t('onboarding.createHint') }}</p>
+            <div class="flex flex-col gap-1.5">
+              <label for="orgName" class="text-xs font-medium text-ink-600">
+                {{ t('onboarding.orgNameLabel') }}
+              </label>
+              <InputText id="orgName" v-model="newOrgName" maxlength="120" class="!h-10" />
             </div>
-          </section>
+            <FormError v-if="createError" :message="createError" class="mt-2" />
+            <div class="mt-4 flex justify-end">
+              <button type="submit" class="btn btn-primary" :disabled="!newOrgName.trim() || creating">
+                <i :class="creating ? 'pi pi-spin pi-spinner' : 'pi pi-plus'" />
+                {{ t('onboarding.createButton') }}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div class="border border-line bg-white">
+          <div class="flex items-center gap-2 border-b border-line px-6 py-4">
+            <i class="pi pi-compass text-brand-600" />
+            <h2 class="text-sm font-semibold text-ink-900">{{ t('onboarding.join') }}</h2>
+          </div>
+          <div class="p-6">
+            <p class="mb-4 text-[13px] text-ink-500">{{ t('onboarding.joinHint') }}</p>
+            <div class="flex flex-col gap-1.5">
+              <label for="searchOrg" class="text-xs font-medium text-ink-600">
+                {{ t('onboarding.explorePlaceholder') }}
+              </label>
+              <InputText id="searchOrg" v-model="searchQuery" class="!h-10" />
+            </div>
+
+            <p v-if="searching" class="py-6 text-center text-sm text-ink-500">
+              {{ searchQuery.trim() ? t('onboarding.searching') : t('onboarding.browsing') }}
+            </p>
+
+            <ul
+              v-else-if="visibleSearchResults.length"
+              class="nav-scroll mt-4 flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-0.5"
+            >
+              <li
+                v-for="org in visibleSearchResults"
+                :key="org.id"
+                class="flex items-center justify-between gap-3 border border-line px-4 py-3"
+              >
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium text-ink-900">{{ org.name }}</p>
+                  <div class="mt-0.5 flex items-center gap-2">
+                    <span class="text-xs text-ink-500">
+                      {{ t('onboarding.members', { n: org.memberCount }, org.memberCount) }}
+                    </span>
+                    <Tag
+                      :value="org.joinPolicy === 'open' ? t('onboarding.open') : t('onboarding.inviteOnly')"
+                      :severity="org.joinPolicy === 'open' ? 'success' : 'secondary'"
+                      class="!text-[10px]"
+                    />
+                  </div>
+                </div>
+                <span
+                  v-if="requestedOrgIds.has(org.id)"
+                  class="inline-flex shrink-0 items-center px-2 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200"
+                >
+                  {{ t('onboarding.requestSent') }}
+                </span>
+                <button
+                  v-else
+                  type="button"
+                  class="btn btn-outline btn-sm shrink-0"
+                  :disabled="org.joinPolicy !== 'open' || joinSending === org.id"
+                  @click="handleJoinRequest(org)"
+                >
+                  <i v-if="joinSending === org.id" class="pi pi-spin pi-spinner" />
+                  {{ t('onboarding.requestToJoin') }}
+                </button>
+              </li>
+            </ul>
+
+            <p v-else class="py-6 text-center text-sm text-ink-500">
+              {{ t('onboarding.noOrgsFound') }}
+            </p>
+
+            <FormError v-if="joinError" :message="joinError" class="mt-2" />
+          </div>
         </div>
       </div>
     </main>
@@ -675,6 +371,8 @@ onMounted(() => {
       <span aria-hidden="true">·</span>
       <span>{{ t('footer.rights') }}</span>
     </footer>
+
+    <SwitchAccountDialog v-model:visible="showSwitchAccount" />
   </div>
 </template>
 
@@ -745,24 +443,77 @@ onMounted(() => {
   line-height: 1;
 }
 
-.tb-btn {
-  display: inline-flex;
+.hdr-avatar {
+  display: flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.3rem 0.6rem;
-  border: 1px solid transparent;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  background: rgb(37 99 235);
+  color: #fff;
   font-size: 0.75rem;
-  font-weight: 500;
-  color: rgb(71 85 105);
-  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  font-weight: 600;
 }
-.tb-btn:hover:not(:disabled) {
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.25rem 0.5rem 0.75rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.profile-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: rgb(37 99 235);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.profile-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  text-align: left;
+  color: rgb(51 65 85);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.profile-item > i:first-child {
+  width: 1rem;
+  display: inline-flex;
+  justify-content: center;
+  font-size: 0.8125rem;
+  color: rgb(148 163 184);
+}
+.profile-item:hover {
+  background-color: rgb(239 246 255);
+  color: rgb(29 78 216);
+}
+.profile-item:hover > i:first-child {
   color: rgb(37 99 235);
-  border-color: rgb(147 197 253);
-  background: #fff;
 }
-.tb-btn:disabled {
-  color: rgb(203 213 225);
-  cursor: not-allowed;
+
+.profile-flyout {
+  position: absolute;
+  right: 100%;
+  top: 0;
+  margin-right: 0.25rem;
+  z-index: 10;
+  width: 11rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+  padding: 0.25rem 0;
 }
 </style>

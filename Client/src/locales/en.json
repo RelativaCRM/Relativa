@@ -142,6 +142,25 @@
     "themeDark": "Dark",
     "themeSystem": "System"
   },
+  "switchAccount": {
+    "title": "Switch account",
+    "subtitle": "Choose an account saved on this device.",
+    "current": "Current",
+    "addAnother": "Add another account",
+    "remove": "Remove from this device",
+    "empty": "No saved accounts on this device.",
+    "password": "Password",
+    "switching": "Switching…"
+  },
+  "roles": {
+    "org_owner": "Owner",
+    "org_admin": "Admin",
+    "org_member": "Member",
+    "ws_admin": "Admin",
+    "ws_manager": "Manager",
+    "ws_analyst": "Analyst",
+    "ws_member": "Member"
+  },
   "footer": {
     "copyright": "© {year} Relativa",
     "rights": "All rights reserved"
@@ -286,7 +305,7 @@
     "tempPassword": "Temporary password",
     "role": "Role",
     "emailAddress": "Email address",
-    "emailPlaceholder": "colleague@example.com",
+    "emailPlaceholder": "colleague{'@'}example.com",
     "roleHint": "Defaults to Member. The assign_org_roles permission is required to invite as Admin.",
     "sendInvitation": "Send invitation",
     "userCreatedSummary": "User created",
@@ -299,7 +318,9 @@
     "cancelInvitationError": "Failed to cancel invitation.",
     "resendSummary": "Invitation resent",
     "resendDetail": "Token rotated and expiry extended.",
-    "resendError": "Failed to resend invitation."
+    "resendError": "Failed to resend invitation.",
+    "searchPlaceholder": "Search members by name or email",
+    "noneFound": "No members match your search."
   },
   "wsMembers": {
     "fallbackName": "Workspace",
@@ -323,7 +344,8 @@
     "roleUpdated": "Role updated",
     "roleUpdateError": "Failed to update role.",
     "removeError": "Failed to remove member.",
-    "loadError": "Failed to load workspace."
+    "loadError": "Failed to load workspace.",
+    "removeTitle": "Remove from workspace"
   },
   "member": {
     "back": "Back to members",
@@ -374,6 +396,9 @@
     "thisAccount": "this account",
     "refresh": "Refresh",
     "scope": "Scope",
+    "workspaceLabel": "Workspace",
+    "selectWorkspace": "Select a workspace",
+    "allWorkspaces": "All workspaces",
     "dateRange": "Date range",
     "action": "Action",
     "dateRangePlaceholder": "From — To",
@@ -384,6 +409,10 @@
     "scopeWorkspace": "Workspace",
     "scopeOrganization": "Organization",
     "scopeUsers": "Users",
+    "typeEntity": "Entity",
+    "typeWorkspace": "Workspace",
+    "typeOrganization": "Organization",
+    "typeUser": "User",
     "empty": "No audit entries match the current filters.",
     "colDate": "Date",
     "colType": "Type",
@@ -806,7 +835,11 @@
     "messageLabel": "How can we help?",
     "send": "Send message",
     "sent": "Thanks! Your message has been sent.",
-    "sendFailed": "Couldn't send your message. Please try again."
+    "sendFailed": "Couldn't send your message. Please try again.",
+    "emailRequired": "Email is required",
+    "emailInvalid": "Enter a valid email",
+    "subjectRequired": "Subject is required",
+    "messageRequired": "Message is required"
   },
   "onboarding": {
     "title": "Get started",

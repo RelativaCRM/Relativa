@@ -16,6 +16,8 @@ import {
   saveString,
 } from '@/api/persistence';
 import { setLocale, currentLocale, consumeLocalePending } from '@/i18n';
+import { rememberAccount, type AccountProvider } from '@/utils/rememberedAccounts';
+import { useInvitationsInbox } from '@/composables/useInvitationsInbox';
 
 const STORAGE_KEY = 'relativa_jwt';
 const EXPIRY_KEY = 'relativa_jwt_expires_at';
@@ -59,6 +61,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null;
     useOrganizationStore().clear();
     useWorkspaceStore().clear();
+    useInvitationsInbox().reset();
   }
 
   async function fetchProfile() {
@@ -85,6 +88,7 @@ export const useAuthStore = defineStore('auth', () => {
     setWorkspace('');
     try {
       await fetchProfile();
+      rememberCurrent('password');
       await syncLocale();
     } catch {
       user.value = null;
@@ -98,6 +102,7 @@ export const useAuthStore = defineStore('auth', () => {
     setWorkspace('');
     try {
       await fetchProfile();
+      rememberCurrent(provider === 'google' || provider === 'microsoft' ? provider : null);
       await syncLocale();
     } catch {
       user.value = null;
@@ -121,6 +126,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   function logout() {
     clearSession();
+  }
+
+  function rememberCurrent(provider: AccountProvider) {
+    const u = user.value;
+    if (!u?.email || !accessToken.value) return;
+    rememberAccount({
+      email: u.email,
+      firstName: u.firstName ?? '',
+      lastName: u.lastName ?? '',
+      provider,
+      accessToken: accessToken.value,
+      expiresAt: expiresAt.value,
+    });
   }
 
   watch(

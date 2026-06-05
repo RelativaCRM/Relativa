@@ -99,7 +99,7 @@ function tryAgain() {
 
         <Button
           type="submit"
-          label="Send reset link"
+          :label="t('auth.sendResetLink')"
           :loading="submitting"
           :class="[
             '!h-11 !rounded-none !font-semibold w-full transition-colors',
@@ -111,7 +111,7 @@ function tryAgain() {
 
         <p class="text-center text-[13px] text-ink-500">
           <RouterLink :to="{ name: 'login' }" class="font-medium text-brand-600 hover:underline">
-            Back to sign in
+            {{ t('auth.backToSignIn') }}
           </RouterLink>
         </p>
       </form>

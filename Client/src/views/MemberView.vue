@@ -6,7 +6,7 @@ import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import { useToast } from 'primevue/usetoast';
-import { roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass, roleLabel } from '@/utils/roleBadge';
 import { orgApi } from '@/api/organizations';
 import {
   workspaceApi,
@@ -332,7 +332,7 @@ onMounted(async () => {
         </p>
       </div>
       <span v-if="member" :class="roleBadgeFullClass(member.roleName)">
-        {{ member.roleDisplayName }}
+        {{ roleLabel(member.roleName, member.roleDisplayName) }}
       </span>
     </div>
 
