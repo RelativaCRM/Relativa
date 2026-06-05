@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import Chart from '@/components/charts/SafeChart.vue';
@@ -297,12 +297,73 @@ function riskClass(bucket: string) {
 function scoreBar(score?: number | null) {
   return score != null ? Math.round(score * 100) : null;
 }
+
+const sliderRef = ref<HTMLElement | null>(null);
+const isDragging = ref(false);
+const dragStartX = ref(0);
+const dragScrollLeft = ref(0);
+let oneSetWidth = 0;
+let resetting = false;
+
+function initSlider() {
+  if (!sliderRef.value || !kpis.value.length) return;
+  oneSetWidth = sliderRef.value.scrollWidth / 3;
+  sliderRef.value.scrollLeft = oneSetWidth;
+}
+
+function onScroll() {
+  if (resetting || !sliderRef.value) return;
+  const { scrollLeft } = sliderRef.value;
+  if (scrollLeft >= oneSetWidth * 2) {
+    resetting = true;
+    sliderRef.value.scrollLeft = scrollLeft - oneSetWidth;
+    requestAnimationFrame(() => { resetting = false; });
+  } else if (scrollLeft <= 0) {
+    resetting = true;
+    sliderRef.value.scrollLeft = oneSetWidth;
+    requestAnimationFrame(() => { resetting = false; });
+  }
+}
+
+function scrollKpi(dir: 'left' | 'right') {
+  sliderRef.value?.scrollBy({ left: dir === 'right' ? 224 : -224, behavior: 'smooth' });
+}
+
+function onPointerDown(e: PointerEvent) {
+  if (!sliderRef.value) return;
+  isDragging.value = true;
+  dragStartX.value = e.clientX;
+  dragScrollLeft.value = sliderRef.value.scrollLeft;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!isDragging.value || !sliderRef.value) return;
+  let next = dragScrollLeft.value - (e.clientX - dragStartX.value);
+  if (next >= oneSetWidth * 2) {
+    next -= oneSetWidth;
+    dragScrollLeft.value -= oneSetWidth;
+  } else if (next < 0) {
+    next += oneSetWidth;
+    dragScrollLeft.value += oneSetWidth;
+  }
+  sliderRef.value.scrollLeft = next;
+}
+
+function onPointerUp() {
+  isDragging.value = false;
+}
+
+watch(kpis, async () => {
+  await nextTick();
+  initSlider();
+});
 </script>
 
 <template>
   <div class="space-y-8">
 
-    
+
     <section class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold text-ink-900">
@@ -321,7 +382,6 @@ function scoreBar(score?: number | null) {
       </button>
     </section>
 
-    
     <div
       v-if="store.error"
       class="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700"
@@ -330,28 +390,53 @@ function scoreBar(score?: number | null) {
       {{ store.error }}
     </div>
 
-    
-    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-      
-      <template v-if="store.isLoadingSummary">
-        <div v-for="i in 6" :key="i" class="h-24 rounded-xl skeleton-shimmer" />
-      </template>
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
+        aria-label="Scroll left"
+        @click="scrollKpi('left')"
+      >
+        <i class="pi pi-chevron-left text-xs" />
+      </button>
 
-      <template v-else-if="store.summary">
-        <div
-          v-for="kpi in kpis"
-          :key="kpi.label"
-          class="flex flex-col gap-2 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
-        >
-          <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
-            <i :class="['pi text-sm', kpi.icon, kpi.color]" />
-          </div>
-          <div>
-            <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-none mb-1">{{ kpi.label }}</p>
-            <p :class="['text-xl font-semibold leading-none', kpi.color]">{{ kpi.value }}</p>
+      <div
+        ref="sliderRef"
+        :class="['kpi-scroll flex-1 min-w-0', isDragging ? 'cursor-grabbing select-none' : 'cursor-grab']"
+        @scroll.passive="onScroll"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointerleave="onPointerUp"
+      >
+        <div v-if="store.isLoadingSummary" class="flex gap-4">
+          <div v-for="i in 8" :key="i" class="kpi-card skeleton-shimmer rounded-xl" />
+        </div>
+        <div v-else-if="kpis.length" class="kpi-row">
+          <div
+            v-for="(kpi, i) in [...kpis, ...kpis, ...kpis]"
+            :key="`${kpi.label}-${i}`"
+            class="kpi-card flex flex-col gap-2 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
+          >
+            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
+              <i :class="['pi text-sm', kpi.icon, kpi.color]" />
+            </div>
+            <div>
+              <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-none mb-1">{{ kpi.label }}</p>
+              <p :class="['text-xl font-semibold leading-none', kpi.color]">{{ kpi.value }}</p>
+            </div>
           </div>
         </div>
-      </template>
+      </div>
+
+      <button
+        type="button"
+        class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
+        aria-label="Scroll right"
+        @click="scrollKpi('right')"
+      >
+        <i class="pi pi-chevron-right text-xs" />
+      </button>
     </div>
 
     
@@ -688,6 +773,29 @@ function scoreBar(score?: number | null) {
 </template>
 
 <style scoped>
+.kpi-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
+}
+.kpi-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.kpi-row {
+  display: flex;
+  gap: 1rem;
+  width: max-content;
+}
+
+.kpi-card {
+  width: 10.5rem;
+  height: 6rem;
+  flex-shrink: 0;
+}
+
 .skeleton-shimmer {
   background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
   background-size: 200% 100%;
