@@ -1,0 +1,149 @@
+## 1. Системні вимоги (Pre-requisites)
+
+Проєкт запускається повністю у **Docker-контейнерах**, тому на хост-машині не потрібно встановлювати .NET, Python чи PostgreSQL — достатньо Docker та Git.
+
+### Обов'язкове ПЗ
+
+| Інструмент | Мінімальна версія | Де завантажити |
+|---|---|---|
+| **Docker Desktop** (Windows / macOS) або **Docker Engine + Compose Plugin** (Linux) | Docker 24.x · Compose 2.x | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) |
+| **Git** | 2.x | [git-scm.com](https://git-scm.com/) |
+
+> **Перевірка:** після встановлення виконайте у терміналі:
+> ```bash
+> docker --version        # Docker version 24.x.x або новіше
+> docker compose version  # Docker Compose version v2.x.x або новіше
+> git --version           # git version 2.x.x
+> ```
+
+---
+
+### Версії ПЗ всередині контейнерів (довідково)
+
+Ці версії зафіксовані у `docker-compose.yaml` та Dockerfile-ах — змінювати їх не потрібно, Docker підтягне образи автоматично.
+
+| Компонент | Технологія | Версія |
+|---|---|---|
+| Authentication, Core, Gateway, Graph, Audit, Migration | .NET / ASP.NET Core | **10.0** |
+| ML-сервіс | Python / Django DRF | Python **3.12** · Django **5.1** |
+| Клієнт (SPA) | Node.js / Vue 3 + Vite | Node.js **20** |
+| База даних | PostgreSQL | **16** (Alpine) |
+| Черга повідомлень | RabbitMQ | **3.13** (Management) |
+| Адмін БД | pgAdmin 4 | **8.14** |
+
+---
+
+### Апаратні ресурси
+
+Стек запускає 10 контейнерів одночасно. Рекомендовані характеристики хост-машини:
+
+| Параметр | Мінімум | Рекомендовано |
+|---|---|---|
+| RAM | 6 GB вільної пам'яті | 8 GB+ |
+| CPU | 2 ядра | 4 ядра+ |
+| Місце на диску | 8 GB (образи + volume) | 10 GB+ |
+
+> На **Windows** рекомендується увімкнути **"Use the WSL 2 based engine"** у налаштуваннях Docker Desktop — це суттєво покращує продуктивність volume-монтування і прискорює старт контейнерів.
+
+---
+
+### Зайняті порти
+
+Перед запуском переконайтесь, що на хост-машині вільні такі порти:
+
+| Порт | Сервіс |
+|---|---|
+| `8080` | Gateway (основна точка входу) |
+| `8081` | Authentication |
+| `8082` | Core |
+| `8083` | Graph |
+| `8084` | ML |
+| `8086` | Audit |
+| `3000` | Клієнт (Vue SPA) |
+| `5432` | PostgreSQL |
+| `5050` | pgAdmin |
+| `5672` / `15672` | RabbitMQ (AMQP / Management UI) |
+| `1025` / `8025` | MailHog (SMTP / Web UI) |
+
+> Якщо якийсь порт зайнятий, змініть відповідну змінну у файлі `.env` (наприклад, `CLIENT_PORT`, `PGADMIN_PORT`, `DB_PORT`) і перезапустіть стек.
+
+## 2. Робота з даними (Database Setup)
+
+Міграції та seed-дані застосовуються **автоматично** під час першого `docker compose up`. Окремих команд для ініціалізації БД немає.
+
+---
+
+### Як це працює
+
+При кожному запуску стеку Docker Compose стартує окремий сервіс `migration`, який:
+
+1. Очікує готовності PostgreSQL (healthcheck `pg_isready`).
+2. Викликає `Database.MigrateAsync()` — застосовує всі EF Core міграції, яких ще немає в `__EFMigrationsHistory`.
+3. Завершується з кодом `0`.
+4. Лише після цього стартують `auth` та `core` (`depends_on: service_completed_successfully`).
+
+```
+postgres (healthy)
+    └─▶ migration (run-to-completion)
+            ├─▶ auth
+            └─▶ core
+```
+
+Виконувати `dotnet ef database update` або будь-яку іншу команду вручну **не потрібно**.
+
+---
+
+### Демонстраційні дані (Seed Data)
+
+Після першого запуску база **не порожня**. Автоматично створюються:
+
+**Системні ролі організації:**
+
+| Роль | Пріоритет | Дозволи |
+|---|---|---|
+| `org_owner` | 0 (найвищий) | Всі org-дозволи |
+| `org_admin` | 1 | Всі, крім `manage_org_roles` та `delete_org_users` |
+| `org_member` | 2 | Немає (базовий рівень) |
+
+**Системні ролі воркспейсу:**
+
+| Роль | Пріоритет | Ключові дозволи |
+|---|---|---|
+| `ws_admin` | 0 | Всі ws-дозволи |
+| `ws_manager` | 1 | Управління учасниками, CRUD сутностей, аналітика |
+| `ws_analyst` | 2 | Перегляд сутностей та аналітики |
+| `ws_member` | 3 | Лише перегляд сутностей |
+
+**Дозволи (`permissions`):** 25 записів (org-scoped та workspace-scoped), включно з `manage_org_workspace_members`, `create_entities`, `edit_entities`, `delete_entities`, `view_analytics` та іншими.
+
+**Демонстраційні сутності** (клієнти, угоди, контракти, аналітика) — готові для ознайомлення з функціональністю без ручного заповнення.
+
+> Власні організації, воркспейси та користувачів необхідно створити через UI або API.
+
+---
+
+### Перегляд бази даних через pgAdmin
+
+Для інспекції схеми та даних доступний pgAdmin:
+
+1. Відкрийте `http://localhost:5050`
+2. Увійдіть з обліковими даними з `.env`:
+   - Email: значення `PGADMIN_DEFAULT_EMAIL` (за замовчуванням `admin@relativa.com`)
+   - Password: значення `PGADMIN_DEFAULT_PASSWORD` (за замовчуванням `admin123`)
+3. Додайте сервер PostgreSQL:
+   - Host: `postgres`
+   - Port: `5432`
+   - Username / Password / Database: відповідно `DB_USER`, `DB_PASS`, `DB_NAME` з `.env` (за замовчуванням усі `relativa`)
+
+---
+
+### Скидання бази до початкового стану
+
+Якщо потрібно повністю очистити дані та застосувати міграції з нуля:
+
+```bash
+docker compose down -v        # зупиняє контейнери та видаляє всі томи
+docker compose up --build -d  # піднімає стек заново, migration застосується повторно
+```
+
+> ⚠️ Прапор `-v` **незворотно видаляє всі дані** PostgreSQL, включно з користувачами, організаціями та сутностями.
