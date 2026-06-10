@@ -53,3 +53,5 @@ WorkspaceDashboardEndpoints.MapWorkspaceDashboardEndpoints(app);
 app.MapHub<GraphHub>("/hubs/graph");
 
 app.Run();
+
+public partial class Program;
