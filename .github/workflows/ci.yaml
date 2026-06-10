@@ -238,10 +238,45 @@ jobs:
           retention-days: 1
 
 
+  graph-integration-tests:
+    name: Graph — Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-graph-integration-${{ hashFiles('Graph/**/*.csproj') }}
+          restore-keys: nuget-graph-integration-
+
+      - name: Restore
+        run: dotnet restore Graph/tests/Relativa.Graph.Integration.Tests/Relativa.Graph.Integration.Tests.csproj
+
+      - name: Build
+        run: dotnet build Graph/tests/Relativa.Graph.Integration.Tests/Relativa.Graph.Integration.Tests.csproj --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test Graph/tests/Relativa.Graph.Integration.Tests/Relativa.Graph.Integration.Tests.csproj --no-build --no-restore --configuration Release --verbosity ${{ inputs.verbosity || 'minimal' }} --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Upload coverage XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml-graph-integration
+          path: ./TestResults/**/coverage.cobertura.xml
+          retention-days: 1
+
+
   coverage-report:
     name: Combined Coverage Report
     runs-on: ubuntu-latest
-    needs: [authentication-unit-tests, core-unit-tests, core-integration-tests, messaging-tests, audit-unit-tests, audit-integration-tests]
+    needs: [authentication-unit-tests, core-unit-tests, core-integration-tests, messaging-tests, audit-unit-tests, audit-integration-tests, graph-integration-tests]
     if: always()
     steps:
       - uses: actions/setup-dotnet@v4
@@ -269,8 +304,52 @@ jobs:
           reportgenerator \
             -reports:"./coverage-xml/**/coverage.cobertura.xml" \
             -targetdir:"./CoverageReport" \
-            -reporttypes:Html \
-            "-assemblyfilters:+Relativa.*.Application;+Relativa.*.Domain;+Relativa.Messaging;+Relativa.Persistence"
+            -reporttypes:"Html;TextSummary;MarkdownSummaryGithub;JsonSummary" \
+            "-assemblyfilters:+Relativa.*" \
+            "-classfilters:-*Dto;-*Request;-*Response;-*Endpoints*;-*Program;-*Generated*;-*Options;-*Exception;-*Routing;-*Versions;-*CompilerServices;-*Migrations*;-*EmailSender;-*SmsSender;-*IdentityVerifier"
+
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          cat ./CoverageReport/Summary.txt || true
+          cat ./CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Enforce per-assembly coverage thresholds
+        env:
+          MIN_LINE: '80'
+          MIN_BRANCH: '80'
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          min_line = float(os.environ['MIN_LINE'])
+          min_branch = float(os.environ['MIN_BRANCH'])
+
+          with open('./CoverageReport/Summary.json', encoding='utf-8-sig') as fh:
+              data = json.load(fh)
+
+          assemblies = data['coverage']['assemblies']
+          failures = []
+
+          for a in assemblies:
+              line = a.get('coverage')
+              branch = a.get('branchcoverage')
+              if line is not None and line < min_line:
+                  failures.append(f"{a['name']}: line {line:.1f}% < {min_line:.0f}%")
+              if branch is not None and branch < min_branch:
+                  failures.append(f"{a['name']}: branch {branch:.1f}% < {min_branch:.0f}%")
+
+          print(f"Evaluated {len(assemblies)} assemblies against line>={min_line:.0f}% branch>={min_branch:.0f}%")
+          if not assemblies:
+              print("Coverage gate FAILED: no assemblies in report (partial/failed upstream suites?)")
+              sys.exit(1)
+          if failures:
+              print("Coverage gate FAILED:")
+              for f in failures:
+                  print("  -", f)
+              sys.exit(1)
+          print("Coverage gate passed.")
+          PY
 
       - name: Upload combined coverage report
         if: always()
@@ -354,12 +433,24 @@ jobs:
         run: npx playwright test
 
       - name: Upload E2E HTML report
+        id: e2e-html-report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-html-report
           path: tests/e2e/html-report
           retention-days: 14
+          if-no-files-found: error
+
+      - name: Link E2E HTML report in summary
+        if: always() && steps.e2e-html-report.outputs.artifact-url != ''
+        run: |
+          {
+            echo "### E2E HTML report"
+            echo "Download the **playwright-html-report** artifact, unzip it, and open \`index.html\`."
+            echo ""
+            echo "[Download report](${{ steps.e2e-html-report.outputs.artifact-url }})"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload E2E screenshots and traces
         if: always()
@@ -375,6 +466,61 @@ jobs:
         with:
           name: playwright-results-json
           path: tests/e2e/results.json
+          retention-days: 14
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
+
+  load-tests:
+    name: Load — Performance Tests
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Create .env
+        run: |
+          cat > .env <<'EOF'
+          DB_NAME=relativa
+          DB_USER=relativa
+          DB_PASS=relativa_pass
+          DB_PORT=5432
+          PGADMIN_DEFAULT_EMAIL=admin@relativa.com
+          PGADMIN_DEFAULT_PASSWORD=admin
+          PGADMIN_PORT=5050
+          JWT_SECRET=super-secret-key-that-should-be-at-least-32-chars!
+          JWT_ISSUER=relativa-auth
+          JWT_AUDIENCE=relativa
+          VITE_GATEWAY_URL=http://localhost:8080
+          CLIENT_PORT=3000
+          EOF
+
+      - name: Start services
+        run: docker compose up -d --build --wait
+        timeout-minutes: 10
+
+      - name: Run load tests
+        env:
+          LOAD_RATE: '20'
+          LOAD_DURATION_SEC: '20'
+          LOAD_P95_MS: '1500'
+          LOAD_MAX_FAIL_RATE: '0.05'
+        run: dotnet run --project LoadTests/Relativa.LoadTests/Relativa.LoadTests.csproj -c Release
+
+      - name: Upload load test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-reports
+          path: |
+            LoadTests/Relativa.LoadTests/load-reports
+            load-reports
           retention-days: 14
 
       - name: Teardown
