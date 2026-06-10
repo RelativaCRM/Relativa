@@ -1,6 +1,6 @@
 param(
     [switch]$CI,
-    [ValidateSet('Unit', 'Integration', 'E2E', 'All')]
+    [ValidateSet('Unit', 'Integration', 'E2E', 'Load', 'All')]
     [string]$Suite = 'Unit'
 )
 
@@ -30,7 +30,7 @@ $ScriptRoot = Find-ProjectRoot $Script:ScriptDir
 Set-Location $ScriptRoot
 
 $Script:AppName         = 'TestR'
-$Script:Ver             = 'v0.02a'
+$Script:Ver             = 'v1.04a'
 $Script:Project         = ''
 $Script:UiWidth         = 66
 $Script:JsonDepth       = 4
@@ -73,6 +73,7 @@ $Script:ReportGeneratorCmd = ''
 $Script:DiscoverGlob       = ''
 $Script:DiscoverIntRegex   = ''
 $Script:E2EReportFolder    = ''
+$Script:LoadProject        = ''
 $Script:CtrlCPending       = $false
 $Script:IsTTY = ([Console]::IsOutputRedirected -eq $false) -and ($host.Name -eq 'ConsoleHost')
 
@@ -237,6 +238,7 @@ function Import-Config {
         if ($props['DiscoverGlob'])       { $Script:DiscoverGlob       = "$($cfg.DiscoverGlob)" }       else { $Script:DiscoverGlob       = '*.csproj' }
         if ($props['DiscoverIntRegex'])   { $Script:DiscoverIntRegex   = "$($cfg.DiscoverIntRegex)" }   else { $Script:DiscoverIntRegex   = '\.Integration\.' }
         if ($props['E2EReportFolder'])   { $Script:E2EReportFolder   = "$($cfg.E2EReportFolder)" }     else { $Script:E2EReportFolder   = 'playwright-report' }
+        if ($props['LoadProject'])        { $Script:LoadProject        = "$($cfg.LoadProject)" }        else { $Script:LoadProject        = 'LoadTests/Relativa.LoadTests/Relativa.LoadTests.csproj' }
         if ($props['E2EBaseUrl'])        { $Script:E2EBaseUrl        = "$($cfg.E2EBaseUrl)" }          else { $Script:E2EBaseUrl        = 'http://localhost:3000' }
     } catch {}
 }
@@ -264,6 +266,7 @@ function Export-Config {
             DiscoverIntRegex = $Script:DiscoverIntRegex
             E2EReportFolder  = $Script:E2EReportFolder
             E2EBaseUrl       = $Script:E2EBaseUrl
+            LoadProject      = $Script:LoadProject
             InfraUpServices  = $Script:InfraUpServices
             DockerFilter     = $Script:DockerFilter
         } | ConvertTo-Json | Set-Content $Script:ConfigFile -Encoding UTF8
@@ -567,7 +570,7 @@ function Get-E2EReportMeta {
     } catch { return $null }
 }
 
-function Archive-E2EReport {
+function Save-E2EReport {
     param([bool]$Ok)
     $src = Join-Path $Script:E2EDir $Script:E2EReportFolder
     if (-not (Test-Path $src)) { return }
@@ -654,11 +657,13 @@ function Invoke-Process {
     }
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
-    [Console]::TreatControlCAsInput = $true
+    $canPollKeys = $false
+    try { $null = [Console]::KeyAvailable; $canPollKeys = $true } catch { $canPollKeys = $false }
+    if ($canPollKeys) { try { [Console]::TreatControlCAsInput = $true } catch { $canPollKeys = $false } }
     try {
         [void]$proc.Start()
         while (-not $proc.HasExited) {
-            if ([Console]::KeyAvailable) {
+            if ($canPollKeys -and [Console]::KeyAvailable) {
                 $key = [Console]::ReadKey($true)
                 $isCtrlC = ($key.Modifiers -band [ConsoleModifiers]::Control) -and ($key.Key -eq [ConsoleKey]::C)
                 if ($key.Key -eq [ConsoleKey]::Escape -or $isCtrlC) {
@@ -668,11 +673,11 @@ function Invoke-Process {
                     break
                 }
             }
-            Start-Sleep -Milliseconds 100
+            if ($canPollKeys) { Start-Sleep -Milliseconds 100 } else { [void]$proc.WaitForExit(250) }
         }
         $exitCode = if ($interrupted) { 1 } else { $proc.ExitCode }
     } finally {
-        [Console]::TreatControlCAsInput = $false
+        if ($canPollKeys) { try { [Console]::TreatControlCAsInput = $false } catch {} }
         try { $proc.Dispose() } catch {}
     }
     return [PSCustomObject]@{ ExitCode = $exitCode; Interrupted = $interrupted }
@@ -744,7 +749,7 @@ function Sync-BackgroundJobs {
                 Add-Log "BG-FAIL $($entry.Module.Short) $dur"
                 try { [Console]::Beep() } catch {}
             }
-            if ($entry.Module.Short -eq 'e2e') { Archive-E2EReport -Ok $ok }
+            if ($entry.Module.Short -eq 'e2e') { Save-E2EReport -Ok $ok }
             try { Remove-Job -Job $entry.Job -Force } catch {}
         }
     }
@@ -905,7 +910,7 @@ function Invoke-E2ESuite {
             $null = Read-Input 'record as fail? [Y/n]>'
             $ok = $false
         } else {
-            Archive-E2EReport -Ok $ok
+            Save-E2EReport -Ok $ok
         }
     } finally { Remove-Item env:PLAYWRIGHT_HTML_OPEN -ErrorAction SilentlyContinue }
     $dur = Format-Elapsed ((Get-Date) - $start)
@@ -920,6 +925,44 @@ function Invoke-E2ESuite {
         $rp = Join-Path $Script:E2EDir "$Script:E2EReportFolder\index.html"
         if (Test-Path $rp) { Write-C "          report: $rp" Yellow }
         Add-Log "FAIL e2e $dur"
+    }
+}
+
+function Invoke-LoadSuite {
+    param([switch]$Background)
+    Write-Sep 'Load'
+    $proj = Join-Path $ScriptRoot $Script:LoadProject
+    if (-not (Test-Path $proj)) { Write-C "  [FAIL]  Load project not found: $proj" Red; return }
+    if ($Background) {
+        $logPath = Join-Path $Script:ResultsDir 'load-bg.log'
+        $job = Start-Job -Name 'load' -ScriptBlock {
+            param([string]$p, [string]$lp)
+            $out = & dotnet run --project $p -c Release 2>&1
+            $out | Out-File $lp -Encoding UTF8
+            $LASTEXITCODE
+        } -ArgumentList $proj, $logPath
+        $fakeModule = [PSCustomObject]@{ Name='Load (NBomber)'; Short='load'; Id=0; Type='Load' }
+        $Script:BgJobs.Add([PSCustomObject]@{
+            Module=$fakeModule; Job=$job; Started=Get-Date; LogPath=$logPath
+            Collected=$false; Ok=$null; Dur=$null; Stopped=$false
+        })
+        Write-C "  [ BG ]  Load  queued as job $($job.Id)" Cyan
+        Add-Log "BG-START load job=$($job.Id)"
+        return
+    }
+    $start = Get-Date
+    $r = Invoke-Process -Command $Script:DotnetCmd -Arguments @('run', '--project', $proj, '-c', 'Release') -WorkDir $ScriptRoot
+    $ok  = (-not $r.Interrupted) -and ($r.ExitCode -eq 0)
+    $dur = Format-Elapsed ((Get-Date) - $start)
+    $Script:Sess.Results.Add([PSCustomObject]@{ Name='Load (NBomber)'; Short='load'; Id=0; Ok=$ok; Dur=$dur; Type='Load' })
+    if ($ok) {
+        Update-AnyFailed
+        Write-C "  [ OK ]  Load  $dur" Green
+        Add-Log "PASS load $dur"
+    } else {
+        $Script:Sess.AnyFailed = $true
+        Write-C "  [FAIL]  Load  $dur  (thresholds breached or services down)" Red
+        Add-Log "FAIL load $dur"
     }
 }
 
@@ -1243,6 +1286,26 @@ function Invoke-Discover {
     Write-C "  [ OK ]  Assemblies.dat   $($asmList.Count) assembly group(s)" Green
     Add-Log "DISCOVER modules=$($modules.Count) assemblies=$($asmList.Count)"
 
+    Write-Ln
+    Write-Sep 'Load suite'
+    $loadProj = @(Get-ChildItem -Path $ScriptRoot -Recurse -Filter '*.csproj' -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.BaseName -notmatch '\.Tests?$' } |
+        Where-Object { $_.BaseName -match '(?i)(load|perf|benchmark)' -or $_.DirectoryName -match '(?i)[\\/](load|perf|benchmark)[a-z]*[\\/]' } |
+        Sort-Object FullName) | Select-Object -First 1
+    if ($loadProj) {
+        $rel = (Get-RelativePath $ScriptRoot $loadProj.FullName) -replace '\\', '/'
+        Write-C "  [ OK ]  Load project      $rel" Green
+        Write-C "          Run with [L] or -Suite Load  (a suite, not a numbered module)" DarkGray
+        if ($Script:LoadProject -ne $rel) {
+            $Script:LoadProject = $rel
+            Export-Config
+            Write-C "  [ OK ]  LoadProject saved to $($Script:AppName).cfg" Green
+            Add-Log "DISCOVER load-project=$rel"
+        }
+    } else {
+        Write-C "  No load / performance project found (optional - configure LoadProject in $($Script:AppName).cfg)." DarkGray
+    }
+
     if (-not (Test-Path $svcFile) -and $Script:ComposeServices.Count -gt 0) {
         Write-Ln
         Write-C "  Services.dat not found.  Write template from compose services? [Y/N]" Yellow
@@ -1399,7 +1462,7 @@ function Show-ReportsPanel {
             if (-not $bg -and $Script:E2EBlobReporter -and (Test-Path $blobDir)) {
                 Push-Location $Script:E2EDir
                 try { & npx playwright merge-reports blob-report --reporter=html } finally { Pop-Location }
-                Archive-E2EReport -Ok $true
+                Save-E2EReport -Ok $true
                 $null = Read-Input 'press Enter'
             } else {
                 Invoke-E2ESuite -Background:$bg
@@ -1706,7 +1769,7 @@ function Show-Jobs {
 
 function Show-Summary {
     if ($Script:Sess.Results.Count -eq 0) { return }
-    $last   = Get-LastResults
+    $last   = @(Get-LastResults)
     $dur    = Format-Elapsed ((Get-Date) - $Script:Sess.Start)
     $passed = @($last | Where-Object { $_.Ok }).Count
     $failed = @($last | Where-Object { -not $_.Ok }).Count
@@ -1761,7 +1824,8 @@ function Show-Help {
     Write-Header 'Help'
     Write-Ln
     Write-Sep 'Suites and modules'
-    Write-C "   A / U / I / E    All / Unit / Integration / E2E" White
+    Write-C "   A / U / I / E / L  All / Unit / Integration / E2E / Load" White
+    Write-C "   L  Load runs the performance suite against the running stack" DarkGray
     Write-C "   123            combine single digits e.g. 123 = modules 1,2,3" White
     Write-C "   1 10 2         space-separated for IDs >= 10" White
     Write-C "   &<cmd>           run in background e.g. &2  &U  &21" White
@@ -1793,6 +1857,7 @@ function Show-Help {
     Write-C "  -CI -Suite All         Unit + Integration + E2E + coverage" White
     Write-C "  -CI -Suite Integration" White
     Write-C "  -CI -Suite E2E" White
+    Write-C "  -CI -Suite Load        Load tests vs running stack, exit 0/1" White
     Write-Ln
     Write-Sep "Log  |  $Script:LogFile" DarkGray
     Write-Ln
@@ -1819,6 +1884,7 @@ function Show-Menu {
     Write-C "   U   Unit" White
     Write-C "   I   Integration                                      [Docker]" White
     Write-C "   E   E2E                                          [Playwright]" White
+    Write-C "   L   Load                                              [Stack]" White
     Write-Ln
     Write-Sep 'Modules'
     foreach ($m in $Script:Modules) {
@@ -1878,9 +1944,10 @@ if ($CI) {
         'Unit'        { Invoke-UnitSuite }
         'Integration' { Invoke-IntegrationSuite }
         'E2E'         { Invoke-E2ESuite }
+        'Load'        { Invoke-LoadSuite }
         'All'         { Invoke-UnitSuite; Invoke-IntegrationSuite -WarnIfUnitFailed; Invoke-E2ESuite }
     }
-    if ($Suite -ne 'E2E') { Invoke-ReportGenerator -AsmFilter $Script:AllAsmFilter }
+    if ($Suite -ne 'E2E' -and $Suite -ne 'Load') { Invoke-ReportGenerator -AsmFilter $Script:AllAsmFilter }
     Show-Summary
     Add-Log 'CI run end'
     exit $(if ($Script:Sess.AnyFailed) { 1 } else { 0 })
@@ -1957,6 +2024,7 @@ while ($true) {
     elseif ($inp -eq 'U') { Invoke-UnitSuite -Background:$bg }
     elseif ($inp -eq 'I') { Invoke-IntegrationSuite -Background:$bg }
     elseif ($inp -eq 'E') { Invoke-E2ESuite -Background:$bg }
+    elseif ($inp -eq 'L') { Invoke-LoadSuite -Background:$bg }
     elseif ($inp -match '^[\d ]+$') {
         $tokens  = if ($Script:MaxModuleId -gt 9 -or $inp -match ' ') {
             @($inp.Trim() -split '\s+' | Where-Object { $_ -ne '' } | ForEach-Object { [int]$_ })
