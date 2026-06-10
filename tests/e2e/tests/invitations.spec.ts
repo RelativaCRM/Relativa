@@ -16,7 +16,6 @@ async function fillLogin(page: Page, email: string, password: string) {
     localStorage.setItem('relativa.localePending', '1');
   });
   await page.locator('#email').fill(email);
-  await page.locator('button[type="submit"]').click();
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
 }
