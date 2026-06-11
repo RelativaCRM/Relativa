@@ -352,4 +352,189 @@ public sealed class EntityFilterIntegrationTests : IAsyncLifetime
         filterType.Should().NotBeNull();
         filterType!.EntityTypeProperties.Should().HaveCount(5);
     }
+
+    private ResolvedFilterCondition IntF(string op, int v) => new(_propIntId, PropertyDataType.Int, op, null, v, null, null, null);
+    private ResolvedFilterCondition DecF(string op, decimal v) => new(_propDecimalId, PropertyDataType.Decimal, op, null, null, v, null, null);
+    private ResolvedFilterCondition BoolF(string op, bool v) => new(_propBoolId, PropertyDataType.Bool, op, null, null, null, v, null);
+    private ResolvedFilterCondition DateF(string op, DateOnly v) => new(_propDateId, PropertyDataType.Date, op, null, null, null, null, v);
+
+    [Fact]
+    public void IntFilter_Eq_MatchesValue()
+    {
+        var (items, _) = GetAll(filters: [IntF("eq", 20)]);
+        items.Should().ContainSingle().Which.Id.Should().Be(_entity2Id);
+    }
+
+    [Fact]
+    public void IntFilter_Neq_ExcludesValue()
+    {
+        var (items, _) = GetAll(filters: [IntF("neq", 20)]);
+        items.Should().NotContain(e => e.Id == _entity2Id);
+    }
+
+    [Fact]
+    public void IntFilter_Lt_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [IntF("lt", 25)]);
+        items.Should().Contain(e => e.Id == _entity2Id).And.NotContain(e => e.Id == _entity3Id);
+    }
+
+    [Fact]
+    public void IntFilter_Gte_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [IntF("gte", 20)]);
+        items.Should().Contain(e => e.Id == _entity2Id).And.Contain(e => e.Id == _entity3Id);
+    }
+
+    [Fact]
+    public void IntFilter_Lte_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [IntF("lte", 20)]);
+        items.Should().Contain(e => e.Id == _entity2Id).And.NotContain(e => e.Id == _entity3Id);
+    }
+
+    [Fact]
+    public void DecimalFilter_Eq_MatchesValue()
+    {
+        var (items, _) = GetAll(filters: [DecF("eq", 2.5m)]);
+        items.Should().ContainSingle().Which.Id.Should().Be(_entity2Id);
+    }
+
+    [Fact]
+    public void DecimalFilter_Neq_ExcludesValue()
+    {
+        var (items, _) = GetAll(filters: [DecF("neq", 2.5m)]);
+        items.Should().NotContain(e => e.Id == _entity2Id);
+    }
+
+    [Fact]
+    public void DecimalFilter_Gt_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [DecF("gt", 2.5m)]);
+        items.Should().Contain(e => e.Id == _entity3Id).And.NotContain(e => e.Id == _entity2Id);
+    }
+
+    [Fact]
+    public void DecimalFilter_Gte_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [DecF("gte", 2.5m)]);
+        items.Should().Contain(e => e.Id == _entity2Id).And.Contain(e => e.Id == _entity3Id);
+    }
+
+    [Fact]
+    public void DecimalFilter_Lte_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [DecF("lte", 2.5m)]);
+        items.Should().Contain(e => e.Id == _entity2Id).And.NotContain(e => e.Id == _entity3Id);
+    }
+
+    [Fact]
+    public void BoolFilter_Neq_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [BoolF("neq", true)]);
+        items.Should().Contain(e => e.Id == _entity2Id);
+    }
+
+    [Fact]
+    public void DateFilter_Eq_MatchesValue()
+    {
+        var (items, _) = GetAll(filters: [DateF("eq", new DateOnly(2025, 6, 1))]);
+        items.Should().ContainSingle().Which.Id.Should().Be(_entity2Id);
+    }
+
+    [Fact]
+    public void DateFilter_Neq_ExcludesValue()
+    {
+        var (items, _) = GetAll(filters: [DateF("neq", new DateOnly(2025, 6, 1))]);
+        items.Should().NotContain(e => e.Id == _entity2Id);
+    }
+
+    [Fact]
+    public void DateFilter_Gt_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [DateF("gt", new DateOnly(2025, 6, 1))]);
+        items.Should().Contain(e => e.Id == _entity3Id).And.NotContain(e => e.Id == _entity2Id);
+    }
+
+    [Fact]
+    public void DateFilter_Lt_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [DateF("lt", new DateOnly(2025, 6, 1))]);
+        items.Should().NotContain(e => e.Id == _entity2Id).And.NotContain(e => e.Id == _entity3Id);
+    }
+
+    [Fact]
+    public void DateFilter_Lte_ReturnsMatching()
+    {
+        var (items, _) = GetAll(filters: [DateF("lte", new DateOnly(2025, 6, 1))]);
+        items.Should().Contain(e => e.Id == _entity2Id).And.NotContain(e => e.Id == _entity3Id);
+    }
+
+    [Fact]
+    public void MultiFieldSort_AppliesThenBy()
+    {
+        var sort = new[]
+        {
+            new EntitySortField(_propBoolId, "asc"),
+            new EntitySortField(_propStringId, "desc"),
+        };
+        var (items, total) = GetAll(sort: sort);
+
+        total.Should().Be(3);
+        items.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task ExcludeLinkedSourceRelType_OmitsLinkedEntities()
+    {
+        int relTypeId;
+        await using (var db = Db())
+        {
+            var rt = new EntityRelationshipType
+            {
+                Name = "src_link", SourceEntityTypeId = _typeId, TargetEntityTypeId = _typeId,
+            };
+            db.Set<EntityRelationshipType>().Add(rt);
+            await db.SaveChangesAsync();
+            relTypeId = rt.Id;
+            db.Set<EntityRelationship>().Add(new EntityRelationship
+            {
+                SourceEntityId = _entity1Id, TargetEntityId = _entity2Id, RelationshipTypeId = relTypeId,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var (items, _) = Sut().GetByWorkspaceAsync(
+            _wsId, _userId, 999, null, null, 0, 100, [], [],
+            excludeLinkedSourceRelTypeId: relTypeId).GetAwaiter().GetResult();
+
+        items.Should().NotContain(e => e.Id == _entity1Id);
+    }
+
+    [Fact]
+    public async Task ExcludeLinkedTargetRelType_OmitsLinkedEntities()
+    {
+        int relTypeId;
+        await using (var db = Db())
+        {
+            var rt = new EntityRelationshipType
+            {
+                Name = "tgt_link", SourceEntityTypeId = _typeId, TargetEntityTypeId = _typeId,
+            };
+            db.Set<EntityRelationshipType>().Add(rt);
+            await db.SaveChangesAsync();
+            relTypeId = rt.Id;
+            db.Set<EntityRelationship>().Add(new EntityRelationship
+            {
+                SourceEntityId = _entity1Id, TargetEntityId = _entity3Id, RelationshipTypeId = relTypeId,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var (items, _) = Sut().GetByWorkspaceAsync(
+            _wsId, _userId, 999, null, null, 0, 100, [], [],
+            excludeLinkedTargetRelTypeId: relTypeId).GetAwaiter().GetResult();
+
+        items.Should().NotContain(e => e.Id == _entity3Id);
+    }
 }
