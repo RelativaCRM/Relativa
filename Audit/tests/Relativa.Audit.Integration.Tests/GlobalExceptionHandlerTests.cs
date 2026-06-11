@@ -3,7 +3,9 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using Relativa.Audit.Application.Exceptions;
 using Relativa.Audit.Middleware;
 using Xunit;
@@ -96,6 +98,49 @@ public sealed class GlobalExceptionHandlerTests
         var (code, body) = await InvokeAsync(new Exception("Something exploded"));
 
         code.Should().Be(StatusCodes.Status500InternalServerError);
+        body.GetProperty("title").GetString().Should().Be("Internal Server Error");
+    }
+
+    [Theory]
+    [InlineData(400, "Bad Request")]
+    [InlineData(401, "Unauthorized")]
+    [InlineData(403, "Forbidden")]
+    [InlineData(404, "Not Found")]
+    [InlineData(409, "Conflict")]
+    [InlineData(418, "Error")]
+    public async Task AppException_MapsStatusCodeTitleAndDomainCode(int status, string expectedTitle)
+    {
+        var (code, body) = await InvokeAsync(new AppException("domain_rule_violated", status, "Domain message"));
+
+        code.Should().Be(status);
+        body.GetProperty("status").GetInt32().Should().Be(status);
+        body.GetProperty("title").GetString().Should().Be(expectedTitle);
+        body.GetProperty("code").GetString().Should().Be("domain_rule_violated",
+            "AppException carries a stable machine-readable code the frontend localizes against");
+        body.GetProperty("detail").GetString().Should().Be("Domain message");
+    }
+
+    [Fact]
+    public async Task DbUpdateException_UniqueViolation_Returns409WithFriendlyDetail()
+    {
+        var pg = new PostgresException("duplicate key value violates unique constraint", "ERROR", "ERROR", "23505");
+
+        var (code, body) = await InvokeAsync(new DbUpdateException("update failed", pg));
+
+        code.Should().Be(StatusCodes.Status409Conflict);
+        body.GetProperty("title").GetString().Should().Be("Conflict");
+        body.GetProperty("detail").GetString().Should().Be("A record with this value already exists.");
+    }
+
+    [Fact]
+    public async Task DbUpdateException_NonUniqueSqlState_FallsThroughToGeneric500()
+    {
+        var pg = new PostgresException("null value in column violates not-null constraint", "ERROR", "ERROR", "23502");
+
+        var (code, body) = await InvokeAsync(new DbUpdateException("update failed", pg));
+
+        code.Should().Be(StatusCodes.Status500InternalServerError,
+            "only the 23505 unique-violation is special-cased; other DB errors stay opaque to the client");
         body.GetProperty("title").GetString().Should().Be("Internal Server Error");
     }
 

@@ -30,7 +30,7 @@ public sealed class OtpNetTotpProvider : ITotpProvider
             var totp = new Totp(Base32Encoding.ToBytes(secret));
             return totp.VerifyTotp(code.Trim(), out _, new VerificationWindow(previous: 1, future: 1));
         }
-        catch (FormatException)
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
             return false;
         }

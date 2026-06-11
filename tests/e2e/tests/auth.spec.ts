@@ -15,7 +15,6 @@ async function fillLogin(page: Page, email: string, password: string) {
     localStorage.setItem('relativa.localePending', '1');
   });
   await page.locator('#email').fill(email);
-  await page.locator('button[type="submit"]').click();
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
 }
@@ -36,11 +35,11 @@ async function loginAsAdmin(page: Page) {
 
 
 test.describe('Rendering', () => {
-  test('login page renders email and submit, password appears only after the email step', async ({ page }) => {
+  test('login page renders email, password and submit in a single step', async ({ page }) => {
     await page.goto(`${BASE}/login`);
     await expect(page.locator('#email')).toBeVisible();
+    await expect(page.locator('#password')).toBeVisible();
     await expect(page.locator('button[type="submit"]')).toBeVisible();
-    await expect(page.locator('#password')).toBeHidden();
   });
 
   test('register page renders identity fields first, credentials after', async ({ page }) => {
@@ -82,7 +81,6 @@ test.describe('Router Guards', () => {
     await page.goto(`${BASE}/members`);
     await expect(page).toHaveURL(/\/login\?redirect=.*members/);
     await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
     await page.locator('#password').fill(ADMIN_PASS);
     await page.locator('button[type="submit"]').click();
     await expect(page).toHaveURL(`${BASE}/members`, { timeout: 10000 });
