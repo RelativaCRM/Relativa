@@ -307,8 +307,8 @@ onMounted(() => {
 
 <style scoped>
 input[type='checkbox'] {
-  appearance: none;
   -webkit-appearance: none;
+  appearance: none;
   width: 1.4rem;
   height: 1.4rem;
   border: 1.5px solid #64748b;

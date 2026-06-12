@@ -7,6 +7,7 @@ import Column from 'primevue/column';
 import DatePicker from 'primevue/datepicker';
 import Select from 'primevue/select';
 import InputText from 'primevue/inputtext';
+import FloatLabel from 'primevue/floatlabel';
 import Message from 'primevue/message';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
@@ -296,59 +297,52 @@ function toggle(rowId: string, slot: 'old' | 'next') {
 
     <template v-else-if="canViewPage">
       <div class="mb-4 flex flex-wrap items-end gap-3 border border-line bg-white p-4">
-        <div class="flex flex-col gap-1.5">
-          <label for="auditScope" class="text-xs font-medium text-ink-600">{{ t('audit.scope') }}</label>
+        <FloatLabel variant="on">
           <Select
             input-id="auditScope"
             v-model="scope"
             :options="scopeOptions"
             option-label="label"
             option-value="value"
-            :aria-label="t('audit.scope')"
             class="!h-10 min-w-[170px]"
           />
-        </div>
+          <label for="auditScope">{{ t('audit.scope') }}</label>
+        </FloatLabel>
 
-        <div v-if="showWorkspacePicker" class="flex flex-col gap-1.5">
-          <label for="auditWorkspace" class="text-xs font-medium text-ink-600">{{ t('audit.workspaceLabel') }}</label>
+        <FloatLabel v-if="showWorkspacePicker" variant="on">
           <Select
             input-id="auditWorkspace"
             v-model="selectedWorkspaceId"
             :options="workspaceOptions"
             option-label="label"
             option-value="value"
-            :placeholder="t('audit.selectWorkspace')"
-            :aria-label="t('audit.workspaceLabel')"
             filter
             class="!h-10 min-w-[220px]"
           />
-        </div>
+          <label for="auditWorkspace">{{ t('audit.workspaceLabel') }}</label>
+        </FloatLabel>
 
-        <div class="flex flex-col gap-1.5">
-          <label for="auditDate" class="text-xs font-medium text-ink-600">{{ t('audit.dateRange') }}</label>
+        <FloatLabel variant="on">
           <DatePicker
             input-id="auditDate"
             v-model="dateRange"
             selection-mode="range"
             :manual-input="false"
             show-button-bar
-            :placeholder="t('audit.dateRangePlaceholder')"
-            :aria-label="t('audit.dateRange')"
             class="!h-10 min-w-[260px]"
           />
-        </div>
+          <label for="auditDate">{{ t('audit.dateRange') }}</label>
+        </FloatLabel>
 
-        <div class="flex flex-col gap-1.5">
-          <label for="auditAction" class="text-xs font-medium text-ink-600">{{ t('audit.action') }}</label>
+        <FloatLabel variant="on">
           <InputText
             id="auditAction"
             v-model="actionFilter"
-            :placeholder="t('audit.actionPlaceholder')"
-            :aria-label="t('audit.action')"
             class="!h-10 min-w-[200px]"
             @keydown.enter="applyFilters"
           />
-        </div>
+          <label for="auditAction">{{ t('audit.action') }}</label>
+        </FloatLabel>
 
         <div class="ml-auto flex gap-2">
           <button class="btn btn-outline btn-sm" :disabled="auditStore.loading" @click="resetFilters">

@@ -336,7 +336,7 @@ onMounted(async () => {
       </span>
     </div>
 
-    <LoadingSkeleton v-if="loading" variant="detail" :rows="5" label="Loading member" />
+    <LoadingSkeleton v-if="loading" variant="detail" :rows="5" :label="t('common.loading')" />
 
     <div v-else-if="!member" class="rounded-xl border border-line bg-white p-6 text-ink-600">
       {{ t('member.notFound') }}
@@ -419,7 +419,7 @@ onMounted(async () => {
           v-else-if="workspaceLoading"
           variant="list"
           :rows="3"
-          label="Loading workspaces"
+          :label="t('common.loading')"
         />
         <div v-else class="space-y-3">
           <div

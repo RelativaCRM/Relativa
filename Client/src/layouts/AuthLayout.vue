@@ -75,7 +75,7 @@ const year = new Date().getFullYear();
     linear-gradient(to right, rgba(37, 99, 235, 0.06) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(37, 99, 235, 0.06) 1px, transparent 1px);
   background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.6), transparent 70%);
   -webkit-mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.6), transparent 70%);
+  mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.6), transparent 70%);
 }
 </style>
