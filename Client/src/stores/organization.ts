@@ -11,6 +11,8 @@ import {
   type UpdateOrganizationSettingsRequest,
 } from '@/api/organizations';
 import { loadNumber, saveNumber } from '@/api/persistence';
+import { getAccountOrg, setAccountOrg } from '@/utils/accountOrgs';
+import { useAuthStore } from '@/stores/auth';
 
 const ORG_KEY = 'relativa_org_id';
 
@@ -30,24 +32,26 @@ export const useOrganizationStore = defineStore('organization', () => {
   function setCurrentOrg(id: number) {
     currentOrgId.value = id;
     saveNumber(ORG_KEY, id);
+    setAccountOrg(useAuthStore().user?.email, id);
   }
 
   async function fetchOrganizations() {
     organizations.value = await orgApi.list();
 
-    // Clear a stored ID that no longer exists in the user's org list
-    if (currentOrgId.value !== null) {
-      const ids = new Set(organizations.value.map((o) => o.id));
-      if (!ids.has(currentOrgId.value)) {
-        currentOrgId.value = null;
-        saveNumber(ORG_KEY, null);
-      }
+    const ids = new Set(organizations.value.map((o) => o.id));
+
+    if (currentOrgId.value !== null && !ids.has(currentOrgId.value)) {
+      currentOrgId.value = null;
+      saveNumber(ORG_KEY, null);
     }
 
-    // Auto-select only when the user belongs to exactly one org —
-    // multi-org users are redirected to the org picker instead.
-    if (!currentOrgId.value && organizations.value.length === 1) {
-      setCurrentOrg(organizations.value[0]!.id);
+    if (!currentOrgId.value) {
+      const remembered = getAccountOrg(useAuthStore().user?.email);
+      if (remembered !== null && ids.has(remembered)) {
+        setCurrentOrg(remembered);
+      } else if (organizations.value.length === 1) {
+        setCurrentOrg(organizations.value[0]!.id);
+      }
     }
 
     return organizations.value;

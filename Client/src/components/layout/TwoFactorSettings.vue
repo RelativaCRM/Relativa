@@ -202,11 +202,11 @@ function downloadCodes() {
       <p class="mt-1 text-[12px] font-medium text-ink-700">{{ t('settings.twoFactor.setupVerify') }}</p>
       <CodeInput v-model="setupCode" numeric :disabled="busy" @complete="confirmEnable" />
       <FormError v-if="error" :message="error" />
-      <div class="flex gap-2 mt-1">
+      <div class="flex gap-2 mt-1 justify-end">
+        <button class="btn btn-outline" @click="goIdle">{{ t('settings.twoFactor.cancel') }}</button>
         <button class="btn btn-primary" :disabled="busy || setupCode.length !== 6" @click="confirmEnable">
           <i :class="busy ? 'pi pi-spin pi-spinner' : 'pi pi-check'" />{{ t('settings.twoFactor.enable') }}
         </button>
-        <button class="btn btn-outline" @click="goIdle">{{ t('settings.twoFactor.cancel') }}</button>
       </div>
     </template>
 

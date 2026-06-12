@@ -75,8 +75,8 @@ function openAccount() {
 
 const { current: currentLocale, changeLocale, locales } = useLocaleSwitch();
 
-const openSubmenu = ref<'lang' | 'appearance' | null>(null);
-function toggleSubmenu(which: 'lang' | 'appearance') {
+const openSubmenu = ref<'lang' | null>(null);
+function toggleSubmenu(which: 'lang') {
   openSubmenu.value = openSubmenu.value === which ? null : which;
 }
 
@@ -86,18 +86,6 @@ function toggleCollapsed() {
   localStorage.setItem('sidebarCollapsed', collapsed.value ? '1' : '0');
 }
 
-type Appearance = 'light' | 'dark' | 'system';
-const appearance = ref<Appearance>(
-  (localStorage.getItem('appearance') as Appearance | null) ?? 'system',
-);
-const appearanceOptions = computed(() => [
-  { value: 'light' as const, label: t('prefs.themeLight') },
-  { value: 'dark' as const, label: t('prefs.themeDark') },
-  { value: 'system' as const, label: t('prefs.themeSystem') },
-]);
-const appearanceLabel = computed(
-  () => appearanceOptions.value.find((o) => o.value === appearance.value)?.label ?? '',
-);
 const localeLabel = computed(() => t(`language.${currentLocale.value}`));
 
 async function selectLanguage(next: AppLocale) {
@@ -105,12 +93,6 @@ async function selectLanguage(next: AppLocale) {
   if (next !== currentLocale.value) {
     await changeLocale(next);
   }
-}
-
-function selectAppearance(next: Appearance) {
-  appearance.value = next;
-  localStorage.setItem('appearance', next);
-  openSubmenu.value = null;
 }
 
 function sectionLabel(name: string): string | null {
@@ -412,28 +394,6 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <div class="relative">
-                <button type="button" class="profile-item" @click="toggleSubmenu('appearance')">
-                  <i class="pi pi-palette" /><span class="flex-1">{{ t('nav.appearance') }}</span>
-                  <span class="text-xs text-ink-400">{{ appearanceLabel }}</span>
-                  <i :class="['pi text-[10px] text-ink-400', openSubmenu === 'appearance' ? 'pi-chevron-left' : 'pi-chevron-right']" />
-                </button>
-                <div
-                  v-if="openSubmenu === 'appearance'"
-                  class="absolute left-full top-0 ml-1 z-10 w-44 bg-white shadow-xl border border-line py-1"
-                >
-                  <button
-                    v-for="opt in appearanceOptions"
-                    :key="opt.value"
-                    type="button"
-                    class="profile-item"
-                    @click="selectAppearance(opt.value)"
-                  >
-                    <span class="flex-1">{{ opt.label }}</span>
-                    <i v-if="opt.value === appearance" class="pi pi-check text-brand-600 text-xs" />
-                  </button>
-                </div>
-              </div>
             </div>
 
             <div class="py-1 border-t border-line">

@@ -128,7 +128,7 @@ onMounted(async () => {
       </button>
     </header>
 
-    <LoadingSkeleton v-if="loading" variant="list" :rows="4" label="Loading workspaces" />
+    <LoadingSkeleton v-if="loading" variant="list" :rows="4" :label="t('common.loading')" />
 
     <div
       v-else-if="!wsStore.workspaces.length"

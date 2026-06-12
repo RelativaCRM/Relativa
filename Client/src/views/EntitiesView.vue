@@ -267,7 +267,7 @@ onMounted(load);
       v-if="loading && !entities.length"
       variant="table"
       :rows="6"
-      label="Loading entities"
+      :label="t('common.loading')"
     />
 
     <div

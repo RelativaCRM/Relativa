@@ -146,7 +146,7 @@ onMounted(async () => {
       </button>
     </header>
 
-    <LoadingSkeleton v-if="loading" variant="list" :rows="4" label="Loading organizations" />
+    <LoadingSkeleton v-if="loading" variant="list" :rows="4" :label="t('common.loading')" />
 
     <div
       v-else-if="!orgStore.organizations.length"

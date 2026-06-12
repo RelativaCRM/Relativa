@@ -618,7 +618,7 @@ watch(
       v-else-if="loadingTypes"
       variant="detail"
       :rows="5"
-      label="Loading entity types"
+      :label="t('common.loading')"
     />
 
     <div

@@ -201,7 +201,7 @@ onMounted(loadAll);
       />
     </div>
 
-    <LoadingSkeleton v-if="loading" variant="detail" :rows="4" label="Loading user profile" />
+    <LoadingSkeleton v-if="loading" variant="detail" :rows="4" :label="t('common.loading')" />
 
     <div
       v-else-if="!member"
