@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DotNet.Testcontainers.Builders;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -341,5 +342,263 @@ public sealed class AuditLogReadRepositoryTests : IAsyncLifetime
         result.Should().NotBeNull();
         result!.Organization.Should().NotBeNull();
         result.Organization!.Name.Should().Be("Test Org");
+    }
+
+    [Fact]
+    public async Task BuildFilterContextAsync_EntityScope_ReturnsWorkspaceContext()
+    {
+        var q = new GetAuditLogQuery("entity", null, null, null, 1, 10, null, null, 1, null, null, null);
+
+        var result = await Sut().BuildFilterContextAsync(q, "entity", CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.Workspace.Should().NotBeNull();
+        result.Workspace!.Name.Should().Be("WS");
+    }
+
+    [Fact]
+    public async Task BuildFilterContextAsync_UserScope_ReturnsNull()
+    {
+        var q = new GetAuditLogQuery("user", null, null, null, 1, 10, null, null, null, null, null, 2);
+
+        var result = await Sut().BuildFilterContextAsync(q, "user", CancellationToken.None);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task EnsureResourcesExistAsync_AllResourcesExist_DoesNotThrow()
+    {
+        var q = new GetAuditLogQuery("entity", null, null, null, 0, 10, 1, null, 1, 1, null, 2);
+        var act = () => Sut().EnsureResourcesExistAsync(q, "entity", CancellationToken.None);
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task EnsureResourcesExistAsync_OrganizationMissing_Throws()
+    {
+        var q = new GetAuditLogQuery("organization", null, null, null, 0, 10, null, null, null, 9999, null, null);
+        var act = () => Sut().EnsureResourcesExistAsync(q, "organization", CancellationToken.None);
+        await act.Should().ThrowAsync<AppException>().WithMessage("*organization*");
+    }
+
+    [Fact]
+    public async Task EnsureResourcesExistAsync_EntityMissing_Throws()
+    {
+        var q = new GetAuditLogQuery("user", null, null, null, 0, 10, 9999, null, null, null, null, null);
+        var act = () => Sut().EnsureResourcesExistAsync(q, "user", CancellationToken.None);
+        await act.Should().ThrowAsync<AppException>().WithMessage("*entity*");
+    }
+
+    [Fact]
+    public async Task EnsureResourcesExistAsync_TargetUserMissing_Throws()
+    {
+        var q = new GetAuditLogQuery("user", null, null, null, 0, 10, null, null, null, null, null, 9999);
+        var act = () => Sut().EnsureResourcesExistAsync(q, "user", CancellationToken.None);
+        await act.Should().ThrowAsync<AppException>().WithMessage("*9999*");
+    }
+
+    [Fact]
+    public async Task GetWorkspaceScopeAsync_ActorFilter_NarrowsResults()
+    {
+        var wsId = 103;
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            db.WorkspaceAuditLogs.AddRange(
+                new WorkspaceAuditLog { Id = Guid.NewGuid(), Action = "updated", WorkspaceId = wsId, ChangedById = 1, ChangedAt = now },
+                new WorkspaceAuditLog { Id = Guid.NewGuid(), Action = "updated", WorkspaceId = wsId, ChangedById = 2, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetWorkspaceScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1), null, actorUserId: 1,
+            wsId, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetOrganizationScopeAsync_ActionFilter_NarrowsResults()
+    {
+        var orgId = 203;
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            db.OrganizationAuditLogs.AddRange(
+                new OrganizationAuditLog { Id = Guid.NewGuid(), Action = "org_created", OrganizationId = orgId, ChangedAt = now },
+                new OrganizationAuditLog { Id = Guid.NewGuid(), Action = "org_updated", OrganizationId = orgId, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetOrganizationScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1), "org_created", null,
+            orgId, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetUserScopeAsync_TargetActionAndActorFilters_NarrowResults()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var action = $"user_filter_{Guid.NewGuid():N}";
+
+        await using (var db = Db())
+        {
+            db.UserAuditLogs.AddRange(
+                new UserAuditLog { Id = Guid.NewGuid(), Action = action, TargetUserId = 10, ChangedById = 10, ChangedAt = now },
+                new UserAuditLog { Id = Guid.NewGuid(), Action = action, TargetUserId = 10, ChangedById = 2, ChangedAt = now },
+                new UserAuditLog { Id = Guid.NewGuid(), Action = "other", TargetUserId = 10, ChangedById = 10, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetUserScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            action, actorUserId: 10, targetUserIdFilter: 10,
+            callerUserId: 10, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetEntityScopeAsync_EntityIdDomainTypeAndActorFilters_Narrow()
+    {
+        var action = $"ent_multi_{Guid.NewGuid():N}";
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            db.EntityAuditLogs.AddRange(
+                new EntityAuditLog { Id = Guid.NewGuid(), Action = action, EntityId = 1, EntityType = "1", ChangedById = 1, ChangedAt = now },
+                new EntityAuditLog { Id = Guid.NewGuid(), Action = action, EntityId = 1, EntityType = "1", ChangedById = 2, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetEntityScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            action, entityId: 1, domainEntityType: "1", actorUserId: 1,
+            workspaceId: 1, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+        result.Data[0].Entity!.EntityTypeName.Should().Be("Client");
+    }
+
+    [Fact]
+    public async Task GetEntityScopeAsync_DeletedEntity_MapsEntityDeletedAndParsesTypeFromEvent()
+    {
+        var action = $"ent_deleted_{Guid.NewGuid():N}";
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE entity_workspace DROP CONSTRAINT IF EXISTS fk_ew_entity;");
+            db.Set<EntityWorkspace>().Add(new EntityWorkspace { Id = 500, EntityId = 500, WorkspaceId = 1 });
+            db.EntityAuditLogs.Add(
+                new EntityAuditLog { Id = Guid.NewGuid(), Action = action, EntityId = 500, EntityType = "1", ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetEntityScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            action, null, null, null,
+            workspaceId: 1, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+        result.Data[0].EntityDeleted.Should().BeTrue();
+        result.Data[0].Entity!.Id.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task GetEntityScopeAsync_WithPropertyDefinitions_BuildsPropertyChanges()
+    {
+        var action = $"ent_props_{Guid.NewGuid():N}";
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            db.Set<Property>().Add(new Property { Id = 600, Name = "amount", DataType = PropertyDataType.Int });
+            db.Set<EntityTypeProperty>().Add(new EntityTypeProperty { EntityTypeId = 1, PropertyId = 600 });
+            db.EntityAuditLogs.Add(new EntityAuditLog
+            {
+                Id = Guid.NewGuid(),
+                Action = action,
+                EntityId = 1,
+                EntityType = "1",
+                ChangedAt = now,
+                OldValue = JsonDocument.Parse("[{\"propertyId\":600,\"value\":\"10\"}]"),
+                NewValue = JsonDocument.Parse("[{\"propertyId\":600,\"value\":\"20\"}]"),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetEntityScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            action, null, null, null,
+            workspaceId: 1, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+        var change = result.Data[0].PropertyChanges.Should().ContainSingle().Subject;
+        change.PropertyId.Should().Be(600);
+        change.OldValue.Should().Be("10");
+        change.NewValue.Should().Be("20");
+    }
+
+    [Fact]
+    public async Task GetEntityScopeAsync_MalformedPropertyJson_YieldsNoPropertyChanges()
+    {
+        var action = $"ent_badjson_{Guid.NewGuid():N}";
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            db.Set<Property>().Add(new Property { Id = 601, Name = "score", DataType = PropertyDataType.Int });
+            db.Set<EntityTypeProperty>().Add(new EntityTypeProperty { EntityTypeId = 1, PropertyId = 601 });
+            db.EntityAuditLogs.Add(new EntityAuditLog
+            {
+                Id = Guid.NewGuid(),
+                Action = action,
+                EntityId = 1,
+                EntityType = "1",
+                ChangedAt = now,
+                NewValue = JsonDocument.Parse("{\"notAnArray\":true}"),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetEntityScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            action, null, null, null,
+            workspaceId: 1, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+        result.Data[0].PropertyChanges.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetEntityScopeAsync_ActorIdWithoutUserRow_MapsActorWithIdOnly()
+    {
+        var action = $"ent_actor_{Guid.NewGuid():N}";
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = Db())
+        {
+            db.EntityAuditLogs.Add(
+                new EntityAuditLog { Id = Guid.NewGuid(), Action = action, EntityId = 1, EntityType = "1", ChangedById = 9999, ChangedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Sut().GetEntityScopeAsync(
+            now.AddMinutes(-1), now.AddMinutes(1),
+            action, null, null, null,
+            workspaceId: 1, 0, 10, 0, null, CancellationToken.None);
+
+        result.Total.Should().Be(1);
+        result.Data[0].Actor.Should().NotBeNull();
+        result.Data[0].Actor!.UserId.Should().Be(9999);
+        result.Data[0].Actor!.Email.Should().BeNull();
     }
 }

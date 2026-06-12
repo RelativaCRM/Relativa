@@ -13,7 +13,6 @@ async function fillLogin(page: Page, email: string, password: string) {
     localStorage.setItem('relativa.localePending', '1');
   });
   await page.locator('#email').fill(email);
-  await page.locator('button[type="submit"]').click();
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
 }
@@ -108,7 +107,9 @@ test.describe('Workspaces Page', () => {
 
   test('workspace brief drawer exposes a settings action', async ({ page }) => {
     await page.getByText(`E2E Workspaces ${ts}`).click();
-    const settingsBtn = page.getByRole('button', { name: 'Settings' });
+    const drawer = page.locator('.p-drawer');
+    await expect(drawer).toBeVisible({ timeout: 5000 });
+    const settingsBtn = drawer.getByRole('button', { name: /settings/i });
     await expect(settingsBtn).toBeVisible();
     await settingsBtn.click();
     await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/settings`), { timeout: 10000 });

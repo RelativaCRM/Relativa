@@ -399,4 +399,136 @@ public sealed class GraphDataServiceTests : IAsyncLifetime
         wsEdges.Should().ContainSingle(e => e.To == $"workspace:{wsA.Id}");
         wsEdges.Should().ContainSingle(e => e.To == $"workspace:{wsB.Id}");
     }
+
+    [Fact]
+    public async Task BuildGraphAsync_OrgMemberManager_IncludesPeersWithEditDeleteAndExcludesArchivedUsers()
+    {
+        var uid = Guid.NewGuid().ToString("N")[..8];
+        var focal = new User { FirstName = uid, LastName = "Admin", Email = uid + "@t.com", Password = "x", CreatedAt = DateTime.UtcNow, IsArchived = false };
+        _db.Users.Add(focal);
+        await _db.SaveChangesAsync();
+        var userId = focal.Id;
+
+        var perms = new[] { "remove_org_members", "edit_other_org_users_profile", "delete_org_users" }
+            .Select(n => new Permission { Name = n }).ToArray();
+        _db.Permissions.AddRange(perms);
+        var adminRole = new OrganizationRole { Name = "org_admin_" + Guid.NewGuid().ToString("N")[..6], Priority = 1 };
+        _db.OrganizationRoles.Add(adminRole);
+        await _db.SaveChangesAsync();
+        foreach (var p in perms)
+            _db.Set<OrganizationRolePermission>().Add(new OrganizationRolePermission { OrgRoleId = adminRole.Id, PermissionId = p.Id });
+        _db.UserRoleOrganizations.Add(new UserRoleOrganization
+        {
+            UserId = userId, OrganizationId = _fixture.OrgId, OrgRoleId = adminRole.Id, JoinedAt = DateTime.UtcNow, IsArchived = false
+        });
+
+        var peer  = new User { FirstName = "Peer",  LastName = "Visible",  Email = Guid.NewGuid().ToString("N")[..8] + "@t.com", Password = "x", CreatedAt = DateTime.UtcNow, IsArchived = false };
+        var ghost = new User { FirstName = "Ghost", LastName = "Archived", Email = Guid.NewGuid().ToString("N")[..8] + "@t.com", Password = "x", CreatedAt = DateTime.UtcNow, IsArchived = true };
+        _db.Users.AddRange(peer, ghost);
+        await _db.SaveChangesAsync();
+        _db.UserRoleOrganizations.AddRange(
+            new UserRoleOrganization { UserId = peer.Id,  OrganizationId = _fixture.OrgId, OrgRoleId = _fixture.OrgRoleId, JoinedAt = DateTime.UtcNow, IsArchived = false },
+            new UserRoleOrganization { UserId = ghost.Id, OrganizationId = _fixture.OrgId, OrgRoleId = _fixture.OrgRoleId, JoinedAt = DateTime.UtcNow, IsArchived = false });
+        await _db.SaveChangesAsync();
+
+        var result = await new GraphDataService(_db, EmptyMl())
+            .BuildGraphAsync(userId, _fixture.OrgId, null, CancellationToken.None);
+
+        var peerNode = result.Nodes.SingleOrDefault(n => n.Type == "user" && n.ResourceId == peer.Id);
+        peerNode.Should().NotBeNull("a member-manager sees other org members as graph nodes");
+        peerNode!.Permissions.Should().Contain(new[] { "view", "edit", "delete" },
+            "edit_other_org_users_profile and delete_org_users surface as edit/delete on peer nodes");
+        result.Nodes.Should().NotContain(n => n.ResourceId == ghost.Id,
+            "an archived user is filtered out even when their membership row is active");
+        result.Edges.Should().ContainSingle(e => e.Type == "user_user" && e.To == $"user:{peer.Id}");
+    }
+
+    [Fact]
+    public async Task BuildGraphAsync_FullWorkspacePermissionsAndLabelledEntity_SetsManageEditDeleteAndResolvesLabel()
+    {
+        var uid  = Guid.NewGuid().ToString("N")[..8];
+        var user = new User { FirstName = uid, LastName = "Perms", Email = uid + "@t.com", Password = "x", CreatedAt = DateTime.UtcNow, IsArchived = false };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+        var ws = new Workspace { Name = "WS-" + uid, IsArchived = false, CreatedByUserId = user.Id, OrganizationId = _fixture.OrgId };
+        _db.Workspaces.Add(ws);
+        await _db.SaveChangesAsync();
+
+        var viewPerm = await _db.Permissions.FirstAsync(p => p.Name == "view_entities");
+        var extraPerms = new[] { "manage_ws_settings", "edit_entities", "delete_entities" }
+            .Select(n => new Permission { Name = n }).ToArray();
+        _db.Permissions.AddRange(extraPerms);
+        var wsRole = new WorkspaceRole { Name = "ws_admin_" + uid, Priority = 1, IsArchived = false };
+        _db.WorkspaceRoles.Add(wsRole);
+        await _db.SaveChangesAsync();
+        foreach (var p in extraPerms.Append(viewPerm))
+            _db.WorkspaceRolePermissions.Add(new WorkspaceRolePermission { WsRoleId = wsRole.Id, PermissionId = p.Id });
+        _db.UserRoleOrganizations.Add(new UserRoleOrganization { UserId = user.Id, OrganizationId = _fixture.OrgId, OrgRoleId = _fixture.OrgRoleId, JoinedAt = DateTime.UtcNow, IsArchived = false });
+        _db.UserRoleWorkspaces.Add(new UserRoleWorkspace { UserId = user.Id, WorkspaceId = ws.Id, WsRoleId = wsRole.Id, JoinedAt = DateTime.UtcNow, IsArchived = false });
+        await _db.SaveChangesAsync();
+
+        var nameProp = new Property { Name = "name", DataType = PropertyDataType.String };
+        _db.Properties.Add(nameProp);
+        await _db.SaveChangesAsync();
+        var client = new Entity { EntityTypeId = _fixture.ClientEntityTypeId, CreatedByUserId = user.Id, IsArchived = false };
+        _db.Entities.Add(client);
+        await _db.SaveChangesAsync();
+        _db.EntityWorkspaces.Add(new EntityWorkspace { EntityId = client.Id, WorkspaceId = ws.Id });
+        _db.EntityPropertyValues.Add(new EntityPropertyValue { EntityId = client.Id, PropertyId = nameProp.Id, ValueString = "Acme Corp" });
+        await _db.SaveChangesAsync();
+
+        var result = await new GraphDataService(_db, EmptyMl())
+            .BuildGraphAsync(user.Id, _fixture.OrgId, null, CancellationToken.None);
+
+        result.Nodes.Single(n => n.Type == "workspace" && n.ResourceId == ws.Id)
+            .Permissions.Should().Contain("manage", "manage_ws_settings elevates the workspace node to manageable");
+        var entityNode = result.Nodes.Single(n => n.ResourceType == "entity" && n.ResourceId == client.Id);
+        entityNode.Permissions.Should().Contain(new[] { "view", "edit", "delete" });
+        entityNode.Label.Should().Be("Acme Corp", "the 'name' property resolves the node label via priority order");
+    }
+
+    [Fact]
+    public async Task BuildGraphAsync_ClientsWithLinkedScoredDeals_AssignBestAndWorstClientHighlights()
+    {
+        var (userId, wsId) = await CreateUserWithWorkspaceAsync();
+
+        var ltvProp = new Property { Name = "client_lifetime_value", DataType = PropertyDataType.Decimal };
+        _db.Properties.Add(ltvProp);
+        await _db.SaveChangesAsync();
+
+        async Task<(int DealId, int ClientId)> AddPairAsync(decimal ltv)
+        {
+            var deal   = new Entity { EntityTypeId = _fixture.DealEntityTypeId,   CreatedByUserId = userId, IsArchived = false };
+            var client = new Entity { EntityTypeId = _fixture.ClientEntityTypeId, CreatedByUserId = userId, IsArchived = false };
+            _db.Entities.AddRange(deal, client);
+            await _db.SaveChangesAsync();
+            _db.EntityWorkspaces.AddRange(
+                new EntityWorkspace { EntityId = deal.Id,   WorkspaceId = wsId },
+                new EntityWorkspace { EntityId = client.Id, WorkspaceId = wsId });
+            _db.EntityRelationships.Add(new EntityRelationship { SourceEntityId = deal.Id, TargetEntityId = client.Id, RelationshipTypeId = _fixture.DealClientRelTypeId });
+            _db.EntityPropertyValues.Add(new EntityPropertyValue { EntityId = client.Id, PropertyId = ltvProp.Id, ValueDecimal = ltv });
+            await _db.SaveChangesAsync();
+            return (deal.Id, client.Id);
+        }
+
+        var (goodDeal, goodClient) = await AddPairAsync(500000m);
+        var (badDeal,  badClient)  = await AddPairAsync(1000m);
+
+        var ml = Substitute.For<IMlScoringClient>();
+        ml.ScoreBatchAsync(Arg.Any<IReadOnlyList<int>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<int, MlScoreDto>
+            {
+                [goodDeal] = new MlScoreDto(goodDeal, 90.0,  5.0, null),
+                [badDeal]  = new MlScoreDto(badDeal,  10.0, 80.0, null),
+            });
+
+        var result = await new GraphDataService(_db, ml)
+            .BuildGraphAsync(userId, _fixture.OrgId, null, CancellationToken.None);
+
+        result.Nodes.Single(n => n.ResourceType == "entity" && n.ResourceId == goodClient)
+            .HighlightTag.Should().Be("best_client",
+            "high closure, low churn and large LTV yield the top composite client score");
+        result.Nodes.Single(n => n.ResourceType == "entity" && n.ResourceId == badClient)
+            .HighlightTag.Should().Be("worst_client");
+    }
 }
