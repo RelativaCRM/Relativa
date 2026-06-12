@@ -10,21 +10,44 @@ export function useEntityRelationshipsHub(
   onChanged: () => void,
 ) {
   let conn: HubConnection | null = null;
+  let starting: Promise<void> | null = null;
+  let stopped = false;
 
   async function start() {
-    conn = buildCoreHubConnection();
-    conn.on(ENTITY_RELATIONSHIPS_CHANGED, onChanged);
-    await conn.start();
-    await conn.invoke('JoinEntity', workspaceId.value, entityId.value);
+    stopped = false;
+    const c = buildCoreHubConnection();
+    conn = c;
+    c.on(ENTITY_RELATIONSHIPS_CHANGED, onChanged);
+    starting = (async () => {
+      try {
+        await c.start();
+        if (stopped) {
+          await c.stop();
+          return;
+        }
+        await c.invoke('JoinEntity', workspaceId.value, entityId.value);
+      } catch {}
+    })();
+    await starting;
   }
 
   async function stop() {
-    if (!conn) return;
-    try {
-      await conn.invoke('LeaveEntity', workspaceId.value, entityId.value);
-    } catch {}
-    await conn.stop();
+    stopped = true;
+    const c = conn;
     conn = null;
+    if (starting) {
+      try {
+        await starting;
+      } catch {}
+      starting = null;
+    }
+    if (!c) return;
+    try {
+      await c.invoke('LeaveEntity', workspaceId.value, entityId.value);
+    } catch {}
+    try {
+      await c.stop();
+    } catch {}
   }
 
   return { start, stop };

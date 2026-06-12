@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import InputText from 'primevue/inputtext';
+import FloatLabel from 'primevue/floatlabel';
 import DatePicker from 'primevue/datepicker';
 import Dialog from 'primevue/dialog';
 import PhoneInput from '@/components/feedback/PhoneInput.vue';
@@ -167,27 +168,33 @@ async function handleConfirmDelete() {
       <form class="p-6 flex flex-col gap-4" novalidate @submit.prevent="handleSaveProfile">
         <div class="grid grid-cols-2 gap-3">
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-ink-600">{{ t('account.firstName') }}</label>
-            <InputText
-              v-model="profileForm.firstName"
-              maxlength="100"
-              class="!h-10"
-              :invalid="!!firstFieldError(profileFieldErrors, 'firstName')"
-              @update:model-value="clearProfileField('firstName')"
-            />
+            <FloatLabel variant="on">
+              <InputText
+                id="acctFirstName"
+                v-model="profileForm.firstName"
+                maxlength="100"
+                class="!h-10 w-full"
+                :invalid="!!firstFieldError(profileFieldErrors, 'firstName')"
+                @update:model-value="clearProfileField('firstName')"
+              />
+              <label for="acctFirstName">{{ t('account.firstName') }}</label>
+            </FloatLabel>
             <small v-if="firstFieldError(profileFieldErrors, 'firstName')" class="text-xs text-danger">
               <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(profileFieldErrors, 'firstName') }}
             </small>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-ink-600">{{ t('account.lastName') }}</label>
-            <InputText
-              v-model="profileForm.lastName"
-              maxlength="100"
-              class="!h-10"
-              :invalid="!!firstFieldError(profileFieldErrors, 'lastName')"
-              @update:model-value="clearProfileField('lastName')"
-            />
+            <FloatLabel variant="on">
+              <InputText
+                id="acctLastName"
+                v-model="profileForm.lastName"
+                maxlength="100"
+                class="!h-10 w-full"
+                :invalid="!!firstFieldError(profileFieldErrors, 'lastName')"
+                @update:model-value="clearProfileField('lastName')"
+              />
+              <label for="acctLastName">{{ t('account.lastName') }}</label>
+            </FloatLabel>
             <small v-if="firstFieldError(profileFieldErrors, 'lastName')" class="text-xs text-danger">
               <i class="pi pi-exclamation-circle mr-1" />{{ firstFieldError(profileFieldErrors, 'lastName') }}
             </small>

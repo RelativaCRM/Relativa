@@ -957,7 +957,7 @@ onUnmounted(() => stopHub());
       {{ errorMessage }}
     </Message>
 
-    <LoadingSkeleton v-if="loading" variant="detail" :rows="6" label="Loading entity" />
+    <LoadingSkeleton v-if="loading" variant="detail" :rows="6" :label="t('common.loading')" />
 
     <template v-else-if="detail">
       <div

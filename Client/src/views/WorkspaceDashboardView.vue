@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import Chart from '@/components/charts/SafeChart.vue';
@@ -302,31 +302,9 @@ const sliderRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
 const dragStartX = ref(0);
 const dragScrollLeft = ref(0);
-let oneSetWidth = 0;
-let resetting = false;
-
-function initSlider() {
-  if (!sliderRef.value || !kpis.value.length) return;
-  oneSetWidth = sliderRef.value.scrollWidth / 3;
-  sliderRef.value.scrollLeft = oneSetWidth;
-}
-
-function onScroll() {
-  if (resetting || !sliderRef.value) return;
-  const { scrollLeft } = sliderRef.value;
-  if (scrollLeft >= oneSetWidth * 2) {
-    resetting = true;
-    sliderRef.value.scrollLeft = scrollLeft - oneSetWidth;
-    requestAnimationFrame(() => { resetting = false; });
-  } else if (scrollLeft <= 0) {
-    resetting = true;
-    sliderRef.value.scrollLeft = oneSetWidth;
-    requestAnimationFrame(() => { resetting = false; });
-  }
-}
 
 function scrollKpi(dir: 'left' | 'right') {
-  sliderRef.value?.scrollBy({ left: dir === 'right' ? 224 : -224, behavior: 'smooth' });
+  sliderRef.value?.scrollBy({ left: dir === 'right' ? 240 : -240, behavior: 'smooth' });
 }
 
 function onPointerDown(e: PointerEvent) {
@@ -339,25 +317,12 @@ function onPointerDown(e: PointerEvent) {
 
 function onPointerMove(e: PointerEvent) {
   if (!isDragging.value || !sliderRef.value) return;
-  let next = dragScrollLeft.value - (e.clientX - dragStartX.value);
-  if (next >= oneSetWidth * 2) {
-    next -= oneSetWidth;
-    dragScrollLeft.value -= oneSetWidth;
-  } else if (next < 0) {
-    next += oneSetWidth;
-    dragScrollLeft.value += oneSetWidth;
-  }
-  sliderRef.value.scrollLeft = next;
+  sliderRef.value.scrollLeft = dragScrollLeft.value - (e.clientX - dragStartX.value);
 }
 
 function onPointerUp() {
   isDragging.value = false;
 }
-
-watch(kpis, async () => {
-  await nextTick();
-  initSlider();
-});
 </script>
 
 <template>
@@ -394,7 +359,7 @@ watch(kpis, async () => {
       <button
         type="button"
         class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
-        aria-label="Scroll left"
+        :aria-label="t('wsDash.scrollLeft')"
         @click="scrollKpi('left')"
       >
         <i class="pi pi-chevron-left text-xs" />
@@ -403,7 +368,6 @@ watch(kpis, async () => {
       <div
         ref="sliderRef"
         :class="['kpi-scroll flex-1 min-w-0', isDragging ? 'cursor-grabbing select-none' : 'cursor-grab']"
-        @scroll.passive="onScroll"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
@@ -414,16 +378,16 @@ watch(kpis, async () => {
         </div>
         <div v-else-if="kpis.length" class="kpi-row">
           <div
-            v-for="(kpi, i) in [...kpis, ...kpis, ...kpis]"
-            :key="`${kpi.label}-${i}`"
-            class="kpi-card flex flex-col gap-2 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
+            v-for="kpi in kpis"
+            :key="kpi.label"
+            class="kpi-card flex flex-col justify-between gap-3 bg-white rounded-xl border border-line px-4 py-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
           >
             <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
               <i :class="['pi text-sm', kpi.icon, kpi.color]" />
             </div>
-            <div>
-              <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-none mb-1">{{ kpi.label }}</p>
-              <p :class="['text-xl font-semibold leading-none', kpi.color]">{{ kpi.value }}</p>
+            <div class="min-w-0">
+              <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-tight mb-1 truncate">{{ kpi.label }}</p>
+              <p :class="['text-xl font-semibold leading-none truncate', kpi.color]">{{ kpi.value }}</p>
             </div>
           </div>
         </div>
@@ -432,7 +396,7 @@ watch(kpis, async () => {
       <button
         type="button"
         class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
-        aria-label="Scroll right"
+        :aria-label="t('wsDash.scrollRight')"
         @click="scrollKpi('right')"
       >
         <i class="pi pi-chevron-right text-xs" />
@@ -777,6 +741,8 @@ watch(kpis, async () => {
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  padding-top: 0.25rem;
+  padding-bottom: 0.5rem;
   -webkit-mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
   mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
 }
@@ -791,8 +757,8 @@ watch(kpis, async () => {
 }
 
 .kpi-card {
-  width: 10.5rem;
-  height: 6rem;
+  width: 11rem;
+  min-height: 6.5rem;
   flex-shrink: 0;
 }
 

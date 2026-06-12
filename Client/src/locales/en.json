@@ -662,6 +662,8 @@
   },
   "wsDash": {
     "overview": "Dashboard overview",
+    "scrollLeft": "Scroll left",
+    "scrollRight": "Scroll right",
     "won": "Won",
     "clients": "Clients",
     "pipelineValue": "Pipeline Value",

@@ -156,7 +156,7 @@ defineExpose({ loadInbox });
       {{ success }}
     </Message>
 
-    <LoadingSkeleton v-if="loading" variant="list" :rows="3" label="Loading invitations" />
+    <LoadingSkeleton v-if="loading" variant="list" :rows="3" :label="t('common.loading')" />
 
     <div
       v-else-if="!hasAnything"

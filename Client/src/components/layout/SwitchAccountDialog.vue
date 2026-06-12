@@ -13,6 +13,8 @@ import {
   type RememberedAccount,
 } from '@/utils/rememberedAccounts';
 import { useInvitationsInbox } from '@/composables/useInvitationsInbox';
+import { useOAuth } from '@/composables/useOAuth';
+import { setAccountOrg } from '@/utils/accountOrgs';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ 'update:visible': [boolean] }>();
@@ -23,6 +25,7 @@ const auth = useAuthStore();
 const orgStore = useOrganizationStore();
 const wsStore = useWorkspaceStore();
 const entityStore = useEntityStore();
+const { signInWithMicrosoft, signInWithGoogle } = useOAuth();
 
 const stored = ref<RememberedAccount[]>([]);
 const switching = ref<string | null>(null);
@@ -88,19 +91,43 @@ function fallbackToLogin(email: string) {
   router.push({ name: 'login', query: { email } });
 }
 
+const isOAuthProvider = (a: RememberedAccount) =>
+  a.provider === 'microsoft' || a.provider === 'google';
+
+async function reauthOAuth(a: RememberedAccount): Promise<boolean> {
+  try {
+    const token =
+      a.provider === 'microsoft'
+        ? await signInWithMicrosoft()
+        : await new Promise<string>((resolve) => signInWithGoogle(resolve));
+    await auth.oauthLogin(a.provider as string, token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function useAccount(a: RememberedAccount) {
   if (a.email === currentEmail.value) {
     close();
     return;
   }
+  if (orgStore.currentOrgId !== null) {
+    setAccountOrg(currentEmail.value, orgStore.currentOrgId);
+  }
   const expired = a.expiresAt != null && new Date(a.expiresAt).getTime() <= Date.now();
-  if (!a.accessToken || expired) {
+  const hasValidToken = Boolean(a.accessToken) && !expired;
+  if (!hasValidToken && !isOAuthProvider(a)) {
     fallbackToLogin(a.email);
     return;
   }
   switching.value = a.email;
   try {
-    auth.setToken(a.accessToken, a.expiresAt);
+    if (hasValidToken) {
+      auth.setToken(a.accessToken, a.expiresAt);
+    } else if (!(await reauthOAuth(a))) {
+      return;
+    }
     clearStores();
     const inbox = useInvitationsInbox();
     inbox.reset();
