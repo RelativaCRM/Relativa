@@ -289,6 +289,14 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
             .ExecuteDeleteAsync(ct);
     }
 
+    public async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action, CancellationToken ct = default)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var result = await action();
+        await tx.CommitAsync(ct);
+        return result;
+    }
+
     public Task UpdateRelationshipSourceAsync(int relationshipId, int newSourceEntityId, CancellationToken ct = default)
         => db.EntityRelationships
             .Where(r => r.Id == relationshipId)

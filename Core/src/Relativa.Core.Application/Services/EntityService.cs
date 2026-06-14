@@ -751,38 +751,41 @@ public sealed class EntityService(
                     throw new AppException("target_cardinality_violation", 400, $"Target entity already has a '{relType.Name}' link (cardinality constraint).");
             }
 
-            await entityRepository.UpdateRelationshipTargetAsync(relationshipId, newTarget.Id, ct);
-
-            if (auditOutboxWriter is not null)
+            result = await entityRepository.ExecuteInTransactionAsync(async () =>
             {
-                await auditOutboxWriter.EnqueueAuditAsync(new AuditEventContract(
-                    EventId: Guid.NewGuid(),
-                    SchemaVersion: 1,
-                    OccurredAtUtc: DateTimeOffset.UtcNow,
-                    SourceService: "core",
-                    ActorUserId: userId,
-                    AuditScope: AuditRouting.ScopeEntity,
-                    TargetId: rel.SourceEntityId,
-                    Action: "relationship_reassigned",
-                    FieldName: relType.Name,
-                    EntityType: relType.SourceEntityTypeId.ToString(CultureInfo.InvariantCulture),
-                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(rel.TargetEntityId),
-                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(newTarget.Id)), ct);
+                await entityRepository.UpdateRelationshipTargetAsync(relationshipId, newTarget.Id, ct);
 
-                await PublishEntityRefreshDomainAsync(
-                    auditOutboxWriter, rel.SourceEntityId, relType.SourceEntityTypeId,
-                    workspaceId, userId, "updated", ct);
-            }
+                if (auditOutboxWriter is not null)
+                {
+                    await auditOutboxWriter.EnqueueAuditAsync(new AuditEventContract(
+                        EventId: Guid.NewGuid(),
+                        SchemaVersion: 1,
+                        OccurredAtUtc: DateTimeOffset.UtcNow,
+                        SourceService: "core",
+                        ActorUserId: userId,
+                        AuditScope: AuditRouting.ScopeEntity,
+                        TargetId: rel.SourceEntityId,
+                        Action: "relationship_reassigned",
+                        FieldName: relType.Name,
+                        EntityType: relType.SourceEntityTypeId.ToString(CultureInfo.InvariantCulture),
+                        OldValueJson: System.Text.Json.JsonSerializer.Serialize(rel.TargetEntityId),
+                        NewValueJson: System.Text.Json.JsonSerializer.Serialize(newTarget.Id)), ct);
+
+                    await PublishEntityRefreshDomainAsync(
+                        auditOutboxWriter, rel.SourceEntityId, relType.SourceEntityTypeId,
+                        workspaceId, userId, "updated", ct);
+                }
+
+                const int previewCap = 12;
+                return new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
+                    relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
+                    newTarget.Id, relType.TargetEntityType.Name,
+                    relType.TargetEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.TargetEntityType.Name),
+                    MapPreview(newTarget, previewCap));
+            }, ct);
 
             if (relationshipNotifier is not null)
                 await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, rel.SourceEntityId, rel.TargetEntityId, newTarget.Id);
-
-            const int previewCap = 12;
-            result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
-                relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
-                newTarget.Id, relType.TargetEntityType.Name,
-                relType.TargetEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.TargetEntityType.Name),
-                MapPreview(newTarget, previewCap));
         }
         else
         {
@@ -802,38 +805,41 @@ public sealed class EntityService(
                     throw new AppException("source_cardinality_violation", 400, $"Source entity already has a '{relType.Name}' link (cardinality constraint).");
             }
 
-            await entityRepository.UpdateRelationshipSourceAsync(relationshipId, newSource.Id, ct);
-
-            if (auditOutboxWriter is not null)
+            result = await entityRepository.ExecuteInTransactionAsync(async () =>
             {
-                await auditOutboxWriter.EnqueueAuditAsync(new AuditEventContract(
-                    EventId: Guid.NewGuid(),
-                    SchemaVersion: 1,
-                    OccurredAtUtc: DateTimeOffset.UtcNow,
-                    SourceService: "core",
-                    ActorUserId: userId,
-                    AuditScope: AuditRouting.ScopeEntity,
-                    TargetId: rel.TargetEntityId,
-                    Action: "relationship_reassigned",
-                    FieldName: relType.Name,
-                    EntityType: relType.TargetEntityTypeId.ToString(CultureInfo.InvariantCulture),
-                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(rel.SourceEntityId),
-                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(newSource.Id)), ct);
+                await entityRepository.UpdateRelationshipSourceAsync(relationshipId, newSource.Id, ct);
 
-                await PublishEntityRefreshDomainAsync(
-                    auditOutboxWriter, rel.TargetEntityId, relType.TargetEntityTypeId,
-                    workspaceId, userId, "updated", ct);
-            }
+                if (auditOutboxWriter is not null)
+                {
+                    await auditOutboxWriter.EnqueueAuditAsync(new AuditEventContract(
+                        EventId: Guid.NewGuid(),
+                        SchemaVersion: 1,
+                        OccurredAtUtc: DateTimeOffset.UtcNow,
+                        SourceService: "core",
+                        ActorUserId: userId,
+                        AuditScope: AuditRouting.ScopeEntity,
+                        TargetId: rel.TargetEntityId,
+                        Action: "relationship_reassigned",
+                        FieldName: relType.Name,
+                        EntityType: relType.TargetEntityTypeId.ToString(CultureInfo.InvariantCulture),
+                        OldValueJson: System.Text.Json.JsonSerializer.Serialize(rel.SourceEntityId),
+                        NewValueJson: System.Text.Json.JsonSerializer.Serialize(newSource.Id)), ct);
+
+                    await PublishEntityRefreshDomainAsync(
+                        auditOutboxWriter, rel.TargetEntityId, relType.TargetEntityTypeId,
+                        workspaceId, userId, "updated", ct);
+                }
+
+                const int previewCap = 12;
+                return new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
+                    relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
+                    newSource.Id, relType.SourceEntityType.Name,
+                    relType.SourceEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.SourceEntityType.Name),
+                    MapPreview(newSource, previewCap));
+            }, ct);
 
             if (relationshipNotifier is not null)
                 await relationshipNotifier.NotifyChangedAsync(workspaceId, ct, rel.SourceEntityId, rel.TargetEntityId, newSource.Id);
-
-            const int previewCap = 12;
-            result = new EntityRelationshipRefDto(rel.Id, relType.Id, relType.Name,
-                relType.DisplayName ?? DisplayNameHelper.Humanize(relType.Name),
-                newSource.Id, relType.SourceEntityType.Name,
-                relType.SourceEntityType.DisplayName ?? DisplayNameHelper.Humanize(relType.SourceEntityType.Name),
-                MapPreview(newSource, previewCap));
         }
 
         return result;
