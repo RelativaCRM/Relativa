@@ -133,4 +133,85 @@ public sealed class EntityPropertyValidationTests
         var request = new CreateEntityRequest(TypeId, [new PropertyValueInput(1, "x")], [new EntityRelationshipLinkInput(10, 5)]);
         (await CodeFromCreate(request)).Should().Be("target_entity_wrong_type");
     }
+
+    private static EntityRelationshipType RelTypeWithCardinality(RelationshipCardinality cardinality, int id = 10, int targetType = 200) =>
+        new() { Id = id, Name = "deal_contact", SourceEntityTypeId = TypeId, TargetEntityTypeId = targetType, RelationshipCardinality = cardinality };
+
+    [Fact]
+    public async Task Link_ManyToOne_TwoDifferentTargets_ThrowsCardinalityViolation()
+    {
+        TypeHas(TypeProp(Prop(1, "a", PropertyDataType.String)));
+        OutgoingHas(RelTypeWithCardinality(RelationshipCardinality.ManyToOne));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(5, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity { Id = 5, EntityTypeId = 200 });
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(6, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity { Id = 6, EntityTypeId = 200 });
+        var request = new CreateEntityRequest(TypeId, [new PropertyValueInput(1, "x")], [
+            new EntityRelationshipLinkInput(10, 5),
+            new EntityRelationshipLinkInput(10, 6)
+        ]);
+        (await CodeFromCreate(request)).Should().Be("source_cardinality_violation");
+    }
+
+    [Fact]
+    public async Task Link_ManyToOne_DuplicateSameTarget_ThrowsDuplicateLink()
+    {
+        TypeHas(TypeProp(Prop(1, "a", PropertyDataType.String)));
+        OutgoingHas(RelTypeWithCardinality(RelationshipCardinality.ManyToOne));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(5, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity { Id = 5, EntityTypeId = 200 });
+        var request = new CreateEntityRequest(TypeId, [new PropertyValueInput(1, "x")], [
+            new EntityRelationshipLinkInput(10, 5),
+            new EntityRelationshipLinkInput(10, 5)
+        ]);
+        (await CodeFromCreate(request)).Should().Be("source_cardinality_violation");
+    }
+
+    [Fact]
+    public async Task Link_OneToOne_TwoDifferentTargets_ThrowsCardinalityViolation()
+    {
+        TypeHas(TypeProp(Prop(1, "a", PropertyDataType.String)));
+        OutgoingHas(RelTypeWithCardinality(RelationshipCardinality.OneToOne));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(5, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity { Id = 5, EntityTypeId = 200 });
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(6, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity { Id = 6, EntityTypeId = 200 });
+        var request = new CreateEntityRequest(TypeId, [new PropertyValueInput(1, "x")], [
+            new EntityRelationshipLinkInput(10, 5),
+            new EntityRelationshipLinkInput(10, 6)
+        ]);
+        (await CodeFromCreate(request)).Should().Be("source_cardinality_violation");
+    }
+
+    [Fact]
+    public async Task Link_OneToMany_DuplicateSameTarget_ThrowsDuplicateLink()
+    {
+        TypeHas(TypeProp(Prop(1, "a", PropertyDataType.String)));
+        OutgoingHas(RelTypeWithCardinality(RelationshipCardinality.OneToMany));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(5, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity { Id = 5, EntityTypeId = 200 });
+        var request = new CreateEntityRequest(TypeId, [new PropertyValueInput(1, "x")], [
+            new EntityRelationshipLinkInput(10, 5),
+            new EntityRelationshipLinkInput(10, 5)
+        ]);
+        (await CodeFromCreate(request)).Should().Be("duplicate_relationship_link");
+    }
+
+    [Fact]
+    public async Task Link_OneToMany_TwoDifferentTargets_Succeeds()
+    {
+        TypeHas(TypeProp(Prop(1, "a", PropertyDataType.String)));
+        OutgoingHas(RelTypeWithCardinality(RelationshipCardinality.OneToMany));
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(5, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity { Id = 5, EntityTypeId = 200 });
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(6, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity { Id = 6, EntityTypeId = 200 });
+        var created = new Entity { Id = 42, EntityTypeId = TypeId };
+        _entityRepo.Setup(r => r.CreateAsync(It.IsAny<Entity>(), It.IsAny<List<EntityPropertyValue>>(), Ws, It.IsAny<IReadOnlyList<EntityRelationship>?>(), It.IsAny<CancellationToken>())).ReturnsAsync(created);
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(42, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(new Entity
+        {
+            Id = 42, EntityTypeId = TypeId, IsArchived = false,
+            EntityType = new EntityType { Id = TypeId, Name = "deal" },
+            EntityPropertyValues = [],
+            SourceRelationships = [],
+            TargetRelationships = []
+        });
+        var request = new CreateEntityRequest(TypeId, [new PropertyValueInput(1, "x")], [
+            new EntityRelationshipLinkInput(10, 5),
+            new EntityRelationshipLinkInput(10, 6)
+        ]);
+        await _sut.Invoking(s => s.CreateAsync(Ws, UserId, request)).Should().NotThrowAsync();
+    }
 }

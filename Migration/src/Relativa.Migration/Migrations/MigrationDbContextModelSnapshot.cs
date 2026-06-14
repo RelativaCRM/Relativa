@@ -422,6 +422,10 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("TargetEntityId")
                         .HasDatabaseName("ix_er_target_entity_id");
 
+                    b.HasIndex("SourceEntityId", "RelationshipTypeId", "TargetEntityId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_er_source_type_target_unique");
+
                     b.ToTable("entity_relationship", (string)null);
                 });
 

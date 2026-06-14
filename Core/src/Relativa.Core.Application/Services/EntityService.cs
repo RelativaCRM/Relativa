@@ -85,6 +85,7 @@ public sealed class EntityService(
         if (request.Links is { Count: > 0 })
         {
             relationshipRows = [];
+            var seenByType = new Dictionary<int, HashSet<int>>();
             foreach (var link in request.Links)
             {
                 var rt = outgoingTypes.FirstOrDefault(o => o.Id == link.RelationshipTypeId)
@@ -95,6 +96,19 @@ public sealed class EntityService(
 
                 if (target.EntityTypeId != rt.TargetEntityTypeId)
                     throw new AppException("target_entity_wrong_type", 400, $"Target entity {link.TargetEntityId} has the wrong entity type for relationship '{rt.Name}'.");
+
+                if (!seenByType.TryGetValue(rt.Id, out var seenTargets))
+                {
+                    seenTargets = [];
+                    seenByType[rt.Id] = seenTargets;
+                }
+                else if (rt.RelationshipCardinality is RelationshipCardinality.ManyToOne or RelationshipCardinality.OneToOne)
+                {
+                    throw new AppException("source_cardinality_violation", 400, $"Relationship '{rt.Name}' allows only one link per source entity (cardinality constraint).");
+                }
+
+                if (!seenTargets.Add(target.Id))
+                    throw new AppException("duplicate_relationship_link", 400, $"Duplicate link: entity {target.Id} via '{rt.Name}' appears more than once in the request.");
 
                 relationshipRows.Add(new EntityRelationship
                 {
