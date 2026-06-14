@@ -40,4 +40,5 @@ public interface IEntityRepository
     Task UpdateRelationshipTargetAsync(int relationshipId, int newTargetEntityId, CancellationToken ct = default);
     Task<int> CountRelationshipsBySourceAsync(int sourceEntityId, int relationshipTypeId, CancellationToken ct = default);
     Task<int> CountRelationshipsByTargetAsync(int targetEntityId, int relationshipTypeId, CancellationToken ct = default);
+    Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action, CancellationToken ct = default);
 }
