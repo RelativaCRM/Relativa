@@ -728,14 +728,14 @@ public sealed class EntityService(
         var rel = await entityRepository.GetRelationshipByIdAsync(relationshipId, ct)
             ?? throw new AppException("relationship_not_found", 404, $"Relationship {relationshipId} not found.");
 
-        if (!rel.SourceEntity.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId))
-            throw new AppException("relationship_not_in_workspace", 403, "Relationship does not belong to an entity in this workspace.");
-
         var relType = rel.RelationshipType;
         EntityRelationshipRefDto result;
 
         if (request.NewTargetEntityId.HasValue)
         {
+            if (!rel.SourceEntity.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId))
+                throw new AppException("relationship_not_in_workspace", 403, "Relationship does not belong to an entity in this workspace.");
+
             var newTarget = await entityRepository.GetByIdInWorkspaceAsync(request.NewTargetEntityId.Value, workspaceId, ct)
                 ?? throw new AppException("target_entity_not_found", 400, $"Target entity {request.NewTargetEntityId.Value} not found in workspace.");
             if (newTarget.IsArchived)
@@ -789,6 +789,9 @@ public sealed class EntityService(
         }
         else
         {
+            if (!rel.TargetEntity.EntityWorkspaces.Any(ew => ew.WorkspaceId == workspaceId))
+                throw new AppException("relationship_not_in_workspace", 403, "Relationship does not belong to an entity in this workspace.");
+
             var newSource = await entityRepository.GetByIdInWorkspaceAsync(request.NewSourceEntityId!.Value, workspaceId, ct)
                 ?? throw new AppException("source_entity_not_found", 400, $"Source entity {request.NewSourceEntityId.Value} not found in workspace.");
             if (newSource.IsArchived)

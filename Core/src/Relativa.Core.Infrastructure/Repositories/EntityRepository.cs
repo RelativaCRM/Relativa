@@ -273,6 +273,7 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
             .Include(r => r.SourceEntity)
                 .ThenInclude(e => e.EntityWorkspaces)
             .Include(r => r.TargetEntity)
+                .ThenInclude(e => e.EntityWorkspaces)
             .FirstOrDefaultAsync(r => r.Id == relationshipId, ct);
 
     public async Task<EntityRelationship> AddRelationshipAsync(EntityRelationship relationship, CancellationToken ct = default)
