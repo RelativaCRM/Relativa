@@ -28,6 +28,7 @@ import {
 } from '@/api/entities';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
 import { hasWorkspacePermission } from '@/utils/workspacePermissions';
+import { getPropertyFormatErrorKey } from '@/utils/propertyValidation';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 type FieldValue = string | number | boolean | Date | null;
@@ -66,8 +67,14 @@ function isPropertyRequired(prop: EntityTypePropertyDto): boolean {
 }
 
 function propertyFieldError(prop: EntityTypePropertyDto): string | null {
-  if (submitAttempted.value && isPropertyRequired(prop) && isPropertyEmpty(prop)) {
+  const shouldValidate = submitAttempted.value || touchedProps.value.has(prop.propertyId);
+  if (shouldValidate && isPropertyRequired(prop) && isPropertyEmpty(prop)) {
     return t('entityForm.fieldRequired');
+  }
+  if (shouldValidate && prop.dataType === 'String') {
+    const raw = values.value[prop.propertyId];
+    const key = getPropertyFormatErrorKey(prop.name, raw != null ? String(raw) : null);
+    if (key) return t(key);
   }
   return (
     firstFieldError(fieldErrors.value, prop.name) ??
@@ -106,6 +113,9 @@ const requiredOutgoing = computed(
 
 const linkPick = reactive<Record<number, number | null>>({});
 const candidatesByRel = ref<Record<number, EntityListItemDto[]>>({});
+
+const touchedProps = ref(new Set<number>());
+const touchedNestedProps = ref(new Set<number>());
 
 const nestedDialogOpen = ref(false);
 const nestedForRel = ref<OutgoingRelationshipDto | null>(null);
@@ -158,6 +168,7 @@ async function openNestedCreate(rel: OutgoingRelationshipDto) {
   nestedError.value = null;
   nestedFieldErrors.value = {};
   nestedSubmitAttempted.value = false;
+  touchedNestedProps.value = new Set();
 
   const nv: Record<number, FieldValue> = {};
   for (const p of target.properties) {
@@ -195,8 +206,14 @@ async function openNestedCreate(rel: OutgoingRelationshipDto) {
 }
 
 function nestedPropertyFieldError(prop: EntityTypePropertyDto): string | null {
-  if (nestedSubmitAttempted.value && isPropertyRequired(prop) && isPropertyEmptyFor(prop, nestedValues.value)) {
+  const shouldValidate = nestedSubmitAttempted.value || touchedNestedProps.value.has(prop.propertyId);
+  if (shouldValidate && isPropertyRequired(prop) && isPropertyEmptyFor(prop, nestedValues.value)) {
     return t('entityForm.fieldRequired');
+  }
+  if (shouldValidate && prop.dataType === 'String') {
+    const raw = nestedValues.value[prop.propertyId];
+    const key = getPropertyFormatErrorKey(prop.name, raw != null ? String(raw) : null);
+    if (key) return t(key);
   }
   return (
     firstFieldError(nestedFieldErrors.value, prop.name) ??
@@ -229,12 +246,12 @@ function clearNestedPropertyFieldError(prop: EntityTypePropertyDto) {
 }
 
 function nestedFormValid(type: EntityTypeDto): boolean {
-  if (
-    !type.properties
-      .filter((p) => !p.isReadonly && p.isRequired)
-      .every((p) => !isPropertyEmptyFor(p, nestedValues.value))
-  ) {
-    return false;
+  for (const p of type.properties.filter((prop) => !prop.isReadonly)) {
+    if (p.isRequired && isPropertyEmptyFor(p, nestedValues.value)) return false;
+    if (p.dataType === 'String') {
+      const raw = nestedValues.value[p.propertyId];
+      if (getPropertyFormatErrorKey(p.name, raw != null ? String(raw) : null)) return false;
+    }
   }
   for (const ir of type.outgoingRelationships.filter((r) => r.isRequired)) {
     if (nestedLinkPick[ir.relationshipTypeId] == null) return false;
@@ -250,6 +267,7 @@ async function submitNestedCreate() {
   if (!rel || !target || !wid) return;
 
   if (!nestedFormValid(target)) {
+    touchedNestedProps.value = new Set(target.properties.map((p) => p.propertyId));
     nestedError.value =
       target.outgoingRelationships.some(
         (r) => r.isRequired && nestedLinkPick[r.relationshipTypeId] == null,
@@ -383,9 +401,14 @@ function isEmpty(v: FieldValue): boolean {
 
 const isFormValid = computed(() => {
   if (!selectedType.value) return false;
-  return properties.value
-    .filter((p) => !p.isReadonly && p.isRequired)
-    .every((p) => !isPropertyEmpty(p));
+  return properties.value.filter((p) => !p.isReadonly).every((p) => {
+    if (p.isRequired && isPropertyEmpty(p)) return false;
+    if (p.dataType === 'String') {
+      const raw = values.value[p.propertyId];
+      if (getPropertyFormatErrorKey(p.name, raw != null ? String(raw) : null)) return false;
+    }
+    return true;
+  });
 });
 
 function pad(n: number): string {
@@ -424,6 +447,7 @@ function resetTypeFields() {
   errorMessage.value = null;
   fieldErrors.value = {};
   submitAttempted.value = false;
+  touchedProps.value = new Set();
 }
 
 function listQuery(): Record<string, string> {
@@ -502,6 +526,7 @@ async function handleSubmit() {
     return;
   }
   if (!isFormValid.value || selectedTypeId.value === null) {
+    touchedProps.value = new Set(properties.value.map((p) => p.propertyId));
     errorMessage.value = t('entityForm.fillBeforeSubmit');
     return;
   }
@@ -736,6 +761,7 @@ watch(
             class="w-full !h-10"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            @blur="touchedProps.add(prop.propertyId)"
           />
 
           <InputText
@@ -745,6 +771,7 @@ watch(
             class="!h-10"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            @blur="touchedProps.add(prop.propertyId)"
           />
 
           <InputNumber
@@ -757,6 +784,7 @@ watch(
             class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            :input-props="{ onBlur: () => touchedProps.add(prop.propertyId) }"
           />
 
           <InputNumber
@@ -770,6 +798,7 @@ watch(
             class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            :input-props="{ onBlur: () => touchedProps.add(prop.propertyId) }"
           />
 
           <DatePicker
@@ -782,6 +811,7 @@ watch(
             class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            @blur="touchedProps.add(prop.propertyId)"
           />
 
           <ToggleSwitch
@@ -883,6 +913,7 @@ watch(
               class="!h-10 w-full"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
+              @blur="touchedNestedProps.add(prop.propertyId)"
             />
 
             <InputNumber
@@ -895,6 +926,7 @@ watch(
               :max-fraction-digits="0"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
+              :input-props="{ onBlur: () => touchedNestedProps.add(prop.propertyId) }"
             />
 
             <InputNumber
@@ -908,6 +940,7 @@ watch(
               :max-fraction-digits="2"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
+              :input-props="{ onBlur: () => touchedNestedProps.add(prop.propertyId) }"
             />
 
             <DatePicker
@@ -920,6 +953,7 @@ watch(
               :input-class="'!h-10 w-full'"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
+              @blur="touchedNestedProps.add(prop.propertyId)"
             />
 
             <ToggleSwitch

@@ -28,6 +28,7 @@ import type {
 } from '@/api/entities';
 import { entityApi } from '@/api/entities';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
+import { getPropertyFormatErrorKey } from '@/utils/propertyValidation';
 import { mlApi, type DealScoreDto } from '@/api/ml';
 import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 import { useEntityRelationshipsHub } from '@/composables/useEntityRelationshipsHub';
@@ -56,6 +57,8 @@ const errorMessage = ref<string | null>(null);
 const detail = ref<EntityDetailDto | null>(null);
 const editMode = ref(false);
 const fieldErrors = ref<FieldErrors>({});
+const editSubmitAttempted = ref(false);
+const touchedEditProps = ref(new Set<number>());
 
 const score = ref<DealScoreDto | null>(null);
 const scoreLoading = ref(false);
@@ -297,6 +300,7 @@ const createLinkOtherRelCandidates = ref<Record<number, EntityListItemDto[]>>({}
 const createLinkSubmitting = ref(false);
 const createLinkError = ref<string | null>(null);
 const createLinkSubmitAttempted = ref(false);
+const touchedCreateLinkProps = ref(new Set<number>());
 
 const createLinkOtherRequired = computed(() => {
   const tab = createLinkTab.value;
@@ -328,7 +332,13 @@ function isCreateLinkPropEmpty(prop: EntityTypePropertyDto): boolean {
 }
 
 function createLinkPropError(prop: EntityTypePropertyDto): string | null {
-  if (createLinkSubmitAttempted.value && isCreateLinkPropEmpty(prop)) return t('entityRead.required');
+  const shouldValidate = createLinkSubmitAttempted.value || touchedCreateLinkProps.value.has(prop.propertyId);
+  if (shouldValidate && prop.isRequired && isCreateLinkPropEmpty(prop)) return t('entityRead.required');
+  if (shouldValidate && prop.dataType === 'String') {
+    const raw = createLinkValues.value[prop.propertyId];
+    const key = getPropertyFormatErrorKey(prop.name, raw != null ? String(raw) : null);
+    if (key) return t(key);
+  }
   return null;
 }
 
@@ -352,6 +362,7 @@ async function openCreateLinkModal(tab: EdgeRelTab) {
   createLinkSubmitAttempted.value = false;
   createLinkError.value = null;
   createLinkSubmitting.value = false;
+  touchedCreateLinkProps.value = new Set();
 
   const vals: Record<number, FieldValue> = {};
   for (const p of targetType.properties.filter((p) => !p.isReadonly)) {
@@ -391,11 +402,13 @@ async function submitCreateLink() {
   createLinkSubmitAttempted.value = true;
 
   const writableProps = targetType.properties.filter((p) => !p.isReadonly);
+  touchedCreateLinkProps.value = new Set(writableProps.map((p) => p.propertyId));
   const hasEmptyRequired = writableProps.some((p) => isCreateLinkPropEmpty(p));
+  const hasFormatError = writableProps.some((p) => !!createLinkPropError(p));
   const hasEmptyRel = createLinkOtherRequired.value.some(
     (r) => createLinkOtherRelPick[r.relationshipTypeId] == null,
   );
-  if (hasEmptyRequired || hasEmptyRel) {
+  if (hasEmptyRequired || hasFormatError || hasEmptyRel) {
     createLinkError.value = t('entityForm.fillRequired');
     return;
   }
@@ -803,11 +816,17 @@ function cancelEdit() {
   if (detail.value) parseDetailToEditValues(detail.value);
   editMode.value = false;
   fieldErrors.value = {};
+  editSubmitAttempted.value = false;
+  touchedEditProps.value = new Set();
 }
 
 async function saveEdit() {
   const d = detail.value;
   if (!d) return;
+  editSubmitAttempted.value = true;
+  touchedEditProps.value = new Set(writableProps.value.map((p) => p.propertyId));
+  const hasClientError = writableProps.value.some((p) => !!editFieldError(p));
+  if (hasClientError) return;
   saving.value = true;
   errorMessage.value = null;
   fieldErrors.value = {};
@@ -841,6 +860,22 @@ function fieldError(prop: EntityPropertyValueDto): string | null {
     firstFieldError(fieldErrors.value, `properties[${prop.propertyId}]`) ??
     firstFieldError(fieldErrors.value, `properties.${prop.propertyId}`)
   );
+}
+
+function editFieldError(prop: EntityPropertyValueDto): string | null {
+  const shouldValidate = editSubmitAttempted.value || touchedEditProps.value.has(prop.propertyId);
+  if (shouldValidate) {
+    const isRequired = typeSchema.value?.properties.find((p) => p.propertyId === prop.propertyId)?.isRequired ?? false;
+    if (isRequired && isEmpty(editValues.value[prop.propertyId] ?? null)) {
+      return t('entityForm.fieldRequired');
+    }
+    if (prop.dataType === 'String') {
+      const raw = editValues.value[prop.propertyId];
+      const key = getPropertyFormatErrorKey(prop.propertyName, raw != null ? String(raw) : null);
+      if (key) return t(key);
+    }
+  }
+  return fieldError(prop);
 }
 
 function requestDeleteEntity() {
@@ -1066,13 +1101,15 @@ onUnmounted(() => stopHub());
                     option-label="displayName"
                     option-value="value"
                     class="w-full !h-10"
-                    :invalid="!!fieldError(p)"
+                    :invalid="!!editFieldError(p)"
+                    @blur="touchedEditProps.add(p.propertyId)"
                   />
                   <InputText
                     v-else-if="p.dataType === 'String'"
                     v-model="editValues[p.propertyId] as string"
                     class="w-full !h-10"
-                    :invalid="!!fieldError(p)"
+                    :invalid="!!editFieldError(p)"
+                    @blur="touchedEditProps.add(p.propertyId)"
                   />
                   <InputNumber
                     v-else-if="p.dataType === 'Int'"
@@ -1081,7 +1118,8 @@ onUnmounted(() => stopHub());
                     :input-class="'!h-10 w-full'"
                     :min-fraction-digits="0"
                     :max-fraction-digits="0"
-                    :invalid="!!fieldError(p)"
+                    :invalid="!!editFieldError(p)"
+                    :input-props="{ onBlur: () => touchedEditProps.add(p.propertyId) }"
                   />
                   <InputNumber
                     v-else-if="p.dataType === 'Decimal'"
@@ -1090,7 +1128,8 @@ onUnmounted(() => stopHub());
                     :input-class="'!h-10 w-full'"
                     :min-fraction-digits="0"
                     :max-fraction-digits="4"
-                    :invalid="!!fieldError(p)"
+                    :invalid="!!editFieldError(p)"
+                    :input-props="{ onBlur: () => touchedEditProps.add(p.propertyId) }"
                   />
                   <DatePicker
                     v-else-if="p.dataType === 'Date'"
@@ -1099,14 +1138,15 @@ onUnmounted(() => stopHub());
                     show-icon
                     class="w-full"
                     :input-class="'!h-10 w-full'"
-                    :invalid="!!fieldError(p)"
+                    :invalid="!!editFieldError(p)"
+                    @blur="touchedEditProps.add(p.propertyId)"
                   />
                   <ToggleSwitch
                     v-else-if="p.dataType === 'Bool'"
                     v-model="editValues[p.propertyId] as boolean"
                   />
-                  <small v-if="fieldError(p)" class="text-xs text-danger block mt-1">
-                    {{ fieldError(p) }}
+                  <small v-if="editFieldError(p)" class="text-xs text-danger block mt-1">
+                    {{ editFieldError(p) }}
                   </small>
                 </template>
                 <template v-else>
@@ -1351,6 +1391,7 @@ onUnmounted(() => stopHub());
             :placeholder="t('entityForm.selectPlaceholder')"
             class="w-full !h-10"
             :invalid="!!createLinkPropError(p)"
+            @blur="touchedCreateLinkProps.add(p.propertyId)"
           />
           <InputText
             v-else-if="p.dataType === 'String'"
@@ -1358,6 +1399,7 @@ onUnmounted(() => stopHub());
             v-model="createLinkValues[p.propertyId] as string"
             class="w-full !h-10"
             :invalid="!!createLinkPropError(p)"
+            @blur="touchedCreateLinkProps.add(p.propertyId)"
           />
           <InputNumber
             v-else-if="p.dataType === 'Int'"
@@ -1367,6 +1409,7 @@ onUnmounted(() => stopHub());
             class="w-full"
             :input-class="'!h-10 w-full'"
             :invalid="!!createLinkPropError(p)"
+            :input-props="{ onBlur: () => touchedCreateLinkProps.add(p.propertyId) }"
           />
           <InputNumber
             v-else-if="p.dataType === 'Decimal'"
@@ -1377,6 +1420,7 @@ onUnmounted(() => stopHub());
             class="w-full"
             :input-class="'!h-10 w-full'"
             :invalid="!!createLinkPropError(p)"
+            :input-props="{ onBlur: () => touchedCreateLinkProps.add(p.propertyId) }"
           />
           <DatePicker
             v-else-if="p.dataType === 'Date'"
@@ -1387,6 +1431,7 @@ onUnmounted(() => stopHub());
             class="w-full"
             :input-class="'!h-10 w-full'"
             :invalid="!!createLinkPropError(p)"
+            @blur="touchedCreateLinkProps.add(p.propertyId)"
           />
           <ToggleSwitch
             v-else-if="p.dataType === 'Bool'"
