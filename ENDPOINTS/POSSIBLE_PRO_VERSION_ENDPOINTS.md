@@ -1,6 +1,6 @@
 # Relativa CRM — Endpoint Monetization Tiers
 
-> This document classifies all 101 API endpoints across three pricing tiers.
+> This document classifies all 103 API endpoints across three pricing tiers.
 > Use it as the foundation for implementing rate-limiting middleware and feature gates in the API Gateway.
 
 ---
@@ -9,15 +9,15 @@
 
 | Symbol | Tier | Description |
 |--------|------|-------------|
-| 🆓 | **Free** | Fully available at no cost — no volume restrictions |
-| 💎 | **Pro** | Requires a Pro subscription to access |
-| ♾️ | **Unlimited** | Accessible on all tiers but rate-limited on Free/Pro; the Unlimited plan removes all caps |
+| 🆓 | **Starter** | Fully available at no cost — no volume restrictions |
+| 💎 | **Growth** | Requires a Growth subscription to access |
+| ♾️ | **Enterprise** | Accessible on all tiers but rate-limited on Starter/Growth; the Enterprise plan removes all caps |
 
 > Endpoints marked ♾️ are always reachable but return `429 Too Many Requests` once the tier quota is exceeded.
 
 ---
 
-## 1. Authentication — 🆓 Free
+## 1. Authentication — 🆓 Starter
 
 **Base path:** `/api/v1/auth`
 
@@ -83,7 +83,7 @@
 
 ---
 
-## 2. Support — 🆓 Free
+## 2. Support — 🆓 Starter
 
 **Base path:** `/api/v1/support`
 
@@ -95,7 +95,7 @@
 
 ---
 
-## 3. Organizations — 🆓 Free / ♾️ Unlimited
+## 3. Organizations — 🆓 Starter / ♾️ Enterprise
 
 **Base path:** `/api/v1/organizations`
 
@@ -112,11 +112,11 @@
 | 🆓 | `PUT` | `/api/v1/organizations/{id}` | Organization update |
 | 🆓 | `GET` | `/api/v1/organizations/{id}/settings` | Settings read |
 | 🆓 | `PUT` | `/api/v1/organizations/{id}/settings` | Settings update |
-| ♾️ | `POST` | `/api/v1/organizations/{organizationId}/users` | Bulk user import — Free: 50/day · Pro: 500/day · Unlimited: no cap |
+| ♾️ | `POST` | `/api/v1/organizations/{organizationId}/users` | Bulk user import — Starter: 50/day · Growth: 500/day · Enterprise: no cap |
 | 🆓 | `PATCH` | `/api/v1/organizations/{organizationId}/users/{userId}` | User profile update |
 | 🆓 | `DELETE` | `/api/v1/organizations/{organizationId}/users/{userId}` | User removal |
 
-### 3.1 Organization Members — 🆓 Free
+### 3.1 Organization Members — 🆓 Starter
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
@@ -124,18 +124,18 @@
 | 🆓 | `DELETE` | `/api/v1/organizations/{organizationId}/members/{userId}` | Remove member |
 | 🆓 | `PUT` | `/api/v1/organizations/{organizationId}/members/{userId}/role` | Change member role |
 
-### 3.2 Organization Roles — 🆓 Free (read) / 💎 Pro (create & manage)
+### 3.2 Organization Roles — 🆓 Starter (read) / 💎 Growth (create & manage)
 
 **Rationale:** Listing available roles is required by the UI for any user. Creating and managing custom roles is an enterprise-grade access control feature: companies with 10+ people across multiple teams need granular permission structures that go beyond the built-in defaults.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
 | 🆓 | `GET` | `/api/v1/organizations/{organizationId}/roles` | List built-in and custom roles |
-| 💎 | `POST` | `/api/v1/organizations/{organizationId}/roles` | Create custom role — Pro feature |
-| 💎 | `PUT` | `/api/v1/organizations/{organizationId}/roles/{roleId}` | Update custom role — Pro feature |
-| 💎 | `DELETE` | `/api/v1/organizations/{organizationId}/roles/{roleId}` | Archive custom role — Pro feature |
+| 💎 | `POST` | `/api/v1/organizations/{organizationId}/roles` | Create custom role — Growth feature |
+| 💎 | `PUT` | `/api/v1/organizations/{organizationId}/roles/{roleId}` | Update custom role — Growth feature |
+| 💎 | `DELETE` | `/api/v1/organizations/{organizationId}/roles/{roleId}` | Archive custom role — Growth feature |
 
-### 3.3 Organization Invitations — 🆓 Free
+### 3.3 Organization Invitations — 🆓 Starter
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
@@ -144,7 +144,7 @@
 | 🆓 | `DELETE` | `/api/v1/organizations/{organizationId}/invitations/{invitationId}` | Cancel invitation |
 | 🆓 | `POST` | `/api/v1/organizations/{organizationId}/invitations/{invitationId}/resend` | Resend invitation |
 
-### 3.4 Organization Join Requests — 🆓 Free
+### 3.4 Organization Join Requests — 🆓 Starter
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
@@ -154,7 +154,7 @@
 
 ---
 
-## 4. Workspaces — 🆓 Free
+## 4. Workspaces — 🆓 Starter
 
 **Base path:** `/api/v1/workspaces`
 
@@ -170,7 +170,7 @@
 | 🆓 | `GET` | `/api/v1/workspaces/{id}/settings` | Settings read |
 | 🆓 | `PUT` | `/api/v1/workspaces/{id}/settings` | Settings update |
 
-### 4.1 Workspace Members — 🆓 Free
+### 4.1 Workspace Members — 🆓 Starter
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
@@ -179,20 +179,20 @@
 | 🆓 | `PUT` | `/api/v1/workspaces/{workspaceId}/members/{userId}/role` | Update member role |
 | 🆓 | `DELETE` | `/api/v1/workspaces/{workspaceId}/members/{userId}` | Remove member |
 
-### 4.2 Workspace Roles — 🆓 Free (read) / 💎 Pro (create & manage)
+### 4.2 Workspace Roles — 🆓 Starter (read) / 💎 Growth (create & manage)
 
-**Rationale:** Same logic as organization roles — reading is free, custom role management is a Pro feature enabling fine-grained access control within individual workspaces.
+**Rationale:** Same logic as organization roles — reading is free, custom role management is a Growth feature enabling fine-grained access control within individual workspaces.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
 | 🆓 | `GET` | `/api/v1/workspaces/{workspaceId}/roles` | List roles |
-| 💎 | `POST` | `/api/v1/workspaces/{workspaceId}/roles` | Create custom role — Pro feature |
-| 💎 | `PUT` | `/api/v1/workspaces/{workspaceId}/roles/{roleId}` | Update custom role — Pro feature |
-| 💎 | `DELETE` | `/api/v1/workspaces/{workspaceId}/roles/{roleId}` | Archive custom role — Pro feature |
+| 💎 | `POST` | `/api/v1/workspaces/{workspaceId}/roles` | Create custom role — Growth feature |
+| 💎 | `PUT` | `/api/v1/workspaces/{workspaceId}/roles/{roleId}` | Update custom role — Growth feature |
+| 💎 | `DELETE` | `/api/v1/workspaces/{workspaceId}/roles/{roleId}` | Archive custom role — Growth feature |
 
 ---
 
-## 5. Permissions — 🆓 Free
+## 5. Permissions — 🆓 Starter
 
 **Base path:** `/api/v1/permissions`
 
@@ -202,7 +202,7 @@
 
 ---
 
-## 6. Invitations (user-scoped) — 🆓 Free
+## 6. Invitations (user-scoped) — 🆓 Starter
 
 **Base path:** `/api/v1/invitations`
 
@@ -215,7 +215,7 @@
 
 ---
 
-## 7. Join Requests (user-scoped) — 🆓 Free
+## 7. Join Requests (user-scoped) — 🆓 Starter
 
 **Base path:** `/api/v1/join-requests`
 
@@ -226,7 +226,7 @@
 
 ---
 
-## 8. Entities — 🆓 Free / ♾️ Unlimited
+## 8. Entities — 🆓 Starter / ♾️ Enterprise
 
 **Base path:** `/api/v1/workspaces/{workspaceId}/entities`
 
@@ -236,13 +236,13 @@
 |------|--------|------|------|
 | 🆓 | `GET` | `/api/v1/workspaces/{workspaceId}/entities/` | List entities with filtering and pagination |
 | 🆓 | `GET` | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | Entity detail view |
-| ♾️ | `POST` | `/api/v1/workspaces/{workspaceId}/entities/` | Create entity — Free: 100/day · Pro: 1,000/day · Unlimited: no cap |
+| ♾️ | `POST` | `/api/v1/workspaces/{workspaceId}/entities/` | Create entity — Starter: 100/day · Growth: 1,000/day · Enterprise: no cap |
 | 🆓 | `PATCH` | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | Partial entity update |
 | 🆓 | `DELETE` | `/api/v1/workspaces/{workspaceId}/entities/{entityId}` | Archive entity |
 
 ---
 
-## 9. Entity Types — 🆓 Free
+## 9. Entity Types — 🆓 Starter
 
 **Base path:** `/api/v1/entity-types`
 
@@ -252,7 +252,7 @@
 
 ---
 
-## 10. Entity Relationships — 🆓 Free
+## 10. Entity Relationships — 🆓 Starter
 
 **Base path:** `/api/v1/workspaces/{workspaceId}/entity-relationships`
 
@@ -266,31 +266,31 @@
 
 ---
 
-## 11. Entity Graph RPC — ♾️ Unlimited
+## 11. Entity Graph RPC — ♾️ Enterprise
 
 **Base path:** `/api/v1/workspaces/{workspaceId}/entity-graph`
 
-**Rationale:** The Graph RPC endpoint performs a composite transaction: it creates an entity and its relationships in a single database operation, updating the graph index atomically. This is significantly more compute-intensive than a simple entity creation. Rate-limited across all tiers; the Unlimited plan removes the cap for teams doing bulk data migrations.
+**Rationale:** The Graph RPC endpoint performs a composite transaction: it creates an entity and its relationships in a single database operation, updating the graph index atomically. This is significantly more compute-intensive than a simple entity creation. Rate-limited across all tiers; the Enterprise plan removes the cap for teams doing bulk data migrations.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
-| ♾️ | `POST` | `/api/v1/workspaces/{workspaceId}/entity-graph/create` | Composite creation — Free: 20/day · Pro: 200/day · Unlimited: no cap |
+| ♾️ | `POST` | `/api/v1/workspaces/{workspaceId}/entity-graph/create` | Composite creation — Starter: 20/day · Growth: 200/day · Enterprise: no cap |
 
 ---
 
-## 12. Graph Query — 💎 Pro
+## 12. Graph Query — 💎 Growth
 
 **Base path:** `/api/v1/graph`
 
-**Rationale:** Visual network analysis — seeing the full entity graph with risk-level filters — is an advanced intelligence feature. It requires real-time graph traversal across potentially thousands of nodes and edges. This is the core visual differentiator of Relativa vs. conventional CRMs, and belongs in the Pro tier.
+**Rationale:** Visual network analysis — seeing the full entity graph with risk-level filters — is an advanced intelligence feature. It requires real-time graph traversal across potentially thousands of nodes and edges. This is the core visual differentiator of Relativa vs. conventional CRMs, and belongs in the Growth tier.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
-| 💎 | `GET` | `/api/v1/graph/` | Graph visualization with risk-level filtering — Pro feature |
+| 💎 | `GET` | `/api/v1/graph/` | Graph visualization with risk-level filtering — Growth feature |
 
 ---
 
-## 13. Dashboard — Organization — 💎 Pro
+## 13. Dashboard — Organization — 💎 Growth
 
 **Base path:** `/api/v1/dashboard`
 
@@ -307,7 +307,7 @@
 
 ---
 
-## 14. Dashboard — Workspace — 💎 Pro
+## 14. Dashboard — Workspace — 💎 Growth
 
 **Base path:** `/api/v1/dashboard/workspace/{workspaceId}`
 
@@ -324,9 +324,9 @@
 
 ---
 
-## 15. Audit Log — 💎 Pro
+## 15. Audit Log — 💎 Growth
 
-**Rationale:** A compliance-grade audit trail with 13 filter parameters (date range, actor, target, workspace, organization, action type, etc.) is a governance feature. Enterprises and regulated industries need this for security audits, compliance reviews, and incident investigations. This is a strong Pro conversion driver for larger teams.
+**Rationale:** A compliance-grade audit trail with 13 filter parameters (date range, actor, target, workspace, organization, action type, etc.) is a governance feature. Enterprises and regulated industries need this for security audits, compliance reviews, and incident investigations. This is a strong Growth conversion driver for larger teams.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
@@ -335,32 +335,32 @@
 
 ---
 
-## 16. ML Scoring — 💎 Pro / ♾️ Unlimited
+## 16. ML Scoring — 💎 Growth / ♾️ Enterprise
 
 **Base path:** `/api/ml`
 
-**Rationale:** ML inference is compute-intensive and uses a dedicated ML microservice. The feature is unlocked at Pro to cover infrastructure costs. Batch size is capped on Pro (≤ 100 entities per call) and unlimited on the Unlimited plan to support large-scale scoring pipelines.
+**Rationale:** ML inference is compute-intensive and uses a dedicated ML microservice. The feature is unlocked at Growth to cover infrastructure costs. Batch size is capped on Growth (≤ 100 entities per call) and unlimited on the Enterprise plan to support large-scale scoring pipelines.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
-| 💎/♾️ | `POST` | `/api/ml/score/batch` | Deal closure + churn scoring — Pro: batch ≤ 100 · Unlimited: no batch cap |
+| 💎/♾️ | `POST` | `/api/ml/score/batch` | Deal closure + churn scoring — Growth: batch ≤ 100 · Enterprise: no batch cap |
 
 ---
 
-## 17. Real-time Hubs (SignalR) — ♾️ Unlimited
+## 17. Real-time Hubs (SignalR) — ♾️ Enterprise
 
-**Rationale:** Real-time updates are a baseline collaborative feature — the product works noticeably worse without them. Available on all tiers, but concurrent WebSocket connection count is capped. Large teams with many browser sessions simultaneously open benefit from the Unlimited plan.
+**Rationale:** Real-time updates are a baseline collaborative feature — the product works noticeably worse without them. Available on all tiers, but concurrent WebSocket connection count is capped. Large teams with many browser sessions simultaneously open benefit from the Enterprise plan.
 
 | Tier | Hub URL | Note |
 |------|---------|------|
-| ♾️ | `/graph/hubs/graph` | Real-time graph updates — Free: 3 concurrent · Pro: 20 concurrent · Unlimited: no cap |
-| ♾️ | `/core/hubs/core` | Real-time entity updates — Free: 3 concurrent · Pro: 20 concurrent · Unlimited: no cap |
+| ♾️ | `/graph/hubs/graph` | Real-time graph updates — Starter: 3 concurrent · Growth: 20 concurrent · Enterprise: no cap |
+| ♾️ | `/core/hubs/core` | Real-time entity updates — Starter: 3 concurrent · Growth: 20 concurrent · Enterprise: no cap |
 
 ---
 
 ## Summary
 
-| Domain | Endpoints | 🆓 Free | 💎 Pro | ♾️ Unlimited |
+| Domain | Endpoints | 🆓 Starter | 💎 Growth | ♾️ Enterprise |
 |--------|-----------|---------|--------|-------------|
 | Authentication | 28 | 28 | — | — |
 | Support | 1 | 1 | — | — |
@@ -387,5 +387,5 @@
 | SignalR Hubs | 2 | — | — | 2 |
 | **Total** | **103** | **76** | **22** | **5** |
 
-> \* ML Scoring is unlocked at **Pro** but the Unlimited plan removes the batch size cap.
-> ♾️ Unlimited endpoints are accessible at lower tiers but subject to daily/concurrent limits shown in each section.
+> \* ML Scoring is unlocked at **Growth** but the Enterprise plan removes the batch size cap.
+> ♾️ Enterprise endpoints are accessible at lower tiers but subject to daily/concurrent limits shown in each section.
