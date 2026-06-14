@@ -39,6 +39,9 @@ public sealed class EntityRelationshipServiceTests
         _auditOutboxWriter
             .Setup(w => w.EnqueueDomainAsync(It.IsAny<string>(), It.IsAny<DomainMessageEnvelope>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        _entityRepo
+            .Setup(r => r.ExecuteInTransactionAsync(It.IsAny<Func<Task<EntityRelationshipRefDto>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<Task<EntityRelationshipRefDto>> action, CancellationToken _) => action());
 
         _sut = new EntityService(
             _entityRepo.Object, _workspaceAccess.Object, _memberRepo.Object,

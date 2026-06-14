@@ -31,6 +31,15 @@ public sealed class EntityServiceRelationshipTests
         _workspaceAccess
             .Setup(x => x.HasWorkspacePermissionAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        _auditOutboxWriter
+            .Setup(w => w.EnqueueAuditAsync(It.IsAny<AuditEventContract>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _auditOutboxWriter
+            .Setup(w => w.EnqueueDomainAsync(It.IsAny<string>(), It.IsAny<DomainMessageEnvelope>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _entityRepo
+            .Setup(r => r.ExecuteInTransactionAsync(It.IsAny<Func<Task<EntityRelationshipRefDto>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<Task<EntityRelationshipRefDto>> action, CancellationToken _) => action());
 
         _sut = new EntityService(
             _entityRepo.Object,
@@ -166,6 +175,7 @@ public sealed class EntityServiceRelationshipTests
             RelationshipTypeId = 50,
             RelationshipType = RelType(RelationshipCardinality.ManyToOne),
             SourceEntity = SimpleEntity(100, 1),
+            TargetEntity = SimpleEntity(200, 2),
         };
         _entityRepo.Setup(r => r.GetRelationshipByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
         _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(101, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(SimpleEntity(101, 1));
@@ -176,6 +186,29 @@ public sealed class EntityServiceRelationshipTests
 
         result.Should().NotBeNull();
         _entityRepo.Verify(r => r.UpdateRelationshipSourceAsync(1, 101, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Reassign_InboundSwap_RelationshipTargetInOtherWorkspace_Throws()
+    {
+        var target = new Entity
+        {
+            Id = 200, EntityTypeId = 2, CreatedByUserId = User,
+            EntityType = new EntityType { Id = 2, Name = "t2" },
+            EntityWorkspaces = [new EntityWorkspace { EntityId = 200, WorkspaceId = 999 }],
+        };
+        var rel = new EntityRelationship
+        {
+            Id = 1, SourceEntityId = 100, TargetEntityId = 200, RelationshipTypeId = 50,
+            RelationshipType = RelType(RelationshipCardinality.ManyToOne),
+            SourceEntity = SimpleEntity(100, 1),
+            TargetEntity = target,
+        };
+        _entityRepo.Setup(r => r.GetRelationshipByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(rel);
+
+        await _sut.Invoking(s => s.ReassignRelationshipAsync(Ws, User, 1, new ReassignEntityRelationshipRequest(101, null)))
+            .Should().ThrowAsync<AppException>()
+            .Where(e => e.Code == "relationship_not_in_workspace" && e.StatusCode == 403);
     }
 
     [Fact]
@@ -335,6 +368,7 @@ public sealed class EntityServiceRelationshipTests
         {
             Id = 1, SourceEntityId = 100, TargetEntityId = 200, RelationshipTypeId = 50,
             RelationshipType = RelType(RelationshipCardinality.ManyToOne), SourceEntity = SimpleEntity(100, 1),
+            TargetEntity = SimpleEntity(200, 2),
         };
         _entityRepo.Setup(r => r.GetRelationshipByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(rel);
         _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(101, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(SimpleEntity(101, 9));
@@ -351,6 +385,7 @@ public sealed class EntityServiceRelationshipTests
         {
             Id = 1, SourceEntityId = 100, TargetEntityId = 200, RelationshipTypeId = 50,
             RelationshipType = RelType(RelationshipCardinality.OneToOne), SourceEntity = SimpleEntity(100, 1),
+            TargetEntity = SimpleEntity(200, 2),
         };
         _entityRepo.Setup(r => r.GetRelationshipByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(rel);
         _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(101, Ws, It.IsAny<CancellationToken>())).ReturnsAsync(SimpleEntity(101, 1));
