@@ -439,7 +439,7 @@
     "newEntity": "New entity",
     "createEntity": "Create entity",
     "search": "Search",
-    "searchHint": "Text match across fields (server-side)",
+    "searchHint": "Text match across fields",
     "searchTypePlaceholder": "Search {type}…",
     "searchAllPlaceholder": "Search all listed records…",
     "noAccess": "You do not have access to this workspace.",

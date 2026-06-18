@@ -439,7 +439,7 @@
     "newEntity": "Новий запис",
     "createEntity": "Створити запис",
     "search": "Пошук",
-    "searchHint": "Текстовий збіг по полях (на сервері)",
+    "searchHint": "Текстовий збіг по полях",
     "searchTypePlaceholder": "Пошук {type}…",
     "searchAllPlaceholder": "Пошук серед усіх записів…",
     "noAccess": "У вас немає доступу до цього робочого простору.",
