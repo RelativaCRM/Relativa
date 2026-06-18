@@ -639,7 +639,10 @@ function onPointerUp() {
               </Column>
               <Column field="lifetimeValue" :header="t('home.colLtv')">
                 <template #body="{ data }">
-                  <span class="font-semibold text-ink-700">{{ formatCurrency(data.lifetimeValue) }}</span>
+                  <div class="flex flex-col leading-tight">
+                    <span class="font-semibold text-ink-700">{{ formatCurrency(data.lifetimeValue) }}</span>
+                    <span v-if="data.isExpectedLtv" class="text-[10px] text-ink-400">{{ t('home.expectedLtv') }}</span>
+                  </div>
                 </template>
               </Column>
               <Column field="activeDeals" :header="t('home.colActive')">

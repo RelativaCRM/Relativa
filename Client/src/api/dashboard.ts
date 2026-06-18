@@ -90,6 +90,7 @@ export interface TopClientDto {
   name: string;
   industry?: string;
   lifetimeValue: number;
+  isExpectedLtv: boolean;
   activeDeals: number;
   avgClosureScore?: number;
 }

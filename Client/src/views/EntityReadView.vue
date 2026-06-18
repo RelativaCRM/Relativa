@@ -258,7 +258,10 @@ async function confirmLink(candidate: EntityListItemDto) {
         ? outboundLinksForTab(tab)
         : inboundLinksFor(tab.relationshipTypeId);
       const link = existing[0];
-      if (!link) return;
+      if (!link) {
+        linkError.value = t('entityRead.noExistingLink');
+        return;
+      }
       const body: ReassignEntityRelationshipRequest =
         tab.direction === 'out'
           ? { newTargetEntityId: candidate.id }
@@ -403,7 +406,7 @@ async function submitCreateLink() {
 
   const writableProps = targetType.properties.filter((p) => !p.isReadonly);
   touchedCreateLinkProps.value = new Set(writableProps.map((p) => p.propertyId));
-  const hasEmptyRequired = writableProps.some((p) => isCreateLinkPropEmpty(p));
+  const hasEmptyRequired = writableProps.some((p) => p.isRequired && isCreateLinkPropEmpty(p));
   const hasFormatError = writableProps.some((p) => !!createLinkPropError(p));
   const hasEmptyRel = createLinkOtherRequired.value.some(
     (r) => createLinkOtherRelPick[r.relationshipTypeId] == null,
@@ -1379,7 +1382,7 @@ onUnmounted(() => stopHub());
         <div class="flex flex-col gap-1.5">
           <label :for="`cl-${p.propertyId}`" class="text-xs font-medium text-ink-600">
             {{ p.displayName }}
-            <span v-if="p.dataType !== 'Bool'" class="text-danger">*</span>
+            <span v-if="p.isRequired && p.dataType !== 'Bool'" class="text-danger">*</span>
           </label>
           <Select
             v-if="p.dataType === 'String' && p.allowedValues?.length > 0"
