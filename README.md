@@ -1,11 +1,6 @@
-<!-- =========================================================================
-     HERO BANNER
-     Frontend: replace the placeholder below with the rendered hero banner
-     (recommended 2560×640, exported to assets/branding/hero-banner.png).
-     ========================================================================= -->
+<!-- HERO BANNER — assets/branding/relativa_hero_banner_1920x480_radial.png -->
 <p align="center">
-  <!-- PLACEHOLDER: Hero banner — assets/branding/hero-banner.png -->
-  <img src="assets/branding/hero-banner.png" alt="Relativa — Turn relationships into revenue" width="100%">
+  <img src="assets/branding/relativa_hero_banner_1920x480_radial.png" alt="Relativa — Turn relationships into revenue" width="100%">
 </p>
 
 <h1 align="center">Relativa</h1>
@@ -126,26 +121,105 @@ Every feature below is **already implemented in Relativa** but missing — or lo
 
 ## Screenshots & Demos
 
-> **Frontend / QA:** drop the optimized media into `assets/` and swap the placeholders below.
-> Capture clean demo data (no `asdf` / `test` records) and check the console for errors before recording.
+A full product walkthrough — from first sign-up to a data-rich relationship graph, audit log, and settings.
 
-### 🎬 Relationship Graph in action
-<!-- PLACEHOLDER: GIF — assets/demos/graph-walkthrough.gif -->
+### 🎬 Guided walkthrough
+
+**1 · Onboarding**
+
 <p align="center">
-  <img src="assets/demos/graph-walkthrough.gif" alt="Navigating and filtering the relationship graph" width="80%">
+  <img src="assets/demos/01-create-account.gif" alt="Create an account" width="80%">
+  <br><sub>Create an account</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/02-sign-in.gif" alt="Sign in" width="80%">
+  <br><sub>Sign in</sub>
 </p>
 
-### 🎬 Creating a deal & reading ML scores
-<!-- PLACEHOLDER: GIF — assets/demos/deal-scoring.gif -->
+**2 · Organization & members**
+
 <p align="center">
-  <img src="assets/demos/deal-scoring.gif" alt="Creating a deal and viewing closure / churn scores" width="80%">
+  <img src="assets/demos/03-create-organization-and-user.gif" alt="Create an organization and user" width="80%">
+  <br><sub>Create an organization and user</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/04-a-graph-with-an-added-member.gif" alt="Graph with an added member" width="80%">
+  <br><sub>The graph with an added member</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/05-invite-member.gif" alt="Invite a member" width="80%">
+  <br><sub>Invite a member</sub>
 </p>
 
+**3 · Workspaces**
+
+<p align="center">
+  <img src="assets/demos/06-create-workspace.gif" alt="Create a workspace" width="80%">
+  <br><sub>Create a workspace</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/07-adding-a-member-to-the-workspace.gif" alt="Add a member to the workspace" width="80%">
+  <br><sub>Add a member to the workspace</sub>
+</p>
+
+**4 · Entities (EAV)**
+
+<p align="center">
+  <img src="assets/demos/08-create-entity-client.gif" alt="Create a client entity" width="80%">
+  <br><sub>Create a client</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/09-create-entity-deal.gif" alt="Create a deal entity" width="80%">
+  <br><sub>Create a deal</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/10-create-entity-contact.gif" alt="Create a contact entity" width="80%">
+  <br><sub>Create a contact</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/11-create-entity-task.gif" alt="Create a task entity" width="80%">
+  <br><sub>Create a task</sub>
+</p>
+
+**5 · Graph, Audit & Settings**
+
+<p align="center">
+  <img src="assets/demos/12-graph-filled-with-data.gif" alt="Relationship graph filled with data" width="80%">
+  <br><sub>The relationship graph filled with data</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/13-audit-log.gif" alt="Audit log" width="80%">
+  <br><sub>Audit log</sub>
+</p>
+<p align="center">
+  <img src="assets/demos/14-setting.gif" alt="Settings" width="80%">
+  <br><sub>Settings</sub>
+</p>
+
+<!-- =========================================================================
+     🖼️ KEY SCREENS (desktop) — hidden until desktop screenshots are ready.
+     Drop dashboard.png / entity-detail.png / audit-log.png into
+     assets/screenshots/ and un-comment this block.
+-->
+<!--
 ### 🖼️ Key screens
 
 | Dashboard | Entity detail + Scores | Audit log |
 |:---:|:---:|:---:|
-| <!-- PLACEHOLDER --> ![Dashboard](assets/screenshots/dashboard.png) | <!-- PLACEHOLDER --> ![Entity detail](assets/screenshots/entity-detail.png) | <!-- PLACEHOLDER --> ![Audit log](assets/screenshots/audit-log.png) |
+| ![Dashboard](assets/screenshots/dashboard.png) | ![Entity detail](assets/screenshots/entity-detail.png) | ![Audit log](assets/screenshots/audit-log.png) |
+-->
+
+### 📱 Mobile version
+
+Relativa is fully responsive — here are the core screens on a phone.
+
+| Login | Home | Home | Home |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/mobile/01-login.png" alt="Login" width="180"> | <img src="assets/screenshots/mobile/02-home.png" alt="Home" width="180"> | <img src="assets/screenshots/mobile/03-home.png" alt="Home" width="180"> | <img src="assets/screenshots/mobile/04-home.png" alt="Home" width="180"> |
+| **Home** | **Organization** | **Members** | **Graph** |
+| <img src="assets/screenshots/mobile/05-home.png" alt="Home" width="180"> | <img src="assets/screenshots/mobile/06-organization.png" alt="Organization" width="180"> | <img src="assets/screenshots/mobile/07-members.png" alt="Members" width="180"> | <img src="assets/screenshots/mobile/08-graph.png" alt="Graph" width="180"> |
+| **Workspaces** | **Audit log** | **Settings** | |
+| <img src="assets/screenshots/mobile/09-workspaces.png" alt="Workspaces" width="180"> | <img src="assets/screenshots/mobile/10-audit-log.png" alt="Audit log" width="180"> | <img src="assets/screenshots/mobile/11-organization-setting.png" alt="Organization settings" width="180"> | |
 
 ---
 
@@ -372,8 +446,7 @@ Contributions are welcome! Please:
 ---
 
 <p align="center">
-  <!-- PLACEHOLDER: small footer logo — assets/branding/logo-mark.png -->
-  <img src="assets/branding/logo-mark.png" alt="Relativa" width="120">
+  <img src="Client/src/assets/relativa-logo.png" alt="Relativa" width="120">
 </p>
 
 <p align="center">
