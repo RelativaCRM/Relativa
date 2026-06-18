@@ -81,22 +81,37 @@ const canDelete = computed(() =>
   hasWorkspacePermission(wsStore.currentWorkspace, 'delete_entities'),
 );
 
-const writableProps = computed(() => {
-  const d = detail.value;
-  if (!d) return [];
-  return d.propertyValues.filter((p) => !p.isReadonly);
-});
-
-const currentEntityAllReadonly = computed(() => {
-  const d = detail.value;
-  return !!d && d.propertyValues.length > 0 && writableProps.value.length === 0;
-});
-
 const typeSchema = computed(() => {
   const d = detail.value;
   if (!d) return null;
   return entityStore.types.find((t) => t.id === d.entityTypeId) ?? null;
 });
+
+const displayProperties = computed<EntityPropertyValueDto[]>(() => {
+  const schema = typeSchema.value;
+  const stored = detail.value?.propertyValues ?? [];
+  if (!schema) return stored;
+
+  const storedByPropertyId = new Map(stored.map((p) => [p.propertyId, p]));
+
+  return schema.properties.map(
+    (sp) =>
+      storedByPropertyId.get(sp.propertyId) ?? {
+        propertyId: sp.propertyId,
+        propertyName: sp.name,
+        displayName: sp.displayName,
+        dataType: sp.dataType,
+        value: null,
+        isReadonly: sp.isReadonly,
+      },
+  );
+});
+
+const writableProps = computed(() => displayProperties.value.filter((p) => !p.isReadonly));
+
+const currentEntityAllReadonly = computed(
+  () => displayProperties.value.length > 0 && writableProps.value.length === 0,
+);
 
 function allowedValuesFor(propertyId: number) {
   return typeSchema.value?.properties.find((p) => p.propertyId === propertyId)?.allowedValues ?? [];
@@ -665,29 +680,31 @@ function formatDate(d: Date): string {
 }
 
 function parseDetailToEditValues(d: EntityDetailDto) {
+  const schema = typeSchema.value;
   const next: Record<number, FieldValue> = {};
-  for (const p of d.propertyValues) {
-    if (p.isReadonly) continue;
-    switch (p.dataType) {
+
+  const allProps = schema
+    ? schema.properties.filter((p) => !p.isReadonly)
+    : d.propertyValues.filter((p) => !p.isReadonly);
+
+  const storedByPropertyId = new Map(d.propertyValues.map((p) => [p.propertyId, p]));
+
+  for (const sp of allProps) {
+    const value = storedByPropertyId.get(sp.propertyId)?.value ?? null;
+    switch (sp.dataType) {
       case 'Bool':
-        next[p.propertyId] = Boolean(p.value);
+        next[sp.propertyId] = Boolean(value);
         break;
       case 'Int':
       case 'Decimal':
-        next[p.propertyId] =
-          p.value === null || p.value === undefined
-            ? null
-            : Number(p.value);
+        next[sp.propertyId] = value === null || value === undefined ? null : Number(value);
         break;
       case 'Date':
-        next[p.propertyId] =
-          typeof p.value === 'string' && p.value
-            ? new Date(`${p.value}T12:00:00`)
-            : null;
+        next[sp.propertyId] =
+          typeof value === 'string' && value ? new Date(`${value}T12:00:00`) : null;
         break;
       default:
-        next[p.propertyId] =
-          p.value === null || p.value === undefined ? '' : String(p.value);
+        next[sp.propertyId] = value === null || value === undefined ? '' : String(value);
     }
   }
   editValues.value = next;
@@ -1086,7 +1103,7 @@ onUnmounted(() => stopHub());
           {{ t('entityRead.properties') }}
         </h2>
         <dl class="grid gap-4 sm:grid-cols-2">
-          <template v-for="p in detail.propertyValues" :key="p.propertyId">
+          <template v-for="p in displayProperties" :key="p.propertyId">
             <div class="sm:col-span-2 border-b border-line pb-4 last:border-0 last:pb-0">
               <dt class="text-xs font-medium text-ink-500 uppercase tracking-wide">
                 {{ p.displayName }}
