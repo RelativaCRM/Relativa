@@ -490,9 +490,9 @@ function churnBadgeClass(score: number): string {
 }
 
 function closureBarColor(score: number): string {
-  if (score > 70) return RISK_COLORS.high.fill;
+  if (score > 70) return RISK_COLORS.low.fill;
   if (score >= 40) return RISK_COLORS.medium.fill;
-  return RISK_COLORS.low.fill;
+  return RISK_COLORS.high.fill;
 }
 
 function viewNode(node: GraphNodeDto) {
@@ -500,7 +500,7 @@ function viewNode(node: GraphNodeDto) {
     router.push({
       name: 'workspace-entities',
       params: { workspaceId: String(node.workspaceId) },
-      query: { id: String(node.resourceId) },
+      query: { id: String(node.resourceId), entityType: node.entityTypeName },
     });
   } else if (node.resourceType === 'workspace') {
     router.push({ name: 'workspace-members', params: { workspaceId: String(node.resourceId) } });
@@ -514,7 +514,7 @@ function editNode(node: GraphNodeDto) {
     router.push({
       name: 'workspace-entities',
       params: { workspaceId: String(node.workspaceId) },
-      query: { id: String(node.resourceId), action: 'edit' },
+      query: { id: String(node.resourceId), action: 'edit', entityType: node.entityTypeName },
     });
   } else {
     router.push({ name: 'member', params: { memberUserId: String(node.resourceId) } });

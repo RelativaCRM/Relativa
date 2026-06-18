@@ -36,6 +36,7 @@ import { useEntityRelationshipsHub } from '@/composables/useEntityRelationshipsH
 const props = defineProps<{
   workspaceId: number;
   entityId: number;
+  initialEditMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -56,6 +57,7 @@ const saving = ref(false);
 const errorMessage = ref<string | null>(null);
 const detail = ref<EntityDetailDto | null>(null);
 const editMode = ref(false);
+const initialEditModeConsumed = ref(false);
 const fieldErrors = ref<FieldErrors>({});
 const editSubmitAttempted = ref(false);
 const touchedEditProps = ref(new Set<number>());
@@ -780,7 +782,12 @@ async function loadDetail() {
     const d = await entityStore.fetchDetail(props.workspaceId, props.entityId);
     detail.value = d;
     parseDetailToEditValues(d);
-    editMode.value = false;
+    if (!initialEditModeConsumed.value) {
+      editMode.value = props.initialEditMode ?? false;
+      initialEditModeConsumed.value = true;
+    } else {
+      editMode.value = false;
+    }
   } catch (err) {
     errorMessage.value = normalizeError(err, t('entityRead.loadError')).message;
     detail.value = null;
@@ -831,6 +838,7 @@ function formatScore(value: number | null): string {
   if (value === null || value === undefined) return '—';
   return `${value.toFixed(1)}%`;
 }
+
 
 function cancelEdit() {
   if (detail.value) parseDetailToEditValues(detail.value);
