@@ -10,4 +10,5 @@ public class Organization
     public ICollection<OrganizationJoinRequest> JoinRequests { get; set; } = new List<OrganizationJoinRequest>();
     public ICollection<OrganizationInvitation> Invitations { get; set; } = new List<OrganizationInvitation>();
     public ICollection<Workspace> Workspaces { get; set; } = new List<Workspace>();
+    public OrganizationSettings? Settings { get; set; }
 }

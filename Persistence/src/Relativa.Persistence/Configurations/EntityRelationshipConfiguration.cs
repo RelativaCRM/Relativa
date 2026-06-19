@@ -15,7 +15,11 @@ public class EntityRelationshipConfiguration : IEntityTypeConfiguration<EntityRe
         builder.Property(e => e.TargetEntityId).HasColumnName("target_entity_id").IsRequired();
         builder.Property(e => e.RelationshipTypeId).HasColumnName("relationship_type_id").IsRequired();
         builder.HasIndex(e => e.SourceEntityId).HasDatabaseName("ix_er_source_entity_id");
+        builder.HasIndex(e => e.TargetEntityId).HasDatabaseName("ix_er_target_entity_id");
         builder.HasIndex(e => e.RelationshipTypeId).HasDatabaseName("ix_er_relationship_type_id");
+        builder.HasIndex(e => new { e.SourceEntityId, e.RelationshipTypeId, e.TargetEntityId })
+               .IsUnique()
+               .HasDatabaseName("ix_er_source_type_target_unique");
         builder.HasOne(e => e.SourceEntity)
             .WithMany(en => en.SourceRelationships)
             .HasForeignKey(e => e.SourceEntityId)

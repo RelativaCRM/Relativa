@@ -1,13 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using Relativa.Graph.Data;
+using Relativa.Graph.ML;
 
 namespace Relativa.Graph.Graph;
 
-public sealed class GraphDataService(GraphQueryDbContext db) : IGraphDataService
+public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient mlClient) : IGraphDataService
 {
     private static readonly string[] LabelPriority = ["title", "name", "first_name", "email", "company"];
 
-    public async Task<GraphResponseDto> BuildGraphAsync(int userId, int organizationId, CancellationToken ct)
+    // System types hidden from the graph view (ML-derived, noise if shown)
+    private static readonly HashSet<string> SystemEntityTypes =
+        new(StringComparer.OrdinalIgnoreCase) { "deal_analysis" };
+
+    public async Task<GraphResponseDto> BuildGraphAsync(int userId, int organizationId, string? riskLevel, CancellationToken ct)
     {
         var nodes = new List<GraphNodeDto>();
         var edges = new List<GraphEdgeDto>();
@@ -118,7 +123,9 @@ public sealed class GraphDataService(GraphQueryDbContext db) : IGraphDataService
         if (viewableWsIds.Count > 0)
         {
             var entityRows = await db.EntityWorkspaces
-                .Where(ew => viewableWsIds.Contains(ew.WorkspaceId) && !ew.Entity.IsArchived)
+                .Where(ew => viewableWsIds.Contains(ew.WorkspaceId)
+                             && !ew.Entity.IsArchived
+                             && !SystemEntityTypes.Contains(ew.Entity.EntityType.Name))
                 .Select(ew => new
                 {
                     ew.EntityId,
@@ -191,6 +198,95 @@ public sealed class GraphDataService(GraphQueryDbContext db) : IGraphDataService
             }
         }
 
+        // Step 4c: ML scoring + highlight classification
+        var dealEntityIds = entityIds
+            .Where(id => string.Equals(entityTypeNameMap.GetValueOrDefault(id), "deal", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        IReadOnlyDictionary<int, MlScoreDto> mlScores;
+        try
+        {
+            mlScores = await mlClient.ScoreBatchAsync(dealEntityIds, ct);
+        }
+        catch
+        {
+            mlScores = new Dictionary<int, MlScoreDto>();
+        }
+
+        if (riskLevel is not null)
+        {
+            var excludedDealIds = dealEntityIds
+                .Where(id => !mlScores.TryGetValue(id, out var s) || !s.ClosureScore.HasValue || !IsInRiskBucket(s.ClosureScore.Value, riskLevel))
+                .ToHashSet();
+            foreach (var id in excludedDealIds)
+                entityWorkspaceMap.Remove(id);
+            dealEntityIds = dealEntityIds.Where(id => !excludedDealIds.Contains(id)).ToList();
+            entityIds = entityWorkspaceMap.Keys.ToList();
+        }
+
+        // deal→client relationship for client composite scoring
+        var dealClientMap = new Dictionary<int, int>(); // dealId → clientId
+        var clientLtvMap = new Dictionary<int, double>(); // clientId → LTV
+        if (dealEntityIds.Count > 0)
+        {
+            var dealClientRels = await db.EntityRelationships
+                .Where(er => dealEntityIds.Contains(er.SourceEntityId)
+                             && er.RelationshipType.Name == "deal_client")
+                .Select(er => new { er.SourceEntityId, er.TargetEntityId })
+                .ToListAsync(ct);
+
+            foreach (var rel in dealClientRels)
+                dealClientMap[rel.SourceEntityId] = rel.TargetEntityId;
+
+            var clientIds = dealClientRels.Select(r => r.TargetEntityId).Distinct().ToList();
+            if (clientIds.Count > 0)
+            {
+                var ltvRows = await db.EntityPropertyValues
+                    .Where(epv => clientIds.Contains(epv.EntityId)
+                                  && epv.Property.Name == "client_lifetime_value"
+                                  && epv.ValueDecimal != null)
+                    .Select(epv => new { epv.EntityId, epv.ValueDecimal })
+                    .ToListAsync(ct);
+
+                foreach (var row in ltvRows)
+                    clientLtvMap[row.EntityId] = (double)row.ValueDecimal!;
+            }
+        }
+
+        // Compute composite client scores: avgClosure * (1 - avgChurn/100) + log10(max(1, ltv)) * 5
+        var clientDealScores = new Dictionary<int, List<(double closure, double churn)>>();
+        foreach (var (dealId, clientId) in dealClientMap)
+        {
+            if (!mlScores.TryGetValue(dealId, out var score) || score.ClosureScore is null || score.ChurnScore is null)
+                continue;
+            if (!clientDealScores.TryGetValue(clientId, out var list))
+            {
+                list = [];
+                clientDealScores[clientId] = list;
+            }
+            list.Add((score.ClosureScore.Value, score.ChurnScore.Value));
+        }
+
+        var clientCompositeScores = new Dictionary<int, double>();
+        foreach (var (clientId, dealScoreList) in clientDealScores)
+        {
+            var avgClosure = dealScoreList.Average(s => s.closure);
+            var avgChurn = dealScoreList.Average(s => s.churn);
+            var ltv = clientLtvMap.GetValueOrDefault(clientId, 0.0);
+            clientCompositeScores[clientId] = avgClosure * (1.0 - avgChurn / 100.0) + Math.Log10(Math.Max(1.0, ltv)) * 5.0;
+        }
+
+        // Classify top/bottom 20% of deals and clients with valid scores
+        var dealHighlightTags = ClassifyTopBottom(
+            mlScores.Values
+                .Where(s => s.ClosureScore.HasValue && s.UnavailableReason is null)
+                .ToDictionary(s => s.EntityId, s => s.ClosureScore!.Value),
+            "best_deal", "worst_deal");
+
+        var clientHighlightTags = ClassifyTopBottom(
+            clientCompositeScores,
+            "best_client", "worst_client");
+
         // Build entity nodes and workspace→entity edges
         foreach (var (entityId, wsIds) in entityWorkspaceMap)
         {
@@ -203,6 +299,9 @@ public sealed class GraphDataService(GraphQueryDbContext db) : IGraphDataService
             if (wsPerms.Contains("edit_entities")) perms.Add("edit");
             if (wsPerms.Contains("delete_entities")) perms.Add("delete");
 
+            string? highlightTag = dealHighlightTags.GetValueOrDefault(entityId)
+                ?? clientHighlightTags.GetValueOrDefault(entityId);
+
             nodes.Add(new GraphNodeDto(
                 Id: $"entity:{entityId}",
                 Type: "entity",
@@ -212,7 +311,8 @@ public sealed class GraphDataService(GraphQueryDbContext db) : IGraphDataService
                 ResourceId: entityId,
                 ResourceType: "entity",
                 WorkspaceId: primaryWsId,
-                Permissions: perms
+                Permissions: perms,
+                HighlightTag: highlightTag
             ));
 
             foreach (var wsId in wsIds)
@@ -301,5 +401,33 @@ public sealed class GraphDataService(GraphQueryDbContext db) : IGraphDataService
         }
 
         return new GraphResponseDto(nodes, edges);
+    }
+
+    private static bool IsInRiskBucket(double score, string riskLevel) => riskLevel switch
+    {
+        "high"   => score < 33.0,
+        "medium" => score >= 33.0 && score < 67.0,
+        "low"    => score >= 67.0,
+        _        => true
+    };
+
+    private static Dictionary<int, string> ClassifyTopBottom(
+        Dictionary<int, double> scores,
+        string bestTag,
+        string worstTag)
+    {
+        if (scores.Count < 2)
+            return [];
+
+        var sorted = scores.OrderByDescending(kv => kv.Value).ToList();
+        var cutoff = Math.Max(1, (int)Math.Ceiling(sorted.Count * 0.20));
+
+        var result = new Dictionary<int, string>();
+        for (var i = 0; i < cutoff; i++)
+            result[sorted[i].Key] = bestTag;
+        for (var i = sorted.Count - cutoff; i < sorted.Count; i++)
+            if (!result.ContainsKey(sorted[i].Key))
+                result[sorted[i].Key] = worstTag;
+        return result;
     }
 }

@@ -11,19 +11,28 @@
     "type-check": "vue-tsc --build"
   },
   "dependencies": {
+    "@azure/msal-browser": "^5.11.0",
+    "@microsoft/signalr": "^10.0.0",
     "@primeuix/themes": "^1.0.0",
+    "chart.js": "^4.5.1",
     "d3": "^7.9.0",
+    "libphonenumber-js": "^1.13.5",
     "pinia": "^2.3.1",
     "primeicons": "^7.0.0",
     "primevue": "^4.2.5",
+    "qrcode": "^1.5.4",
     "vis-network": "^9.1.9",
     "vue": "^3.5.13",
-    "vue-router": "^4.5.0"
+    "vue-i18n": "^9.14.5",
+    "vue-router": "^4.5.0",
+    "vue-tel-input": "^9.8.0"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.2",
     "@types/d3": "^7.4.3",
+    "@types/google.accounts": "^0.0.18",
     "@types/node": "^22.10.0",
+    "@types/qrcode": "^1.5.5",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.7.0",
     "autoprefixer": "^10.4.20",

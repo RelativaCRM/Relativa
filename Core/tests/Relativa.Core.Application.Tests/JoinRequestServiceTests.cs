@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using Moq;
 using Relativa.Core.Application.DTOs.JoinRequest;
@@ -16,6 +17,7 @@ public sealed class JoinRequestServiceTests
     private readonly Mock<IUserRoleOrganizationRepository> _orgMemberRepo = new();
     private readonly Mock<IOrganizationRoleRepository> _orgRoleRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
+    private readonly Mock<IOrganizationSettingsRepository> _orgSettingsRepo = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
     private readonly JoinRequestService _sut;
 
@@ -26,6 +28,7 @@ public sealed class JoinRequestServiceTests
             _orgMemberRepo.Object,
             _orgRoleRepo.Object,
             _orgRepo.Object,
+            _orgSettingsRepo.Object,
             _auditOutboxWriter.Object);
     }
 
@@ -55,7 +58,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.SubmitAsync(99, 1, new CreateJoinRequestRequest("please"));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Organization not found.");
         _joinRequestRepo.Verify(r => r.AddAsync(It.IsAny<OrganizationJoinRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -69,7 +72,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.SubmitAsync(2, 1, new CreateJoinRequestRequest(null));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("This organization is archived.");
     }
 
@@ -85,7 +88,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.SubmitAsync(2, 5, new CreateJoinRequestRequest(null));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are already a member of this organization.");
     }
 
@@ -104,7 +107,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.SubmitAsync(2, 5, new CreateJoinRequestRequest("again"));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*already have a pending*");
     }
 
@@ -179,7 +182,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.GetByOrganizationAsync(3, 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*manage_join_requests*");
     }
 
@@ -220,7 +223,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<AppException>();
     }
 
     [Fact]
@@ -232,7 +235,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.ReviewAsync(3, 99, 1, new ReviewJoinRequestRequest("Approved"));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Join request not found.");
     }
 
@@ -247,7 +250,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Join request not found in this organization.");
     }
 
@@ -262,7 +265,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*no longer pending*Approved*");
     }
 
@@ -277,7 +280,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Maybe"));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*Approved*Rejected*");
     }
 
@@ -323,7 +326,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Default system organization role not found.");
     }
 
@@ -358,7 +361,7 @@ public sealed class JoinRequestServiceTests
 
         var act = () => _sut.ReviewAsync(3, 10, 1, new ReviewJoinRequestRequest("Approved"));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("The requester is already a member of this organization.");
         _orgMemberRepo.Verify(r => r.AddAsync(It.IsAny<UserRoleOrganization>(), It.IsAny<CancellationToken>()), Times.Never);
     }

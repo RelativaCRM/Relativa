@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
@@ -11,7 +12,9 @@ import {
 } from '@/api/organizations';
 import { useOrganizationStore } from '@/stores/organization';
 import { normalizeError } from '@/api/errors';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
+const { t } = useI18n();
 const router = useRouter();
 const orgStore = useOrganizationStore();
 
@@ -78,7 +81,7 @@ async function loadInbox() {
       })
       .catch((err) => {
         orgInvitations.value = [];
-        captureLoadError('orgInv', err, 'Could not load organization invitations.');
+        captureLoadError('orgInv', err, t('invitations.loadInvitationsError'));
       }),
   );
 
@@ -90,7 +93,7 @@ async function loadInbox() {
       })
       .catch((err) => {
         orgJoinRequests.value = [];
-        captureLoadError('orgJoin', err, 'Could not load organization join requests.');
+        captureLoadError('orgJoin', err, t('invitations.loadJoinRequestsError'));
       }),
   );
 
@@ -104,13 +107,13 @@ async function acceptOrg(token: string) {
   success.value = null;
   try {
     await orgApi.acceptOrgInvitation(token);
-    success.value = 'Organization invitation accepted.';
+    success.value = t('invitations.accepted');
     await Promise.all([orgStore.fetchOrganizations(), loadInbox()]);
     if (orgStore.hasOrganization) {
       setTimeout(() => router.push({ name: 'home' }), 600);
     }
   } catch (err) {
-    actionError.value = normalizeError(err, 'Failed to accept invitation.').message;
+    actionError.value = normalizeError(err, t('invitations.acceptError')).message;
   } finally {
     processingToken.value = null;
   }
@@ -130,9 +133,9 @@ defineExpose({ loadInbox });
 <template>
   <section class="max-w-3xl">
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-ink-900">Invitations and join requests</h1>
+      <h1 class="text-2xl font-bold text-ink-900">{{ t('invitations.title') }}</h1>
       <p class="mt-3 text-sm text-ink-500">
-        Organization invitations you can accept, and join requests you have submitted.
+        {{ t('invitations.subtitle') }}
       </p>
     </div>
 
@@ -153,7 +156,7 @@ defineExpose({ loadInbox });
       {{ success }}
     </Message>
 
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="list" :rows="3" :label="t('common.loading')" />
 
     <div
       v-else-if="!hasAnything"
@@ -161,7 +164,7 @@ defineExpose({ loadInbox });
     >
       <i class="pi pi-inbox text-3xl text-ink-400" />
       <p class="mt-3 text-sm text-ink-500">
-        No pending organization invitations or join requests.
+        {{ t('invitations.empty') }}
       </p>
     </div>
 
@@ -179,7 +182,7 @@ defineExpose({ loadInbox });
           class="px-5 py-3 bg-surface border-b border-line text-xs font-medium text-ink-500 uppercase tracking-wider flex items-center gap-2"
         >
           <i class="pi pi-building" />
-          Organization
+          {{ t('nav.organization') }}
         </div>
 
         <Message
@@ -203,7 +206,7 @@ defineExpose({ loadInbox });
           v-if="orgScopedOrgInvitations.length"
           class="px-5 py-2 text-[11px] font-medium text-ink-400 uppercase tracking-wide border-b border-line bg-white"
         >
-          Invitations
+          {{ t('invitations.invitationsHeader') }}
         </div>
         <div
           v-for="inv in orgScopedOrgInvitations"
@@ -215,15 +218,14 @@ defineExpose({ loadInbox });
               <p class="text-sm font-medium text-ink-900">
                 {{ inv.organizationName }}
               </p>
-              <Tag value="Invite" severity="info" />
+              <Tag :value="t('invitations.inviteTag')" severity="info" />
             </div>
             <p class="text-xs text-ink-400 mt-1">
-              Invited to {{ inv.email }} · Expires
-              {{ new Date(inv.expiresAt).toLocaleDateString() }}
+              {{ t('invitations.invitedExpires', { email: inv.email, date: new Date(inv.expiresAt).toLocaleDateString() }) }}
             </p>
           </div>
           <Button
-            label="Accept"
+            :label="t('invitations.accept')"
             icon="pi pi-check"
             :loading="processingToken === inv.token"
             @click="acceptOrg(inv.token)"
@@ -234,16 +236,16 @@ defineExpose({ loadInbox });
           v-if="pendingOrgJoinRequests.length"
           class="px-5 py-2 text-[11px] font-medium text-ink-400 uppercase tracking-wide border-b border-line border-t border-line bg-surface/50"
         >
-          Your join requests (organization)
+          {{ t('invitations.yourJoinRequests') }}
         </div>
         <div
           v-for="jr in pendingOrgJoinRequests"
           :key="'oj-' + jr.id"
           class="px-5 py-3 border-b border-line last:border-0 text-sm text-ink-700"
         >
-          <p class="font-medium text-ink-900">Request #{{ jr.id }}</p>
+          <p class="font-medium text-ink-900">{{ t('invitations.request', { id: jr.id }) }}</p>
           <p class="text-xs text-ink-500 mt-1">
-            {{ jr.status }} · Submitted
+            {{ jr.status }} · {{ t('invitations.submitted') }}
             {{ new Date(jr.createdAt).toLocaleDateString() }}
           </p>
           <p v-if="jr.message" class="text-xs text-ink-400 mt-1 line-clamp-2">

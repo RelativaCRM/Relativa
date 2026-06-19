@@ -8,6 +8,10 @@ const ts          = Date.now();
 
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
+  await page.evaluate(() => {
+    localStorage.setItem('relativa.locale', 'en');
+    localStorage.setItem('relativa.localePending', '1');
+  });
   await page.locator('#email').fill(email);
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
@@ -15,9 +19,9 @@ async function fillLogin(page: Page, email: string, password: string) {
 
 async function loginAsAdmin(page: Page) {
   await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-  await page.waitForURL(/\/(workspace-select)?$/, { timeout: 10000 });
-  if (page.url().includes('workspace-select')) {
-    await page.locator('li button[type="button"]').first().click();
+  await page.waitForURL(/\/(onboarding)?$/, { timeout: 15000 });
+  if (page.url().includes('onboarding')) {
+    await page.locator('main ul').first().locator('li button').first().click();
     await page.waitForURL(`${BASE}/`, { timeout: 10000 });
   }
 }
@@ -49,7 +53,7 @@ test.describe('Entities Page', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`${BASE}/w/${workspaceId}/entities`);
+    await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client`);
     await page.waitForLoadState('networkidle');
   });
 
@@ -71,14 +75,14 @@ test.describe('Entities Page', () => {
       headers: { Authorization: `Bearer ${accessToken}` },
       data: { name: `E2E EmptyEntities ${ts}`, organizationId: orgs[0].id },
     })).json();
-    await page.goto(`${BASE}/w/${emptyWs.id}/entities`);
+    await page.goto(`${BASE}/w/${emptyWs.id}/entities?entityType=client`);
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('button', { name: /create entity/i })).toBeVisible();
   });
 
   test('New entity button navigates to create form', async ({ page }) => {
     await page.getByRole('button', { name: /new entity/i }).click();
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/entities\\?action=create`), { timeout: 10000 });
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/entities.*action=create`), { timeout: 10000 });
   });
 });
 
@@ -105,7 +109,7 @@ test.describe('Entity Create Form', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`${BASE}/w/${workspaceId}/entities/new`);
+    await page.goto(`${BASE}/w/${workspaceId}/entities?entityType=client&action=create`);
     await page.waitForLoadState('networkidle');
   });
 

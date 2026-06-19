@@ -5,4 +5,5 @@ public sealed record OrganizationDto(
     string Name,
     int MemberCount,
     string? UserRole,
+    string? UserRoleDisplayName,
     IReadOnlyList<string> MyPermissions);

@@ -8,7 +8,17 @@ export interface OrganizationDto {
   name: string;
   memberCount: number;
   userRole: string;
+  userRoleDisplayName: string | null;
   myPermissions?: string[];
+}
+
+export type JoinPolicy = 'open' | 'invite_only';
+
+export interface OrgSearchResultDto {
+  id: number;
+  name: string;
+  memberCount: number;
+  joinPolicy: JoinPolicy;
 }
 
 export interface OrgMemberDto {
@@ -17,16 +27,18 @@ export interface OrgMemberDto {
   lastName: string;
   email: string;
   roleName: string;
+  roleDisplayName: string;
   joinedAt: string;
 }
 
 export interface OrgRoleDto {
   id: number;
   name: string;
+  displayName: string;
   isSystem: boolean;
   /** Lower value = stronger authority in the org hierarchy (0 is strongest). */
   priority: number;
-  permissions: { id: number; name: string }[];
+  permissions: { id: number; name: string; displayName: string }[];
 }
 
 export interface CreateOrgUserRequest {
@@ -43,6 +55,7 @@ export interface OrgInvitationDto {
   email: string;
   organizationName: string;
   roleName: string;
+  roleDisplayName: string;
   status: string;
   token: string;
   expiresAt: string;
@@ -66,6 +79,22 @@ export interface MyInvitationsDto {
   organizationInvitations: OrgInvitationDto[];
 }
 
+export interface OrganizationSettingsDto {
+  organizationId: number;
+  name: string;
+  description: string | null;
+  joinPolicy: 'open' | 'invite_only';
+  defaultOrgRoleId: number | null;
+  defaultOrgRoleName: string | null;
+}
+
+export interface UpdateOrganizationSettingsRequest {
+  name: string;
+  description?: string | null;
+  joinPolicy: 'open' | 'invite_only';
+  defaultOrgRoleId?: number | null;
+}
+
 /* ── API ────────────────────────────────────────────────── */
 
 const CORE = '/core/api/v1';
@@ -78,13 +107,16 @@ export const orgApi = {
   list(): Promise<OrganizationDto[]> {
     return api.get<OrganizationDto[]>(`${CORE}/organizations`);
   },
-  search(query: string): Promise<OrganizationDto[]> {
-    return api.get<OrganizationDto[]>(
-      `${CORE}/organizations/search?q=${encodeURIComponent(query)}`,
-    );
+  search(query = ''): Promise<OrgSearchResultDto[]> {
+    const trimmed = query.trim();
+    const suffix = trimmed ? `?q=${encodeURIComponent(trimmed)}` : '';
+    return api.get<OrgSearchResultDto[]>(`${CORE}/organizations/search${suffix}`);
   },
   get(id: number): Promise<OrganizationDto> {
     return api.get<OrganizationDto>(`${CORE}/organizations/${id}`);
+  },
+  update(id: number, name: string): Promise<void> {
+    return api.put<void>(`${CORE}/organizations/${id}`, { name });
   },
 
   /* Members */
@@ -154,6 +186,9 @@ export const orgApi = {
   acceptOrgInvitation(token: string): Promise<void> {
     return api.post(`${CORE}/invitations/accept-org`, { token });
   },
+  declineOrgInvitation(token: string): Promise<void> {
+    return api.post(`${CORE}/invitations/decline-org`, { token });
+  },
 
   /* Join requests */
   submitJoinRequest(orgId: number, message: string): Promise<JoinRequestDto> {
@@ -179,6 +214,9 @@ export const orgApi = {
   myJoinRequests(): Promise<JoinRequestDto[]> {
     return api.get<JoinRequestDto[]>(`${CORE}/join-requests/mine`);
   },
+  cancelMyJoinRequest(requestId: number): Promise<void> {
+    return api.del(`${CORE}/join-requests/mine/${requestId}`);
+  },
 
   /* Roles */
   listRoles(orgId: number): Promise<OrgRoleDto[]> {
@@ -191,5 +229,13 @@ export const orgApi = {
   },
   myOrganizationInvitations(): Promise<OrgInvitationDto[]> {
     return api.get<OrgInvitationDto[]>(`${CORE}/invitations/mine/organization`);
+  },
+
+  /* Settings */
+  getSettings(orgId: number): Promise<OrganizationSettingsDto> {
+    return api.get<OrganizationSettingsDto>(`${CORE}/organizations/${orgId}/settings`);
+  },
+  updateSettings(orgId: number, data: UpdateOrganizationSettingsRequest): Promise<void> {
+    return api.put(`${CORE}/organizations/${orgId}/settings`, data);
   },
 };

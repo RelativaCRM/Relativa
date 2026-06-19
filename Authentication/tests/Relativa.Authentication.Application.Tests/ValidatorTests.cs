@@ -52,7 +52,7 @@ public sealed class RegisterRequestValidatorTests
     private readonly RegisterRequestValidator _sut = new();
 
     private static RegisterRequestDto Valid() =>
-        new("Alice", "Smith", "alice@example.com", "Secure123");
+        new("Alice", "Smith", "alice@example.com", "Secure123", "+380501234567", new DateOnly(1990, 1, 1));
 
     [Fact]
     public void Valid_ReturnsNoErrors() =>

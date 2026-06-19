@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
@@ -27,9 +28,12 @@ import {
 } from '@/api/entities';
 import { isEntityTypeUiLocked } from '@/utils/entityTypes';
 import { hasWorkspacePermission } from '@/utils/workspacePermissions';
+import { getPropertyFormatErrorKey } from '@/utils/propertyValidation';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
 type FieldValue = string | number | boolean | Date | null;
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
@@ -40,9 +44,9 @@ const entityStore = useEntityStore();
 const workspaceId = computed(() => Number(route.params.workspaceId));
 
 const types = computed<EntityTypeDto[]>(() => entityStore.types);
-/** Types the user is allowed to create manually (excludes e.g. deal_analysis with all-readonly fields). */
+
 const creatableTypes = computed(() =>
-  types.value.filter((t) => !isEntityTypeUiLocked(t)),
+  types.value.filter((t) => t.isStandalone && !isEntityTypeUiLocked(t)),
 );
 const selectedTypeId = ref<number | null>(null);
 const values = ref<Record<number, FieldValue>>({});
@@ -59,12 +63,18 @@ function isPropertyEmpty(prop: EntityTypePropertyDto): boolean {
 }
 
 function isPropertyRequired(prop: EntityTypePropertyDto): boolean {
-  return prop.isRequired || prop.dataType !== 'Bool';
+  return prop.isRequired;
 }
 
 function propertyFieldError(prop: EntityTypePropertyDto): string | null {
-  if (submitAttempted.value && isPropertyEmpty(prop)) {
-    return 'This field is required.';
+  const shouldValidate = submitAttempted.value || touchedProps.value.has(prop.propertyId);
+  if (shouldValidate && isPropertyRequired(prop) && isPropertyEmpty(prop)) {
+    return t('entityForm.fieldRequired');
+  }
+  if (shouldValidate && prop.dataType === 'String') {
+    const raw = values.value[prop.propertyId];
+    const key = getPropertyFormatErrorKey(prop.name, raw != null ? String(raw) : null);
+    if (key) return t(key);
   }
   return (
     firstFieldError(fieldErrors.value, prop.name) ??
@@ -104,7 +114,9 @@ const requiredOutgoing = computed(
 const linkPick = reactive<Record<number, number | null>>({});
 const candidatesByRel = ref<Record<number, EntityListItemDto[]>>({});
 
-/** Required link: open dialog to create target row (e.g. Client) and select it. */
+const touchedProps = ref(new Set<number>());
+const touchedNestedProps = ref(new Set<number>());
+
 const nestedDialogOpen = ref(false);
 const nestedForRel = ref<OutgoingRelationshipDto | null>(null);
 const nestedValues = ref<Record<number, FieldValue>>({});
@@ -156,6 +168,7 @@ async function openNestedCreate(rel: OutgoingRelationshipDto) {
   nestedError.value = null;
   nestedFieldErrors.value = {};
   nestedSubmitAttempted.value = false;
+  touchedNestedProps.value = new Set();
 
   const nv: Record<number, FieldValue> = {};
   for (const p of target.properties) {
@@ -193,8 +206,14 @@ async function openNestedCreate(rel: OutgoingRelationshipDto) {
 }
 
 function nestedPropertyFieldError(prop: EntityTypePropertyDto): string | null {
-  if (nestedSubmitAttempted.value && isPropertyEmptyFor(prop, nestedValues.value)) {
-    return 'This field is required.';
+  const shouldValidate = nestedSubmitAttempted.value || touchedNestedProps.value.has(prop.propertyId);
+  if (shouldValidate && isPropertyRequired(prop) && isPropertyEmptyFor(prop, nestedValues.value)) {
+    return t('entityForm.fieldRequired');
+  }
+  if (shouldValidate && prop.dataType === 'String') {
+    const raw = nestedValues.value[prop.propertyId];
+    const key = getPropertyFormatErrorKey(prop.name, raw != null ? String(raw) : null);
+    if (key) return t(key);
   }
   return (
     firstFieldError(nestedFieldErrors.value, prop.name) ??
@@ -227,8 +246,12 @@ function clearNestedPropertyFieldError(prop: EntityTypePropertyDto) {
 }
 
 function nestedFormValid(type: EntityTypeDto): boolean {
-  if (!type.properties.every((p) => !isPropertyEmptyFor(p, nestedValues.value))) {
-    return false;
+  for (const p of type.properties.filter((prop) => !prop.isReadonly)) {
+    if (p.isRequired && isPropertyEmptyFor(p, nestedValues.value)) return false;
+    if (p.dataType === 'String') {
+      const raw = nestedValues.value[p.propertyId];
+      if (getPropertyFormatErrorKey(p.name, raw != null ? String(raw) : null)) return false;
+    }
   }
   for (const ir of type.outgoingRelationships.filter((r) => r.isRequired)) {
     if (nestedLinkPick[ir.relationshipTypeId] == null) return false;
@@ -244,12 +267,13 @@ async function submitNestedCreate() {
   if (!rel || !target || !wid) return;
 
   if (!nestedFormValid(target)) {
+    touchedNestedProps.value = new Set(target.properties.map((p) => p.propertyId));
     nestedError.value =
       target.outgoingRelationships.some(
         (r) => r.isRequired && nestedLinkPick[r.relationshipTypeId] == null,
       )
-        ? 'Select all required links for this record.'
-        : 'Fill in all required fields.';
+        ? t('entityForm.selectAllLinks')
+        : t('entityForm.fillRequired');
     return;
   }
 
@@ -260,10 +284,12 @@ async function submitNestedCreate() {
     const innerReq = target.outgoingRelationships.filter((r) => r.isRequired);
     const base = {
       entityTypeId: target.id,
-      properties: target.properties.map((p) => ({
-        propertyId: p.propertyId,
-        value: serializeValue(p, nestedValues.value[p.propertyId] ?? null),
-      })),
+      properties: target.properties
+        .filter((p) => !p.isReadonly)
+        .map((p) => ({
+          propertyId: p.propertyId,
+          value: serializeValue(p, nestedValues.value[p.propertyId] ?? null),
+        })),
     };
     const body =
       innerReq.length > 0
@@ -283,6 +309,7 @@ async function submitNestedCreate() {
       id: detail.id,
       entityTypeId: detail.entityTypeId,
       entityTypeName: detail.entityTypeName,
+      entityTypeDisplayName: detail.entityTypeDisplayName,
       propertyValues: detail.propertyValues,
     };
     const existing = candidatesByRel.value[outerRelId] ?? [];
@@ -294,13 +321,15 @@ async function submitNestedCreate() {
 
     toast.add({
       severity: 'success',
-      summary: `${formatTypeName(target.name)} created`,
-      detail: `Linked to this ${selectedType.value ? formatTypeName(selectedType.value.name) : 'record'}.`,
+      summary: t('entityForm.createdSummary', { type: target.displayName }),
+      detail: t('entityForm.linkedToParent', {
+        parent: selectedType.value ? selectedType.value.displayName : t('entityForm.recordFallback'),
+      }),
       life: 3500,
     });
     nestedDialogOpen.value = false;
   } catch (err) {
-    const normalized = normalizeError(err, 'Failed to create linked record.');
+    const normalized = normalizeError(err, t('entityForm.createLinkedError'));
     nestedFieldErrors.value = normalized.fieldErrors;
     nestedError.value = normalized.message;
   } finally {
@@ -325,7 +354,7 @@ watch(nestedDialogOpen, (open) => {
 function entityOptionLabel(e: EntityListItemDto): string {
   const bits = e.propertyValues
     .slice(0, 2)
-    .map((p) => `${p.propertyName}=${p.value ?? '—'}`);
+    .map((p) => `${p.displayName}: ${p.value ?? '—'}`);
   return `#${e.id}${bits.length ? ` · ${bits.join(', ')}` : ''}`;
 }
 
@@ -364,18 +393,6 @@ watch(selectedTypeId, async (typeId) => {
   }
 });
 
-function humanize(name: string): string {
-  return name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-}
-
-function formatTypeName(name: string): string {
-  return name
-    .split('_')
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
 function isEmpty(v: FieldValue): boolean {
   if (v === null || v === undefined) return true;
   if (typeof v === 'string' && v.trim() === '') return true;
@@ -384,7 +401,14 @@ function isEmpty(v: FieldValue): boolean {
 
 const isFormValid = computed(() => {
   if (!selectedType.value) return false;
-  return properties.value.every((p) => !isPropertyEmpty(p));
+  return properties.value.filter((p) => !p.isReadonly).every((p) => {
+    if (p.isRequired && isPropertyEmpty(p)) return false;
+    if (p.dataType === 'String') {
+      const raw = values.value[p.propertyId];
+      if (getPropertyFormatErrorKey(p.name, raw != null ? String(raw) : null)) return false;
+    }
+    return true;
+  });
 });
 
 function pad(n: number): string {
@@ -423,6 +447,7 @@ function resetTypeFields() {
   errorMessage.value = null;
   fieldErrors.value = {};
   submitAttempted.value = false;
+  touchedProps.value = new Set();
 }
 
 function listQuery(): Record<string, string> {
@@ -447,7 +472,7 @@ function gotoWorkspaces() {
 async function ensureWorkspaceAccess(): Promise<boolean> {
   if (!workspaceId.value) {
     accessDenied.value = true;
-    errorMessage.value = 'Workspace id is missing.';
+    errorMessage.value = t('entityForm.wsIdMissing');
     return false;
   }
   if (!wsStore.workspaces.length) {
@@ -456,7 +481,7 @@ async function ensureWorkspaceAccess(): Promise<boolean> {
   const belongs = wsStore.workspaces.some((w) => w.id === workspaceId.value);
   if (!belongs) {
     accessDenied.value = true;
-    errorMessage.value = 'You do not have access to this workspace.';
+    errorMessage.value = t('entities.noAccess');
     return false;
   }
   wsStore.setCurrentWorkspace(workspaceId.value);
@@ -470,7 +495,7 @@ async function loadTypes() {
     if (!ok) return;
     if (!hasWorkspacePermission(wsStore.currentWorkspace, 'create_entities')) {
       accessDenied.value = true;
-      errorMessage.value = 'You do not have permission to create entities in this workspace.';
+      errorMessage.value = t('entityForm.noCreatePermission');
       return;
     }
     await entityStore.fetchTypes();
@@ -486,7 +511,7 @@ async function loadTypes() {
       }
     }
   } catch (err) {
-    const normalized = normalizeError(err, 'Failed to load entity types.');
+    const normalized = normalizeError(err, t('entityForm.loadTypesError'));
     errorMessage.value = normalized.message;
   } finally {
     loadingTypes.value = false;
@@ -497,17 +522,20 @@ async function handleSubmit() {
   submitAttempted.value = true;
   const picked = types.value.find((t) => t.id === selectedTypeId.value);
   if (picked && isEntityTypeUiLocked(picked)) {
-    errorMessage.value =
-      'This entity type cannot be created from the UI.';
+    errorMessage.value = t('entityForm.typeNotCreatable');
     return;
   }
   if (!isFormValid.value || selectedTypeId.value === null) {
-    errorMessage.value = 'Please fill in all fields before submitting.';
+    touchedProps.value = new Set(properties.value.map((p) => p.propertyId));
+    errorMessage.value = t('entityForm.fillBeforeSubmit');
     return;
   }
   for (const rel of requiredOutgoing.value) {
     if (linkPick[rel.relationshipTypeId] == null) {
-      errorMessage.value = `Select a linked ${rel.targetEntityTypeName.replace(/_/g, ' ')} for "${humanize(rel.name)}".`;
+      errorMessage.value = t('entityForm.selectLinkFor', {
+        target: rel.targetEntityTypeDisplayName,
+        rel: rel.displayName,
+      });
       return;
     }
   }
@@ -517,10 +545,12 @@ async function handleSubmit() {
   try {
     const base = {
       entityTypeId: selectedTypeId.value,
-      properties: properties.value.map((p) => ({
-        propertyId: p.propertyId,
-        value: serializeValue(p, values.value[p.propertyId] ?? null),
-      })),
+      properties: properties.value
+        .filter((p) => !p.isReadonly)
+        .map((p) => ({
+          propertyId: p.propertyId,
+          value: serializeValue(p, values.value[p.propertyId] ?? null),
+        })),
     };
     const req = requiredOutgoing.value;
     const body =
@@ -535,10 +565,10 @@ async function handleSubmit() {
         : base;
 
     const detail = await entityStore.createViaGraph(workspaceId.value, body);
-    const typeLabel = selectedType.value?.name ?? 'Entity';
+    const typeLabel = selectedType.value?.name ?? t('entityForm.entityFallback');
     toast.add({
       severity: 'success',
-      summary: `${typeLabel} created`,
+      summary: t('entityForm.createdSummary', { type: typeLabel }),
       life: 3000,
     });
     router.push({
@@ -551,7 +581,7 @@ async function handleSubmit() {
       },
     });
   } catch (err) {
-    const normalized = normalizeError(err, 'Failed to create entity.');
+    const normalized = normalizeError(err, t('entityForm.createError'));
     fieldErrors.value = normalized.fieldErrors;
     errorMessage.value = normalized.message;
   } finally {
@@ -588,15 +618,15 @@ watch(
       <Button
         text
         icon="pi pi-arrow-left"
-        :label="accessDenied ? 'Workspaces' : 'Back to entities'"
+        :label="accessDenied ? t('nav.workspaces') : t('entityForm.backToEntities')"
         severity="secondary"
         size="small"
         class="!px-1 !mb-1"
         @click="accessDenied ? gotoWorkspaces() : gotoList()"
       />
-      <h1 class="text-2xl font-bold text-ink-900">Create entity</h1>
+      <h1 class="text-2xl font-bold text-ink-900">{{ t('entityForm.title') }}</h1>
       <p class="mt-1 text-sm text-ink-500">
-        Add a new entity to this workspace.
+        {{ t('entityForm.subtitle') }}
       </p>
     </div>
 
@@ -609,9 +639,12 @@ watch(
       {{ errorMessage }}
     </Message>
 
-    <div v-else-if="loadingTypes" class="text-center py-12 text-ink-500">
-      Loading...
-    </div>
+    <LoadingSkeleton
+      v-else-if="loadingTypes"
+      variant="detail"
+      :rows="5"
+      :label="t('common.loading')"
+    />
 
     <div
       v-else-if="!types.length"
@@ -619,7 +652,7 @@ watch(
     >
       <i class="pi pi-info-circle text-3xl text-ink-400" />
       <p class="mt-3 text-sm text-ink-500">
-        No record types available. Contact your administrator.
+        {{ t('entityForm.noTypes') }}
       </p>
     </div>
 
@@ -629,8 +662,7 @@ watch(
     >
       <i class="pi pi-lock text-3xl text-ink-400" />
       <p class="mt-3 text-sm text-ink-500">
-        No entity types can be created manually. Derived or system-maintained
-        types are hidden here.
+        {{ t('entityForm.noCreatableTypes') }}
       </p>
     </div>
 
@@ -642,7 +674,7 @@ watch(
     >
       <div class="flex flex-col gap-1.5">
         <label for="entityType" class="text-xs font-medium text-ink-600">
-          Entity type <span class="text-danger">*</span>
+          {{ t('entityForm.typeLabel') }} <span class="text-danger">*</span>
         </label>
         <Select
           id="entityType"
@@ -650,7 +682,7 @@ watch(
           :options="creatableTypes"
           option-label="name"
           option-value="id"
-          placeholder="Select type"
+          :placeholder="t('entityForm.selectType')"
           class="!h-10"
           @update:model-value="resetTypeFields"
         />
@@ -659,29 +691,29 @@ watch(
       <template v-for="rel in requiredOutgoing" :key="rel.relationshipTypeId">
         <div class="flex flex-col gap-1.5">
           <label class="text-xs font-medium text-ink-600">
-            {{ humanize(rel.name) }}
+            {{ rel.displayName }}
             <span class="text-danger">*</span>
             <span class="text-ink-400 font-normal normal-case">
-              → {{ formatTypeName(rel.targetEntityTypeName) }}</span>
+              → {{ rel.targetEntityTypeDisplayName }}</span>
           </label>
           <Select
             v-model="linkPick[rel.relationshipTypeId]"
             :options="linkSelectOptions(rel.relationshipTypeId)"
             option-label="label"
             option-value="value"
-            :placeholder="`Choose ${formatTypeName(rel.targetEntityTypeName)}`"
-            class="w-full"
+            :placeholder="t('entityForm.choose', { target: rel.targetEntityTypeDisplayName })"
+            class="w-full !h-10"
             filter
           />
           <Button
             v-if="canCreateLinkedTarget(rel)"
             type="button"
             icon="pi pi-plus"
-            :label="`Create new ${formatTypeName(rel.targetEntityTypeName)}`"
+            :label="t('entityForm.createNew', { target: rel.targetEntityTypeDisplayName })"
             severity="secondary"
             outlined
             size="small"
-            class="w-fit"
+            class="w-fit !h-10"
             @click="openNestedCreate(rel)"
           />
           <p
@@ -691,7 +723,7 @@ watch(
             "
             class="text-xs text-ink-500"
           >
-            No matching records in this workspace. This linked type cannot be created from this screen — contact an administrator.
+            {{ t('entityForm.noMatchingLocked') }}
           </p>
           <p
             v-else-if="
@@ -700,28 +732,46 @@ watch(
             "
             class="text-xs text-ink-500"
           >
-            No records yet — use “Create new {{ formatTypeName(rel.targetEntityTypeName) }}” to add one; it will be selected for this deal automatically.
+            {{ t('entityForm.noRecordsCreateHint', { target: rel.targetEntityTypeDisplayName }) }}
           </p>
         </div>
       </template>
 
-      <template v-for="prop in properties" :key="prop.propertyId">
+      <template
+        v-for="prop in properties.filter((p) => !p.isReadonly)"
+        :key="prop.propertyId"
+      >
         <div class="flex flex-col gap-1.5">
           <label
             :for="`p-${prop.propertyId}`"
             class="text-xs font-medium text-ink-600"
           >
-            {{ humanize(prop.name) }}
+            {{ prop.displayName }}
             <span v-if="isPropertyRequired(prop)" class="text-danger">*</span>
           </label>
 
+          <Select
+            v-if="prop.dataType === 'String' && prop.allowedValues?.length > 0"
+            :id="`p-${prop.propertyId}`"
+            v-model="values[prop.propertyId] as string"
+            :options="prop.allowedValues"
+            option-label="displayName"
+            option-value="value"
+            :placeholder="t('entityForm.selectPlaceholder')"
+            class="w-full !h-10"
+            :invalid="!!propertyFieldError(prop)"
+            @update:model-value="clearPropertyFieldError(prop)"
+            @blur="touchedProps.add(prop.propertyId)"
+          />
+
           <InputText
-            v-if="prop.dataType === 'String'"
+            v-else-if="prop.dataType === 'String'"
             :id="`p-${prop.propertyId}`"
             v-model="values[prop.propertyId] as string"
             class="!h-10"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            @blur="touchedProps.add(prop.propertyId)"
           />
 
           <InputNumber
@@ -730,8 +780,11 @@ watch(
             v-model="values[prop.propertyId] as number"
             :min="0"
             :max-fraction-digits="0"
+            :input-class="'!h-10 w-full'"
+            class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            :input-props="{ onBlur: () => touchedProps.add(prop.propertyId) }"
           />
 
           <InputNumber
@@ -741,8 +794,11 @@ watch(
             :min="0"
             :min-fraction-digits="0"
             :max-fraction-digits="2"
+            :input-class="'!h-10 w-full'"
+            class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            :input-props="{ onBlur: () => touchedProps.add(prop.propertyId) }"
           />
 
           <DatePicker
@@ -751,8 +807,11 @@ watch(
             v-model="values[prop.propertyId] as Date | null"
             date-format="yy-mm-dd"
             show-icon
+            :input-class="'!h-10 w-full'"
+            class="w-full"
             :invalid="!!propertyFieldError(prop)"
             @update:model-value="clearPropertyFieldError(prop)"
+            @blur="touchedProps.add(prop.propertyId)"
           />
 
           <ToggleSwitch
@@ -779,19 +838,20 @@ watch(
         {{ errorMessage }}
       </Message>
 
-      <div class="flex justify-end gap-2 pt-2">
+      <div class="flex justify-end gap-3 pt-2">
         <Button
           type="button"
-          label="Cancel"
-          severity="secondary"
-          text
+          :label="t('common.cancel')"
+          outlined
+          class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
           @click="handleCancel"
         />
         <Button
           type="submit"
-          label="Create"
+          :label="t('common.create')"
           :disabled="submitting"
           :loading="submitting"
+          class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"
         />
       </div>
     </form>
@@ -800,8 +860,8 @@ watch(
       v-model:visible="nestedDialogOpen"
       :header="
         nestedTargetType
-          ? `New ${formatTypeName(nestedTargetType.name)}`
-          : 'New record'
+          ? t('entityForm.nestedTitle', { type: nestedTargetType.displayName })
+          : t('entityForm.nestedTitleFallback')
       "
       modal
       :draggable="false"
@@ -810,36 +870,39 @@ watch(
     >
       <div v-if="nestedTargetType" class="flex flex-col gap-4">
         <p class="text-xs text-ink-500 leading-snug -mt-1">
-          This saves to your workspace and is linked when you finish the parent record below.
+          {{ t('entityForm.nestedHint') }}
         </p>
 
         <template v-for="ir in nestedRequiredOutgoing" :key="ir.relationshipTypeId">
           <div class="flex flex-col gap-1.5">
             <label class="text-xs font-medium text-ink-600">
-              {{ humanize(ir.name) }}
+              {{ ir.displayName }}
               <span class="text-danger">*</span>
               <span class="text-ink-400 font-normal normal-case">
-                → {{ formatTypeName(ir.targetEntityTypeName) }}</span>
+                → {{ ir.targetEntityTypeDisplayName }}</span>
             </label>
             <Select
               v-model="nestedLinkPick[ir.relationshipTypeId]"
               :options="nestedLinkSelectOptions(ir.relationshipTypeId)"
               option-label="label"
               option-value="value"
-              :placeholder="`Choose ${formatTypeName(ir.targetEntityTypeName)}`"
-              class="w-full"
+              :placeholder="t('entityForm.choose', { target: ir.targetEntityTypeDisplayName })"
+              class="w-full !h-10"
               filter
             />
           </div>
         </template>
 
-        <template v-for="prop in nestedTargetProperties" :key="prop.propertyId">
+        <template
+          v-for="prop in nestedTargetProperties.filter((p) => !p.isReadonly)"
+          :key="prop.propertyId"
+        >
           <div class="flex flex-col gap-1.5">
             <label
               :for="`np-${prop.propertyId}`"
               class="text-xs font-medium text-ink-600"
             >
-              {{ humanize(prop.name) }}
+              {{ prop.displayName }}
               <span v-if="isPropertyRequired(prop)" class="text-danger">*</span>
             </label>
 
@@ -850,6 +913,7 @@ watch(
               class="!h-10 w-full"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
+              @blur="touchedNestedProps.add(prop.propertyId)"
             />
 
             <InputNumber
@@ -857,10 +921,12 @@ watch(
               :input-id="`np-${prop.propertyId}`"
               v-model="nestedValues[prop.propertyId] as number"
               class="w-full"
+              :input-class="'!h-10 w-full'"
               :min="0"
               :max-fraction-digits="0"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
+              :input-props="{ onBlur: () => touchedNestedProps.add(prop.propertyId) }"
             />
 
             <InputNumber
@@ -868,11 +934,13 @@ watch(
               :input-id="`np-${prop.propertyId}`"
               v-model="nestedValues[prop.propertyId] as number"
               class="w-full"
+              :input-class="'!h-10 w-full'"
               :min="0"
               :min-fraction-digits="0"
               :max-fraction-digits="2"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
+              :input-props="{ onBlur: () => touchedNestedProps.add(prop.propertyId) }"
             />
 
             <DatePicker
@@ -882,8 +950,10 @@ watch(
               date-format="yy-mm-dd"
               show-icon
               class="w-full"
+              :input-class="'!h-10 w-full'"
               :invalid="!!nestedPropertyFieldError(prop)"
               @update:model-value="clearNestedPropertyFieldError(prop)"
+              @blur="touchedNestedProps.add(prop.propertyId)"
             />
 
             <ToggleSwitch
@@ -909,20 +979,21 @@ watch(
           {{ nestedError }}
         </Message>
 
-        <div class="flex justify-end gap-2 pt-2">
+        <div class="flex justify-end gap-3 pt-2">
           <Button
-            label="Cancel"
-            severity="secondary"
-            text
+            :label="t('common.cancel')"
+            outlined
             type="button"
+            class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"
             @click="cancelNestedCreate"
           />
           <Button
-            label="Create & link"
+            :label="t('entityForm.createAndLink')"
             type="button"
             icon="pi pi-check"
             :loading="nestedSubmitting"
             :disabled="nestedSubmitting"
+            class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"
             @click="submitNestedCreate"
           />
         </div>

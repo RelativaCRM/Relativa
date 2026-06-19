@@ -9,4 +9,6 @@ public interface IWorkspaceService
     Task<WorkspaceDto> GetByIdAsync(int workspaceId, int userId, CancellationToken ct = default);
     Task UpdateAsync(int workspaceId, int userId, UpdateWorkspaceRequest request, CancellationToken ct = default);
     Task ArchiveAsync(int workspaceId, int userId, CancellationToken ct = default);
+    Task<WorkspaceSettingsDto> GetSettingsAsync(int workspaceId, int userId, CancellationToken ct = default);
+    Task UpdateSettingsAsync(int workspaceId, int userId, UpdateWorkspaceSettingsRequest request, CancellationToken ct = default);
 }

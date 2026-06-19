@@ -11,6 +11,10 @@ import ConfirmationService from 'primevue/confirmationservice';
 
 import App from './App.vue';
 import router from './router';
+import { i18n, setLocale, detectLocale } from '@/i18n';
+import { primeVueLocaleFor } from '@/i18n/primevue';
+import { notifyGlobal } from '@/api/errorToast';
+import { ApiError } from '@/api/http';
 
 const RelativaAura = definePreset(Aura, {
   semantic: {
@@ -32,9 +36,34 @@ const RelativaAura = definePreset(Aura, {
 
 const app = createApp(App);
 
+// Global Vue error boundary — catches uncaught render/lifecycle errors so the
+// user sees a toast instead of a silent broken view.
+app.config.errorHandler = (err, _instance, info) => {
+  console.error('[Vue error]', info, err);
+  notifyGlobal(err, {
+    summary: 'Unexpected error',
+    fallback: 'Something went wrong rendering this view. Please try again.',
+  });
+};
+
+// Catch promise rejections that escaped component-level try/catch (forgotten
+// awaits, fire-and-forget API calls). 401 is owned by the auth flow and 404
+// is usually rendered inline — skip both to avoid noisy toasts.
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  console.error('[Unhandled rejection]', reason);
+  if (reason instanceof ApiError && (reason.status === 401 || reason.status === 404)) {
+    return;
+  }
+  notifyGlobal(reason);
+});
+
 app.use(createPinia());
+app.use(i18n);
+setLocale(detectLocale());
 app.use(router);
 app.use(PrimeVue, {
+  locale: primeVueLocaleFor(detectLocale()),
   theme: {
     preset: RelativaAura,
     options: {

@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -43,6 +44,9 @@ public sealed class EntityServiceTests
         _entityRepo
             .Setup(r => r.ArchiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        _entityRepo
+            .Setup(r => r.GetTypePropertiesAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         _createValidator
             .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<CreateEntityRequest>>(), It.IsAny<CancellationToken>()))
@@ -121,23 +125,29 @@ public sealed class EntityServiceTests
             .Setup(x => x.HasWorkspacePermissionAsync(1, 1, "view_entities", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        await _sut.Invoking(s => s.GetByWorkspaceAsync(1, 1, null, null, 500))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+        await _sut.Invoking(s => s.GetByWorkspaceAsync(1, 1, null, null, 0, 50))
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*view_entities*");
     }
 
     [Fact]
-    public async Task GetByWorkspaceAsync_ReturnsOnlyNonArchivedEntities()
+    public async Task GetByWorkspaceAsync_ActiveEntity_MapsToDto()
     {
         var active = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
-        _entityRepo.Setup(r => r.GetByWorkspaceAsync(1, 1, 4, null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([active]);
+        _entityRepo.Setup(r => r.GetByWorkspaceAsync(
+                1, 1, It.IsAny<int>(), null, null,
+                It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<IReadOnlyList<ResolvedFilterCondition>>(),
+                It.IsAny<IReadOnlyList<EntitySortField>>(),
+                It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(([active], 1));
 
-        var result = await _sut.GetByWorkspaceAsync(1, 1, null, null, 500);
+        var result = await _sut.GetByWorkspaceAsync(1, 1, null, null, 0, 50);
 
-        result.Should().HaveCount(1);
-        result[0].Id.Should().Be(1);
-        result[0].EntityTypeName.Should().Be("client");
+        result.Items.Should().HaveCount(1);
+        result.Items[0].Id.Should().Be(1);
+        result.Items[0].EntityTypeName.Should().Be("client");
+        result.Total.Should().Be(1);
     }
 
     [Fact]
@@ -174,7 +184,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(new Dictionary<int, int> { [1] = 4, [2] = 4 });
 
         await _sut.Invoking(s => s.GetByIdAsync(5, 1, 1))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("Access denied");
     }
 
@@ -193,13 +203,13 @@ public sealed class EntityServiceTests
     }
 
     [Fact]
-    public async Task GetByIdAsync_EntityNotInWorkspace_ThrowsKeyNotFound()
+    public async Task GetByIdAsync_EntityNotInWorkspace_ThrowsEntityNotFoundException()
     {
         _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(99, 1, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Entity?)null);
 
         await _sut.Invoking(s => s.GetByIdAsync(99, 1, 1))
-            .Should().ThrowAsync<KeyNotFoundException>()
+            .Should().ThrowAsync<EntityNotFoundException>()
             .WithMessage("*99*");
     }
 
@@ -208,10 +218,10 @@ public sealed class EntityServiceTests
     {
         _workspaceAccess.Setup(x =>
                 x.HasWorkspacePermissionAsync(2, 1, "view_entities", It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new UnauthorizedAccessException("You are not a member of this workspace."));
+            .ThrowsAsync(new AppException("not_ws_member", 403, "You are not a member of this workspace."));
 
         await _sut.Invoking(s => s.GetByIdAsync(5, 1, 2))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*not a member*");
     }
 
@@ -224,7 +234,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.CreateAsync(2, 5, new CreateEntityRequest(0, [])))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*create_entities*");
 
         _createValidator.Verify(
@@ -239,7 +249,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync([]);
 
         await _sut.Invoking(s => s.CreateAsync(3, 1, new CreateEntityRequest(99, [])))
-            .Should().ThrowAsync<KeyNotFoundException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*99*");
     }
 
@@ -337,8 +347,52 @@ public sealed class EntityServiceTests
         var request = new CreateEntityRequest(1, [new PropertyValueInput(1, "Ivan")]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*last_name*");
+    }
+
+    [Fact]
+    public async Task CreateAsync_RequiredStringProperty_EmptyValue_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
+        };
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new CreateEntityRequest(1,
+        [
+            new PropertyValueInput(1, ""),
+            new PropertyValueInput(3, "Koval")
+        ]);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, request))
+            .Should().ThrowAsync<AppException>()
+            .WithMessage("*empty or whitespace*");
+    }
+
+    [Fact]
+    public async Task CreateAsync_RequiredStringProperty_WhitespaceValue_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            TypeProp(1, "first_name", required: true),
+            TypeProp(3, "last_name",  required: true)
+        };
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        var request = new CreateEntityRequest(1,
+        [
+            new PropertyValueInput(1, "   "),
+            new PropertyValueInput(3, "Koval")
+        ]);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, request))
+            .Should().ThrowAsync<AppException>()
+            .WithMessage("*empty or whitespace*");
     }
 
     [Fact]
@@ -360,7 +414,7 @@ public sealed class EntityServiceTests
         ]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*99*");
     }
 
@@ -383,7 +437,7 @@ public sealed class EntityServiceTests
         ]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*Duplicate*");
     }
 
@@ -403,7 +457,7 @@ public sealed class EntityServiceTests
         ]);
 
         await _sut.Invoking(s => s.CreateAsync(1, 1, request))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*closure_score*decimal*");
     }
 
@@ -415,7 +469,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest(null!)))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*edit_entities*");
 
         _updateValidator.Verify(
@@ -482,7 +536,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "New")])))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*edit_archived_entities*");
     }
 
@@ -517,8 +571,40 @@ public sealed class EntityServiceTests
             .ReturnsAsync(typeProps);
 
         await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(99, "bad")])))
-            .Should().ThrowAsync<ArgumentException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*99*");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RequiredStringProperty_EmptyValue_ThrowsArgumentException()
+    {
+        var entity = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, "")])))
+            .Should().ThrowAsync<AppException>()
+            .WithMessage("*empty or whitespace*");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RequiredStringProperty_WhitespaceValue_ThrowsArgumentException()
+    {
+        var entity = BuildEntity(1, 1, "client", [(1, "first_name", "Ivan")]);
+        var typeProps = new List<EntityTypeProperty> { TypeProp(1, "first_name", required: true) };
+
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(1, " ")])))
+            .Should().ThrowAsync<AppException>()
+            .WithMessage("*empty or whitespace*");
     }
 
 
@@ -541,7 +627,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(false);
 
         await _sut.Invoking(s => s.ArchiveAsync(1, 1, 1))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("*delete_entities*");
     }
 
@@ -568,7 +654,7 @@ public sealed class EntityServiceTests
             .ReturnsAsync(new Dictionary<int, int> { [1] = 4, [2] = 4 });
 
         await _sut.Invoking(s => s.ArchiveAsync(1, 1, 1))
-            .Should().ThrowAsync<UnauthorizedAccessException>()
+            .Should().ThrowAsync<AppException>()
             .WithMessage("Access denied");
     }
 
@@ -746,5 +832,104 @@ public sealed class EntityServiceTests
         capturedValues.Should().NotBeNull();
         capturedValues!.Single(v => v.PropertyId == 6).ValueBool.Should().BeTrue();
         result.PropertyValues.Should().Contain(p => p.PropertyName == "is_active" && (bool?)p.Value == true);
+    }
+
+    // ------------------------------------------------------------------
+    // Read-only property decoupling tests
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task UpdateAsync_EntityWithNonNullReadonlyProperty_SucceedsAndPreservesReadonlyValue()
+    {
+        var storedEntity = new Entity
+        {
+            Id = 1, EntityTypeId = 2, CreatedByUserId = 1, IsArchived = false,
+            EntityType = new EntityType { Id = 2, Name = "deal" },
+            EntityPropertyValues =
+            [
+                new EntityPropertyValue
+                {
+                    EntityId = 1, PropertyId = 7, ValueString = "opened",
+                    Property = new Property { Id = 7, Name = "status", DataType = PropertyDataType.String }
+                },
+                new EntityPropertyValue
+                {
+                    EntityId = 1, PropertyId = 10, ValueDecimal = 0.75m,
+                    Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true }
+                }
+            ]
+        };
+        var typeProps = new List<EntityTypeProperty>
+        {
+            new() { PropertyId = 7,  IsRequired = true,  Property = new Property { Id = 7,  Name = "status",        DataType = PropertyDataType.String,  IsReadonly = false } },
+            new() { PropertyId = 10, IsRequired = false, Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true  } }
+        };
+
+        _entityRepo.SetupSequence(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(storedEntity)
+            .ReturnsAsync(storedEntity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(7, "closed")]));
+
+        _entityRepo.Verify(r => r.UpdateAsync(
+            storedEntity,
+            It.Is<List<EntityPropertyValue>>(l =>
+                l.Any(x => x.PropertyId == 7  && x.ValueString == "closed") &&
+                l.Any(x => x.PropertyId == 10 && x.ValueDecimal == 0.75m)),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UserAttemptsToChangeReadonlyProperty_ThrowsArgumentException()
+    {
+        var storedEntity = new Entity
+        {
+            Id = 1, EntityTypeId = 2, CreatedByUserId = 1, IsArchived = false,
+            EntityType = new EntityType { Id = 2, Name = "deal" },
+            EntityPropertyValues =
+            [
+                new EntityPropertyValue
+                {
+                    EntityId = 1, PropertyId = 10, ValueDecimal = 0.75m,
+                    Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true }
+                }
+            ]
+        };
+        var typeProps = new List<EntityTypeProperty>
+        {
+            new() { PropertyId = 10, IsRequired = false, Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true } }
+        };
+
+        _entityRepo.Setup(r => r.GetByIdInWorkspaceAsync(1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(storedEntity);
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.UpdateAsync(1, 1, 1, new UpdateEntityRequest([new PropertyValueInput(10, "0.99")])))
+            .Should().ThrowAsync<AppException>()
+            .WithMessage("*closure_score*read-only*");
+    }
+
+    [Fact]
+    public async Task CreateAsync_ExplicitlySubmittingReadonlyProperty_ThrowsArgumentException()
+    {
+        var typeProps = new List<EntityTypeProperty>
+        {
+            new() { PropertyId = 7,  IsRequired = true,  Property = new Property { Id = 7,  Name = "status",        DataType = PropertyDataType.String,  IsReadonly = false } },
+            new() { PropertyId = 10, IsRequired = false, Property = new Property { Id = 10, Name = "closure_score", DataType = PropertyDataType.Decimal, IsReadonly = true  } }
+        };
+        _entityRepo.Setup(r => r.GetTypePropertiesAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(typeProps);
+
+        await _sut.Invoking(s => s.CreateAsync(1, 1, new CreateEntityRequest(2,
+        [
+            new PropertyValueInput(7,  "opened"),
+            new PropertyValueInput(10, "0.75")
+        ])))
+            .Should().ThrowAsync<AppException>()
+            .WithMessage("*closure_score*read-only*");
     }
 }

@@ -3,12 +3,12 @@ import { useAuthStore } from '@/stores/auth';
 import { useOrganizationStore } from '@/stores/organization';
 import { useWorkspaceStore } from '@/stores/workspace';
 
+import LoginView from '@/views/LoginView.vue';
+import RegisterView from '@/views/RegisterView.vue';
+import ForgotPasswordView from '@/views/ForgotPasswordView.vue';
+import ResetPasswordView from '@/views/ResetPasswordView.vue';
 const MainLayout = () => import('@/layouts/MainLayout.vue');
 const WorkspaceLayout = () => import('@/layouts/WorkspaceLayout.vue');
-const LoginView = () => import('@/views/LoginView.vue');
-const RegisterView = () => import('@/views/RegisterView.vue');
-const ForgotPasswordView = () => import('@/views/ForgotPasswordView.vue');
-const ResetPasswordView = () => import('@/views/ResetPasswordView.vue');
 const HomeView = () => import('@/views/HomeView.vue');
 const GraphView = () => import('@/views/GraphView.vue');
 const OnboardingView = () => import('@/views/OnboardingView.vue');
@@ -17,14 +17,18 @@ const WorkspaceSelectorView = () =>
 const MembersView = () => import('@/views/MembersView.vue');
 const MemberView = () => import('@/views/MemberView.vue');
 const WorkspacesView = () => import('@/views/WorkspacesView.vue');
+const OrganizationsView = () => import('@/views/OrganizationsView.vue');
 const WorkspaceMembersView = () =>
   import('@/views/WorkspaceMembersView.vue');
 const UserListView = () => import('@/views/UserListView.vue');
 const UserProfileView = () => import('@/views/UserProfileView.vue');
 const EntitiesView = () => import('@/views/EntitiesView.vue');
+const WorkspaceDashboardView = () => import('@/views/WorkspaceDashboardView.vue');
 const AuditLogView = () => import('@/views/AuditLogView.vue');
 const AccountSettingsView = () => import('@/views/AccountSettingsView.vue');
 const InvitationsView = () => import('@/views/InvitationsView.vue');
+const OrgSettingsView = () => import('@/views/OrgSettingsView.vue');
+const WorkspaceSettingsView = () => import('@/views/WorkspaceSettingsView.vue');
 
 const orgMeta = { navScope: 'org' as const, skipWorkspaceCheck: true };
 const userMeta = { navScope: 'user' as const, skipWorkspaceCheck: true };
@@ -98,10 +102,20 @@ const router = createRouter({
           meta: orgMeta,
         },
         {
+          path: 'organizations',
+          name: 'organizations',
+          component: OrganizationsView,
+          meta: { navScope: 'user' as const, skipOrgCheck: true, skipWorkspaceCheck: true },
+        },
+        {
           path: 'audit-log',
           name: 'audit-log',
           component: AuditLogView,
           meta: orgMeta,
+        },
+        {
+          path: 'dashboard',
+          redirect: '/',
         },
         {
           path: 'graph',
@@ -116,6 +130,12 @@ const router = createRouter({
           meta: userMeta,
         },
         {
+          path: 'org-settings',
+          name: 'org-settings',
+          component: OrgSettingsView,
+          meta: orgMeta,
+        },
+        {
           path: 'invitations',
           name: 'invitations',
           component: InvitationsView,
@@ -127,10 +147,21 @@ const router = createRouter({
           meta: workspaceMeta,
           children: [
             {
+              path: '',
+              name: 'workspace-dashboard',
+              component: WorkspaceDashboardView,
+              meta: workspaceMeta,
+            },
+            {
               path: 'entities',
               name: 'workspace-entities',
               component: EntitiesView,
               meta: workspaceMeta,
+              beforeEnter: (to) => {
+                if (!to.query.entityType) {
+                  return { name: 'workspace-dashboard', params: to.params };
+                }
+              },
             },
             {
               path: 'entities/new',
@@ -144,6 +175,12 @@ const router = createRouter({
               path: 'members',
               name: 'workspace-members',
               component: WorkspaceMembersView,
+              meta: workspaceMeta,
+            },
+            {
+              path: 'settings',
+              name: 'workspace-settings',
+              component: WorkspaceSettingsView,
               meta: workspaceMeta,
             },
             {
@@ -165,6 +202,8 @@ const router = createRouter({
   ],
 });
 
+let localeRevalidated = false;
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const orgStore = useOrganizationStore();
@@ -175,7 +214,8 @@ router.beforeEach(async (to) => {
   }
 
   if (!to.meta.public && !auth.isAuthenticated) {
-    return { name: 'login', query: { redirect: to.fullPath } };
+    const query = to.fullPath !== '/' ? { redirect: to.fullPath } : {};
+    return { name: 'login', query };
   }
 
   if (auth.isAuthenticated && !auth.user) {
@@ -183,15 +223,21 @@ router.beforeEach(async (to) => {
       await auth.fetchProfile();
     } catch {
       auth.logout();
-      return { name: 'login', query: { redirect: to.fullPath } };
+      const query = to.fullPath !== '/' ? { redirect: to.fullPath } : {};
+      return { name: 'login', query };
     }
+  }
+
+  if (auth.isAuthenticated && !localeRevalidated) {
+    localeRevalidated = true;
+    void auth.syncLocale().catch(() => undefined);
   }
 
   if (auth.isAuthenticated && !to.meta.public && !to.meta.skipOrgCheck) {
     if (!orgStore.organizations.length) {
       await orgStore.fetchOrganizations();
     }
-    if (!orgStore.hasOrganization) {
+    if (!orgStore.hasOrganization || !orgStore.currentOrgId) {
       return { name: 'onboarding' };
     }
   }
@@ -207,7 +253,9 @@ router.beforeEach(async (to) => {
     if (!orgStore.currentOrgId) {
       return { name: 'onboarding' };
     }
-    await wsStore.fetchWorkspaces(orgStore.currentOrgId);
+    if (!wsStore.workspaces.length) {
+      await wsStore.fetchWorkspaces(orgStore.currentOrgId);
+    }
     if (!wsStore.workspaces.some((w) => w.id === wsId)) {
       return { name: 'workspaces' };
     }
@@ -215,9 +263,28 @@ router.beforeEach(async (to) => {
   }
 
   const required = (to.meta.roles as string[] | undefined) ?? [];
-  if (required.length === 0) return true;
-  const allowed = required.some((r) => auth.roles.includes(r));
-  if (!allowed) return { name: 'home' };
+  if (required.length > 0) {
+    const allowed = required.some((r) => auth.roles.includes(r));
+    if (!allowed) return { name: 'home' };
+  }
+
+  const requiredPerm = to.meta.requiresPermission as string | undefined;
+  if (requiredPerm) {
+    const wsStore2 = useWorkspaceStore();
+    if (!wsStore2.workspaces.length && orgStore.currentOrgId) {
+      try {
+        await wsStore2.fetchWorkspaces(orgStore.currentOrgId);
+      } catch {
+        // continue — permission check below will deny if still no workspaces
+      }
+    }
+    const hasInWorkspace = wsStore2.workspaces.some(
+      (w) => w.myPermissions?.includes(requiredPerm),
+    );
+    const hasOrgOwner = orgStore.currentOrg?.myPermissions?.includes('manage_org_settings') ?? false;
+    if (!hasInWorkspace && !hasOrgOwner) return { name: 'home' };
+  }
+
   return true;
 });
 

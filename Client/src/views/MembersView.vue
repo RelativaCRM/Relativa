@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import Button from 'primevue/button';
@@ -8,11 +9,13 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
 import { normalizeError } from '@/api/errors';
-import { roleDisplayName, roleBadgeFullClass } from '@/utils/roleBadge';
+import { roleBadgeFullClass, roleLabel } from '@/utils/roleBadge';
 import { useApiErrorHandler } from '@/api/errorToast';
 import { orgApi, type JoinRequestDto } from '@/api/organizations';
 import { useOrganizationStore } from '@/stores/organization';
+import LoadingSkeleton from '@/components/feedback/LoadingSkeleton.vue';
 
+const { t } = useI18n();
 const router = useRouter();
 const toast = useToast();
 const orgStore = useOrganizationStore();
@@ -48,9 +51,23 @@ const pendingJoinRequests = computed(() =>
   joinRequests.value.filter((r) => r.status === 'Pending'),
 );
 
-const displayRole = roleDisplayName;
+const memberSearch = ref('');
+const filteredMembers = computed(() => {
+  const q = memberSearch.value.trim().toLowerCase();
+  const list = orgStore.members;
+  if (!q) return list;
+  return list.filter(
+    (m) =>
+      `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
+      m.email.toLowerCase().includes(q),
+  );
+});
 
-/* ── Create user dialog ─────────────────────────────── */
+function memberInitials(first: string, last: string, email: string): string {
+  const fl = `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
+  return fl || (email?.[0] ?? '?').toUpperCase();
+}
+
 const showCreateUser = ref(false);
 const createSubmitting = ref(false);
 const createError = ref<string | null>(null);
@@ -68,7 +85,7 @@ const orgRoleOptions = computed(() =>
     .slice()
     .sort((a, b) => a.priority - b.priority)
     .map((r) => ({
-      label: r.name === 'org_admin' ? 'Admin' : 'Member',
+      label: roleLabel(r.name, r.displayName),
       value: r.id,
       name: r.name,
     })),
@@ -123,19 +140,18 @@ async function handleCreateUser() {
     await orgStore.createOrgUser(payload);
     toast.add({
       severity: 'success',
-      summary: 'User created',
-      detail: 'The new organization account has been created.',
+      summary: t('members.userCreatedSummary'),
+      detail: t('members.userCreatedDetail'),
       life: 4000,
     });
     showCreateUser.value = false;
   } catch (err) {
-    createError.value = normalizeError(err, 'Failed to create user.').message;
+    createError.value = normalizeError(err, t('members.createUserError')).message;
   } finally {
     createSubmitting.value = false;
   }
 }
 
-/* ── Invite dialog ───────────────────────────────────── */
 const showInvite = ref(false);
 const inviteEmail = ref('');
 const inviteRoleId = ref<number | null>(null);
@@ -166,23 +182,22 @@ async function handleInvite() {
   inviteError.value = null;
   try {
     await orgStore.inviteMember(inviteEmail.value.trim(), inviteRoleId.value ?? undefined);
-    inviteSuccess.value = `Invitation sent to ${inviteEmail.value.trim()}`;
+    inviteSuccess.value = t('members.inviteSent', { email: inviteEmail.value.trim() });
     inviteEmail.value = '';
   } catch (err) {
-    inviteError.value = normalizeError(err, 'Failed to send invitation.').message;
+    inviteError.value = normalizeError(err, t('members.inviteError')).message;
   } finally {
     inviteSending.value = false;
   }
 }
 
-/* ── Join requests + invitations ─────────────────────── */
 async function fetchJoinRequests() {
   if (!orgStore.currentOrgId || !canManageJoinRequests.value) return;
   try {
     joinRequests.value = await orgApi.listJoinRequests(orgStore.currentOrgId);
   } catch (err) {
     joinRequests.value = [];
-    notify(err, { fallback: 'Failed to load join requests.' });
+    notify(err, { fallback: t('members.loadJoinRequestsError') });
   }
 }
 
@@ -196,7 +211,7 @@ async function handleReviewRequest(reqId: number, decision: 'Approved' | 'Reject
       await orgStore.fetchMembers();
     }
   } catch (err) {
-    notify(err, { fallback: 'Failed to review join request.' });
+    notify(err, { fallback: t('members.reviewError') });
   } finally {
     reviewingId.value = null;
   }
@@ -206,7 +221,7 @@ async function handleCancelInvitation(invId: number) {
   try {
     await orgStore.cancelInvitation(invId);
   } catch (err) {
-    notify(err, { fallback: 'Failed to cancel invitation.' });
+    notify(err, { fallback: t('members.cancelInvitationError') });
   }
 }
 
@@ -216,12 +231,12 @@ async function handleResendInvitation(invId: number) {
     await orgStore.resendInvitation(invId);
     toast.add({
       severity: 'success',
-      summary: 'Invitation resent',
-      detail: 'Token rotated and expiry extended.',
+      summary: t('members.resendSummary'),
+      detail: t('members.resendDetail'),
       life: 4000,
     });
   } catch (err) {
-    notify(err, { fallback: 'Failed to resend invitation.' });
+    notify(err, { fallback: t('members.resendError') });
   } finally {
     resendingInvId.value = null;
   }
@@ -246,167 +261,173 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="max-w-5xl">
-    <div class="flex items-center justify-between mb-6">
+  <section class="mx-auto max-w-5xl pb-16">
+    <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold text-ink-900">Members</h1>
-        <p class="mt-3 text-sm text-ink-500">
-          Click a row to open the member details view.
-        </p>
+        <h1 class="text-2xl font-bold text-ink-900">{{ t('members.title') }}</h1>
+        <p class="mt-1.5 text-sm text-ink-500">{{ t('members.rowHint') }}</p>
         <p class="mt-1 text-sm text-ink-500">
-          Organization:
-          <span class="font-semibold text-brand-600">{{
-            orgStore.currentOrg?.name ?? 'organization'
-          }}</span>
+          {{ t('members.organizationLabel') }}:
+          <span class="font-semibold text-brand-600">
+            {{ orgStore.currentOrg?.name ?? t('members.orgFallback') }}
+          </span>
         </p>
       </div>
-      <div class="flex gap-2">
-        <Button
-          v-if="canCreateOrgUsers"
-          icon="pi pi-id-card"
-          label="Create user"
-          @click="openCreateUserDialog"
-        />
-        <Button
-          icon="pi pi-user-plus"
-          label="Invite member"
-          severity="secondary"
-          @click="openInviteDialog"
-        />
+      <div class="flex shrink-0 gap-2">
+        <button v-if="canCreateOrgUsers" class="btn btn-outline btn-sm" @click="openCreateUserDialog">
+          <i class="pi pi-id-card" />
+          {{ t('members.createUser') }}
+        </button>
+        <button class="btn btn-primary btn-sm" @click="openInviteDialog">
+          <i class="pi pi-user-plus" />
+          {{ t('members.inviteMember') }}
+        </button>
       </div>
-    </div>
+    </header>
 
-    <!-- Loading -->
-    <div v-if="loading" class="text-center py-12 text-ink-500">Loading...</div>
+    <LoadingSkeleton v-if="loading" variant="table" :rows="6" :label="t('members.title')" />
 
-    <!-- Members table -->
-    <div v-else class="rounded-xl border border-line bg-white overflow-hidden">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-line bg-surface text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
-            <th class="px-5 py-3">Name</th>
-            <th class="px-5 py-3">Email</th>
-            <th class="px-5 py-3">Role</th>
-            <th class="px-5 py-3">Joined</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="member in orgStore.members"
-            :key="member.userId"
-            class="border-b border-line last:border-0 hover:bg-surface/70 cursor-pointer"
-            @click="openMember(member.userId)"
+    <template v-else>
+      <div class="border border-line bg-white">
+        <div class="flex items-center gap-2 border-b border-line px-4 py-2.5">
+          <i class="pi pi-search text-sm text-ink-400" />
+          <input
+            v-model="memberSearch"
+            :placeholder="t('members.searchPlaceholder')"
+            class="w-full bg-transparent text-sm text-ink-900 outline-none placeholder:text-ink-400"
+          />
+          <span class="shrink-0 text-xs text-ink-400">{{ filteredMembers.length }}</span>
+        </div>
+
+        <table v-if="filteredMembers.length" class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-surface text-left text-xs font-medium uppercase tracking-wider text-ink-500">
+              <th class="px-5 py-3">{{ t('members.colName') }}</th>
+              <th class="px-5 py-3">{{ t('members.colEmail') }}</th>
+              <th class="px-5 py-3">{{ t('members.colRole') }}</th>
+              <th class="px-5 py-3">{{ t('members.colJoined') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="member in filteredMembers"
+              :key="member.userId"
+              class="cursor-pointer border-b border-line transition-colors last:border-0 hover:bg-surface/70"
+              @click="openMember(member.userId)"
+            >
+              <td class="px-5 py-3">
+                <div class="flex items-center gap-3">
+                  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
+                    {{ memberInitials(member.firstName, member.lastName, member.email) }}
+                  </span>
+                  <span class="font-medium text-ink-900">{{ member.firstName }} {{ member.lastName }}</span>
+                </div>
+              </td>
+              <td class="px-5 py-3 text-ink-600">{{ member.email }}</td>
+              <td class="px-5 py-3">
+                <span :class="roleBadgeFullClass(member.roleName)">
+                  {{ roleLabel(member.roleName, member.roleDisplayName) }}
+                </span>
+              </td>
+              <td class="px-5 py-3 text-ink-500">
+                {{ new Date(member.joinedAt).toLocaleDateString() }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p v-else class="px-5 py-10 text-center text-sm text-ink-500">
+          {{ t('members.noneFound') }}
+        </p>
+
+        <div v-if="orgStore.invitations.length" class="border-t border-line">
+          <div class="bg-surface px-5 py-3 text-xs font-medium uppercase tracking-wider text-ink-500">
+            {{ t('members.pendingInvitations') }}
+          </div>
+          <div
+            v-for="inv in orgStore.invitations"
+            :key="inv.id"
+            class="flex items-center justify-between border-b border-line px-5 py-3 last:border-0"
           >
-            <td class="px-5 py-3 font-medium text-ink-900">
-              {{ member.firstName }} {{ member.lastName }}
-            </td>
-            <td class="px-5 py-3 text-ink-600">{{ member.email }}</td>
-            <td class="px-5 py-3">
-              <span :class="roleBadgeFullClass(member.roleName)">
-                {{ displayRole(member.roleName) }}
-              </span>
-            </td>
-            <td class="px-5 py-3 text-ink-500">
-              {{ new Date(member.joinedAt).toLocaleDateString() }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <!-- Pending invitations -->
-      <div v-if="orgStore.invitations.length" class="border-t border-line">
-        <div class="px-5 py-3 bg-surface text-xs font-medium text-ink-500 uppercase tracking-wider">
-          Pending invitations
-        </div>
-        <div
-          v-for="inv in orgStore.invitations"
-          :key="inv.id"
-          class="flex items-center justify-between px-5 py-3 border-b border-line last:border-0"
-        >
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <p class="text-sm text-ink-700 truncate">{{ inv.email }}</p>
-              <span v-if="inv.roleName" :class="roleBadgeFullClass(inv.roleName)">
-                {{ displayRole(inv.roleName) }}
-              </span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <p class="truncate text-sm text-ink-700">{{ inv.email }}</p>
+                <span v-if="inv.roleName" :class="roleBadgeFullClass(inv.roleName)">
+                  {{ roleLabel(inv.roleName, inv.roleDisplayName) }}
+                </span>
+              </div>
+              <p class="text-xs text-ink-400">
+                {{ t('members.expires') }} {{ new Date(inv.expiresAt).toLocaleDateString() }}
+              </p>
             </div>
-            <p class="text-xs text-ink-400">
-              Expires {{ new Date(inv.expiresAt).toLocaleDateString() }}
-            </p>
-          </div>
-          <div class="flex items-center gap-1 shrink-0">
-            <Button
-              icon="pi pi-refresh"
-              severity="secondary"
-              text
-              rounded
-              size="small"
-              title="Resend (rotate token and extend expiry)"
-              :loading="resendingInvId === inv.id"
-              @click="handleResendInvitation(inv.id)"
-            />
-            <Button
-              icon="pi pi-times"
-              severity="secondary"
-              text
-              rounded
-              size="small"
-              title="Cancel invitation"
-              @click="handleCancelInvitation(inv.id)"
-            />
+            <div class="flex shrink-0 items-center gap-2">
+              <button
+                class="btn btn-outline btn-sm !px-2.5"
+                :title="t('members.resendTitle')"
+                :disabled="resendingInvId === inv.id"
+                @click="handleResendInvitation(inv.id)"
+              >
+                <i :class="resendingInvId === inv.id ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'" />
+              </button>
+              <button
+                class="btn btn-danger btn-sm !px-2.5"
+                :title="t('members.cancelInvitationTitle')"
+                @click="handleCancelInvitation(inv.id)"
+              >
+                <i class="pi pi-times" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Join requests (admins only) -->
-      <div
-        v-if="canManageJoinRequests && pendingJoinRequests.length"
-        class="border-t border-line"
-      >
-        <div class="px-5 py-3 bg-surface text-xs font-medium text-ink-500 uppercase tracking-wider">
-          Join requests
-        </div>
         <div
-          v-for="req in pendingJoinRequests"
-          :key="req.id"
-          class="flex items-start justify-between px-5 py-3 border-b border-line last:border-0 gap-4"
+          v-if="canManageJoinRequests && pendingJoinRequests.length"
+          class="border-t border-line"
         >
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-ink-900">
-              {{ req.userName }}
-            </p>
-            <p class="text-xs text-ink-500">{{ req.userEmail }}</p>
-            <p v-if="req.message" class="text-xs text-ink-600 mt-1 italic">
-              &ldquo;{{ req.message }}&rdquo;
-            </p>
-            <p class="text-xs text-ink-400 mt-1">
-              Requested {{ new Date(req.createdAt).toLocaleDateString() }}
-            </p>
+          <div class="bg-surface px-5 py-3 text-xs font-medium uppercase tracking-wider text-ink-500">
+            {{ t('members.joinRequests') }}
           </div>
-          <div class="flex gap-2 shrink-0">
-            <Button
-              icon="pi pi-check"
-              label="Approve"
-              size="small"
-              :loading="reviewingId === req.id"
-              @click="handleReviewRequest(req.id, 'Approved')"
-            />
-            <Button
-              icon="pi pi-times"
-              label="Reject"
-              size="small"
-              severity="secondary"
-              :loading="reviewingId === req.id"
-              @click="handleReviewRequest(req.id, 'Rejected')"
-            />
+          <div
+            v-for="req in pendingJoinRequests"
+            :key="req.id"
+            class="flex items-start justify-between gap-4 border-b border-line px-5 py-3 last:border-0"
+          >
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-ink-900">{{ req.userName }}</p>
+              <p class="text-xs text-ink-500">{{ req.userEmail }}</p>
+              <p v-if="req.message" class="mt-1 text-xs italic text-ink-600">
+                &ldquo;{{ req.message }}&rdquo;
+              </p>
+              <p class="mt-1 text-xs text-ink-400">
+                {{ t('members.requested') }} {{ new Date(req.createdAt).toLocaleDateString() }}
+              </p>
+            </div>
+            <div class="flex shrink-0 gap-2">
+              <button
+                class="btn btn-primary btn-sm"
+                :disabled="reviewingId === req.id"
+                @click="handleReviewRequest(req.id, 'Approved')"
+              >
+                <i :class="reviewingId === req.id ? 'pi pi-spin pi-spinner' : 'pi pi-check'" />
+                {{ t('members.approve') }}
+              </button>
+              <button
+                class="btn btn-outline btn-sm"
+                :disabled="reviewingId === req.id"
+                @click="handleReviewRequest(req.id, 'Rejected')"
+              >
+                <i class="pi pi-times" />
+                {{ t('members.reject') }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <Dialog
       v-model:visible="showCreateUser"
-      header="Create user"
+      :header="t('members.createUser')"
       modal
       :style="{ width: '460px' }"
       @hide="closeCreateUserDialog"
@@ -414,24 +435,24 @@ onMounted(async () => {
       <form class="flex flex-col gap-4" @submit.prevent="handleCreateUser">
         <div class="grid grid-cols-2 gap-3">
           <div class="flex flex-col gap-1.5">
-            <label for="createFirst" class="text-xs font-medium text-ink-600">First name</label>
+            <label for="createFirst" class="text-xs font-medium text-ink-600">{{ t('members.firstName') }}</label>
             <InputText id="createFirst" v-model="createForm.firstName" maxlength="100" class="!h-10" />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label for="createLast" class="text-xs font-medium text-ink-600">Last name</label>
+            <label for="createLast" class="text-xs font-medium text-ink-600">{{ t('members.lastName') }}</label>
             <InputText id="createLast" v-model="createForm.lastName" maxlength="100" class="!h-10" />
           </div>
         </div>
         <div class="flex flex-col gap-1.5">
-          <label for="createEmail" class="text-xs font-medium text-ink-600">Email</label>
+          <label for="createEmail" class="text-xs font-medium text-ink-600">{{ t('members.email') }}</label>
           <InputText id="createEmail" v-model="createForm.email" type="email" class="!h-10" />
         </div>
         <div class="flex flex-col gap-1.5">
-          <label for="createPassword" class="text-xs font-medium text-ink-600">Temporary password</label>
+          <label for="createPassword" class="text-xs font-medium text-ink-600">{{ t('members.tempPassword') }}</label>
           <InputText id="createPassword" v-model="createForm.password" type="password" class="!h-10" />
         </div>
         <div class="flex flex-col gap-1.5">
-          <label for="createRole" class="text-xs font-medium text-ink-600">Role</label>
+          <label for="createRole" class="text-xs font-medium text-ink-600">{{ t('members.role') }}</label>
           <Select
             id="createRole"
             v-model="createForm.orgRoleId"
@@ -446,41 +467,36 @@ onMounted(async () => {
           {{ createError }}
         </Message>
         <div class="flex justify-end gap-2">
-          <Button type="button" label="Cancel" severity="secondary" text @click="closeCreateUserDialog" />
-          <Button type="submit" label="Create user" :loading="createSubmitting" :disabled="!canSubmitCreate" />
+          <Button type="button" :label="t('common.cancel')" severity="secondary" text @click="closeCreateUserDialog" />
+          <Button type="submit" :label="t('members.createUser')" :loading="createSubmitting" :disabled="!canSubmitCreate" />
         </div>
       </form>
     </Dialog>
 
-    <!-- Invite dialog -->
     <Dialog
       v-model:visible="showInvite"
-      header="Invite member"
+      :header="t('members.inviteMember')"
       modal
       :style="{ width: '420px' }"
       @hide="closeInviteDialog"
     >
-      <form
-        class="flex flex-col gap-4"
-        novalidate
-        @submit.prevent="handleInvite"
-      >
+      <form class="flex flex-col gap-4" novalidate @submit.prevent="handleInvite">
         <div class="flex flex-col gap-1.5">
           <label for="inviteEmail" class="text-xs font-medium text-ink-600">
-            Email address <span class="text-danger">*</span>
+            {{ t('members.emailAddress') }} <span class="text-danger">*</span>
           </label>
           <InputText
             id="inviteEmail"
             v-model="inviteEmail"
             type="email"
-            placeholder="colleague@example.com"
+            :placeholder="t('members.emailPlaceholder')"
             class="!h-10"
           />
         </div>
 
         <div v-if="canAssignOrgRoles" class="flex flex-col gap-1.5">
           <label for="inviteRole" class="text-xs font-medium text-ink-600">
-            Role
+            {{ t('members.role') }}
           </label>
           <Select
             id="inviteRole"
@@ -490,11 +506,7 @@ onMounted(async () => {
             option-value="value"
             class="!h-10"
           />
-          <p class="text-xs text-ink-400">
-            Defaults to Member. Requires the
-            <code class="text-ink-600">assign_org_roles</code> permission to
-            invite as Admin.
-          </p>
+          <p class="text-xs text-ink-400">{{ t('members.roleHint') }}</p>
         </div>
 
         <Message v-if="inviteSuccess" severity="success" :closable="false" class="!my-0">
@@ -505,19 +517,8 @@ onMounted(async () => {
         </Message>
 
         <div class="flex justify-end gap-2">
-          <Button
-            type="button"
-            label="Cancel"
-            severity="secondary"
-            text
-            @click="closeInviteDialog"
-          />
-          <Button
-            type="submit"
-            label="Send invitation"
-            :disabled="!canInvite"
-            :loading="inviteSending"
-          />
+          <Button type="button" :label="t('common.cancel')" severity="secondary" text @click="closeInviteDialog" />
+          <Button type="submit" :label="t('members.sendInvitation')" :disabled="!canInvite" :loading="inviteSending" />
         </div>
       </form>
     </Dialog>

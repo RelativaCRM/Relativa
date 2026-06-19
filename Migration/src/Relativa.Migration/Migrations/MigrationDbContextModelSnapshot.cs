@@ -385,7 +385,8 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("EntityId", "PropertyId");
 
-                    b.HasIndex("PropertyId");
+                    b.HasIndex("PropertyId")
+                        .HasDatabaseName("ix_epv_property_id");
 
                     b.ToTable("entity_property_value", (string)null);
                 });
@@ -419,7 +420,12 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("SourceEntityId")
                         .HasDatabaseName("ix_er_source_entity_id");
 
-                    b.HasIndex("TargetEntityId");
+                    b.HasIndex("TargetEntityId")
+                        .HasDatabaseName("ix_er_target_entity_id");
+
+                    b.HasIndex("SourceEntityId", "RelationshipTypeId", "TargetEntityId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_er_source_type_target_unique");
 
                     b.ToTable("entity_relationship", (string)null);
                 });
@@ -432,6 +438,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
 
                     b.Property<bool>("IsRequired")
                         .HasColumnType("boolean")
@@ -477,6 +488,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
 
                     b.Property<bool>("IsStandalone")
                         .HasColumnType("boolean")
@@ -538,7 +554,8 @@ namespace Relativa.Migration.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("WorkspaceId");
+                    b.HasIndex("WorkspaceId")
+                        .HasDatabaseName("ix_ew_workspace_id");
 
                     b.HasIndex("EntityId", "WorkspaceId")
                         .IsUnique()
@@ -695,6 +712,11 @@ namespace Relativa.Migration.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
                     b.Property<bool>("IsArchived")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -751,6 +773,50 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("organization_role_permissions", (string)null);
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.OrganizationSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("DefaultOrgRoleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("default_org_role_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("JoinPolicy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasDefaultValue("open")
+                        .HasColumnName("join_policy");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("integer")
+                        .HasColumnName("organization_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DefaultOrgRoleId");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_org_settings_organization_id");
+
+                    b.ToTable("organization_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_org_settings_join_policy", "join_policy IN ('open', 'invite_only')");
+                        });
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.Permission", b =>
                 {
                     b.Property<int>("Id")
@@ -759,6 +825,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
 
                     b.Property<bool>("IsArchived")
                         .ValueGeneratedOnAdd()
@@ -793,6 +864,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("text")
                         .HasColumnName("data_type");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
                     b.Property<bool>("IsReadonly")
                         .HasColumnType("boolean")
                         .HasColumnName("is_readonly");
@@ -811,6 +887,26 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("OrganizationId");
 
                     b.ToTable("property", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.PropertyAllowedValue", b =>
+                {
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("integer")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("Value")
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
+                    b.HasKey("PropertyId", "Value");
+
+                    b.ToTable("property_allowed_value", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.RabbitMqProcessedDelivery", b =>
@@ -846,10 +942,28 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("date_of_birth");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("email");
+
+                    b.Property<string>("EmailVerificationToken")
+                        .HasColumnType("text")
+                        .HasColumnName("email_verification_token");
+
+                    b.Property<DateTime?>("EmailVerificationTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("email_verification_token_expires_at");
+
+                    b.Property<bool>("EmailVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("email_verified");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -868,7 +982,6 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("last_name");
 
                     b.Property<string>("Password")
-                        .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("password");
 
@@ -880,6 +993,27 @@ namespace Relativa.Migration.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("password_reset_token_expires_at");
 
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone");
+
+                    b.Property<bool>("TwoFactorEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("two_factor_enabled");
+
+                    b.Property<string>("TwoFactorMasterCodeHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("two_factor_master_code_hash");
+
+                    b.Property<string>("TwoFactorSecret")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("two_factor_secret");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
@@ -887,6 +1021,135 @@ namespace Relativa.Migration.Migrations
                         .HasFilter("\"is_archived\" = FALSE");
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserBackupCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_user_backup_codes_user_id");
+
+                    b.ToTable("user_backup_codes", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserEmail", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("address");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_verified");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("source");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("VerificationToken")
+                        .HasColumnType("text")
+                        .HasColumnName("verification_token");
+
+                    b.Property<DateTime?>("VerificationTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verification_token_expires_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Address")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_emails_address");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_emails", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserExternalLogin", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("subject");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Provider", "Subject")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_external_logins_provider_subject");
+
+                    b.ToTable("user_external_logins", (string)null);
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.UserRoleOrganization", b =>
@@ -979,6 +1242,36 @@ namespace Relativa.Migration.Migrations
                     b.ToTable("user_role_workspace", (string)null);
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("en")
+                        .HasColumnName("locale");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_settings_user_id");
+
+                    b.ToTable("user_settings", (string)null);
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.Workspace", b =>
                 {
                     b.Property<int>("Id")
@@ -1024,6 +1317,11 @@ namespace Relativa.Migration.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
 
                     b.Property<bool>("IsArchived")
                         .ValueGeneratedOnAdd()
@@ -1079,6 +1377,54 @@ namespace Relativa.Migration.Migrations
                     b.HasIndex("WsRoleId");
 
                     b.ToTable("workspace_role_permissions", (string)null);
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<decimal>("HighRiskThreshold")
+                        .HasColumnType("numeric(3,2)")
+                        .HasDefaultValue(0.7m)
+                        .HasColumnName("high_risk_threshold");
+
+                    b.Property<decimal>("MediumRiskThreshold")
+                        .HasColumnType("numeric(3,2)")
+                        .HasDefaultValue(0.4m)
+                        .HasColumnName("medium_risk_threshold");
+
+                    b.Property<bool>("RiskScoringEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("risk_scoring_enabled");
+
+                    b.Property<int>("WorkspaceId")
+                        .HasColumnType("integer")
+                        .HasColumnName("workspace_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkspaceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_workspace_settings_workspace_id");
+
+                    b.ToTable("workspace_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_workspace_settings_high_risk", "high_risk_threshold BETWEEN 0.00 AND 1.00");
+
+                            t.HasCheckConstraint("ck_workspace_settings_medium_risk", "medium_risk_threshold BETWEEN 0.00 AND 1.00 AND medium_risk_threshold < high_risk_threshold");
+                        });
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.AuditLogs.EntityAuditLog", b =>
@@ -1383,6 +1729,26 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.OrganizationSettings", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.OrganizationRole", "DefaultOrgRole")
+                        .WithMany()
+                        .HasForeignKey("DefaultOrgRoleId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_org_settings_default_org_role");
+
+                    b.HasOne("Relativa.Persistence.Entities.Organization", "Organization")
+                        .WithOne("Settings")
+                        .HasForeignKey("Relativa.Persistence.Entities.OrganizationSettings", "OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_org_settings_organization");
+
+                    b.Navigation("DefaultOrgRole");
+
+                    b.Navigation("Organization");
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.Property", b =>
                 {
                     b.HasOne("Relativa.Persistence.Entities.Organization", "Organization")
@@ -1392,6 +1758,54 @@ namespace Relativa.Migration.Migrations
                         .HasConstraintName("fk_property_organization");
 
                     b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.PropertyAllowedValue", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.Property", "Property")
+                        .WithMany("AllowedValues")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_property_allowed_value_property");
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserBackupCode", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithMany("BackupCodes")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_backup_codes_user");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserEmail", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithMany("Emails")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_emails_user");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserExternalLogin", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithMany("ExternalLogins")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_external_logins_user");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.UserRoleOrganization", b =>
@@ -1454,6 +1868,18 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Workspace");
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.UserSettings", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.User", "User")
+                        .WithOne("Settings")
+                        .HasForeignKey("Relativa.Persistence.Entities.UserSettings", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_settings_user");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.Workspace", b =>
                 {
                     b.HasOne("Relativa.Persistence.Entities.User", "CreatedBy")
@@ -1507,6 +1933,18 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceSettings", b =>
+                {
+                    b.HasOne("Relativa.Persistence.Entities.Workspace", "Workspace")
+                        .WithOne("WorkspaceSettings")
+                        .HasForeignKey("Relativa.Persistence.Entities.WorkspaceSettings", "WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_workspace_settings_workspace");
+
+                    b.Navigation("Workspace");
+                });
+
             modelBuilder.Entity("Relativa.Persistence.Entities.Entity", b =>
                 {
                     b.Navigation("EntityPropertyValues");
@@ -1544,6 +1982,8 @@ namespace Relativa.Migration.Migrations
 
                     b.Navigation("Roles");
 
+                    b.Navigation("Settings");
+
                     b.Navigation("Workspaces");
                 });
 
@@ -1563,6 +2003,8 @@ namespace Relativa.Migration.Migrations
 
             modelBuilder.Entity("Relativa.Persistence.Entities.Property", b =>
                 {
+                    b.Navigation("AllowedValues");
+
                     b.Navigation("EntityPropertyValues");
 
                     b.Navigation("EntityTypeProperties");
@@ -1570,9 +2012,17 @@ namespace Relativa.Migration.Migrations
 
             modelBuilder.Entity("Relativa.Persistence.Entities.User", b =>
                 {
+                    b.Navigation("BackupCodes");
+
                     b.Navigation("CreatedEntities");
 
+                    b.Navigation("Emails");
+
+                    b.Navigation("ExternalLogins");
+
                     b.Navigation("OrganizationMemberships");
+
+                    b.Navigation("Settings");
 
                     b.Navigation("WorkspaceMemberships");
                 });
@@ -1584,6 +2034,8 @@ namespace Relativa.Migration.Migrations
                     b.Navigation("Members");
 
                     b.Navigation("Roles");
+
+                    b.Navigation("WorkspaceSettings");
                 });
 
             modelBuilder.Entity("Relativa.Persistence.Entities.WorkspaceRole", b =>

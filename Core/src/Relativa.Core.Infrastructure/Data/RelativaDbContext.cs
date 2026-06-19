@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Relativa.Persistence;
 using Relativa.Persistence.Entities;
 using Relativa.Persistence.Entities.AuditLogs;
+using Relativa.Persistence.Configurations;
 
 namespace Relativa.Core.Infrastructure.Data;
 
@@ -11,12 +12,14 @@ public sealed class RelativaDbContext(DbContextOptions<RelativaDbContext> option
     public DbSet<Permission> Permissions => Set<Permission>();
 
     public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationSettings> OrganizationSettings => Set<OrganizationSettings>();
     public DbSet<OrganizationRole> OrganizationRoles => Set<OrganizationRole>();
     public DbSet<OrganizationRolePermission> OrganizationRolePermissions => Set<OrganizationRolePermission>();
     public DbSet<UserRoleOrganization> UserRoleOrganizations => Set<UserRoleOrganization>();
     public DbSet<OrganizationJoinRequest> OrganizationJoinRequests => Set<OrganizationJoinRequest>();
     public DbSet<OrganizationInvitation> OrganizationInvitations => Set<OrganizationInvitation>();
 
+    public DbSet<WorkspaceSettings> WorkspaceSettings => Set<WorkspaceSettings>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceRole> WorkspaceRoles => Set<WorkspaceRole>();
     public DbSet<WorkspaceRolePermission> WorkspaceRolePermissions => Set<WorkspaceRolePermission>();
@@ -30,6 +33,7 @@ public sealed class RelativaDbContext(DbContextOptions<RelativaDbContext> option
     public DbSet<EntityPropertyValue> EntityPropertyValues => Set<EntityPropertyValue>();
     public DbSet<EntityRelationshipType> EntityRelationshipTypes => Set<EntityRelationshipType>();
     public DbSet<EntityRelationship> EntityRelationships => Set<EntityRelationship>();
+    public DbSet<PropertyAllowedValue> PropertyAllowedValues => Set<PropertyAllowedValue>();
     public DbSet<EntityAuditLog> EntityAuditLogs => Set<EntityAuditLog>();
     public DbSet<WorkspaceAuditLog> WorkspaceAuditLogs => Set<WorkspaceAuditLog>();
     public DbSet<UserAuditLog> UserAuditLogs => Set<UserAuditLog>();

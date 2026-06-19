@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -76,7 +77,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.GetByOrganizationAsync(2, 5);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this organization.");
     }
 
@@ -110,7 +111,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("read-only", [1], 1));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*manage_org_roles*");
         _orgRoleRepo.Verify(r => r.AddAsync(It.IsAny<OrganizationRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -127,7 +128,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.CreateAsync(4, 1, new CreateOrgRoleRequest("bad-role", [1, 999], 1));
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("One or more permission IDs are invalid.");
     }
 
@@ -173,7 +174,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 3, 1, new UpdateOrgRoleRequest("renamed", null, null));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<AppException>();
     }
 
     [Fact]
@@ -185,7 +186,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 99, 1, new UpdateOrgRoleRequest("renamed", null, null));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Role not found.");
     }
 
@@ -200,7 +201,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 1, 1, new UpdateOrgRoleRequest("hacked", null, null));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("System roles cannot be modified.");
         _orgRoleRepo.Verify(r => r.UpdateAsync(It.IsAny<OrganizationRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -216,7 +217,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 8, 1, new UpdateOrgRoleRequest("renamed", null, null));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Role not found in this organization.");
     }
 
@@ -252,7 +253,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.ArchiveAsync(5, 3, 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<AppException>();
     }
 
     [Fact]
@@ -266,7 +267,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.ArchiveAsync(5, 2, 1);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("System roles cannot be deleted.");
     }
 
@@ -281,7 +282,7 @@ public sealed class OrgRoleServiceTests
 
         var act = () => _sut.ArchiveAsync(5, 8, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Role not found in this organization.");
     }
 

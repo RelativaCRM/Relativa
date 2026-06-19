@@ -8,15 +8,19 @@ namespace Relativa.Migration.Data;
 public sealed class MigrationDbContext(DbContextOptions<MigrationDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<UserSettings> UserSettings => Set<UserSettings>();
+    public DbSet<UserExternalLogin> UserExternalLogins => Set<UserExternalLogin>();
     public DbSet<Permission> Permissions => Set<Permission>();
 
     public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationSettings> OrganizationSettings => Set<OrganizationSettings>();
     public DbSet<OrganizationRole> OrganizationRoles => Set<OrganizationRole>();
     public DbSet<OrganizationRolePermission> OrganizationRolePermissions => Set<OrganizationRolePermission>();
     public DbSet<UserRoleOrganization> UserRoleOrganizations => Set<UserRoleOrganization>();
     public DbSet<OrganizationJoinRequest> OrganizationJoinRequests => Set<OrganizationJoinRequest>();
     public DbSet<OrganizationInvitation> OrganizationInvitations => Set<OrganizationInvitation>();
 
+    public DbSet<WorkspaceSettings> WorkspaceSettings => Set<WorkspaceSettings>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceRole> WorkspaceRoles => Set<WorkspaceRole>();
     public DbSet<WorkspaceRolePermission> WorkspaceRolePermissions => Set<WorkspaceRolePermission>();

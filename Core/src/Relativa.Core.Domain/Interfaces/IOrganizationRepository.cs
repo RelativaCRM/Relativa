@@ -2,7 +2,7 @@ using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Domain.Interfaces;
 
-public sealed record OrganizationSearchHit(int Id, string Name, int MemberCount);
+public sealed record OrganizationSearchHit(int Id, string Name, int MemberCount, string JoinPolicy = "open");
 
 public interface IOrganizationRepository
 {

@@ -63,6 +63,27 @@ public static class WorkspaceEndpoints
         .WithSummary("Archive a workspace")
         .Produces(StatusCodes.Status204NoContent);
 
+        group.MapGet("/{id:int}/settings", async (int id, IWorkspaceService service, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = GetUserId(httpContext);
+            var result = await service.GetSettingsAsync(id, userId, ct);
+            return Results.Ok(result);
+        })
+        .WithName("GetWorkspaceSettings")
+        .WithSummary("Get settings for a workspace (any workspace member)")
+        .Produces<WorkspaceSettingsDto>();
+
+        group.MapPut("/{id:int}/settings", async (int id, UpdateWorkspaceSettingsRequest request, IWorkspaceService service, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = GetUserId(httpContext);
+            await service.UpdateSettingsAsync(id, userId, request, ct);
+            return Results.NoContent();
+        })
+        .WithName("UpdateWorkspaceSettings")
+        .WithSummary("Update settings for a workspace (requires manage_ws_settings)")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesValidationProblem();
+
         return group;
     }
 

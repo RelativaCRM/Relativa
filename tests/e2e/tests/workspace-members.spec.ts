@@ -8,6 +8,10 @@ const ts          = Date.now();
 
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
+  await page.evaluate(() => {
+    localStorage.setItem('relativa.locale', 'en');
+    localStorage.setItem('relativa.localePending', '1');
+  });
   await page.locator('#email').fill(email);
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
@@ -15,9 +19,9 @@ async function fillLogin(page: Page, email: string, password: string) {
 
 async function loginAsAdmin(page: Page) {
   await fillLogin(page, ADMIN_EMAIL, ADMIN_PASS);
-  await page.waitForURL(/\/(workspace-select)?$/, { timeout: 10000 });
-  if (page.url().includes('workspace-select')) {
-    await page.locator('li button[type="button"]').first().click();
+  await page.waitForURL(/\/(onboarding)?$/, { timeout: 15000 });
+  if (page.url().includes('onboarding')) {
+    await page.locator('main ul').first().locator('li button').first().click();
     await page.waitForURL(`${BASE}/`, { timeout: 10000 });
   }
 }

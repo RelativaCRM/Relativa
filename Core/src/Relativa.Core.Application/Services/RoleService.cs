@@ -1,6 +1,8 @@
+using Relativa.Core.Application.Exceptions;
 using FluentValidation;
 using Relativa.Core.Application.DTOs.Role;
 using Relativa.Core.Application.Interfaces;
+using Relativa.Core.Application.Utilities;
 using Relativa.Core.Domain.Interfaces;
 using Relativa.Persistence.Contracts;
 using Relativa.Persistence.Entities;
@@ -24,8 +26,12 @@ public sealed class RoleService(
             .Select(r => new RoleDto(
                 r.Id,
                 r.Name,
+                r.DisplayName ?? DisplayNameHelper.Humanize(r.Name),
                 r.WorkspaceId is null,
-                r.RolePermissions.Select(rp => new PermissionDto(rp.Permission.Id, rp.Permission.Name)).ToList()))
+                r.RolePermissions.Select(rp => new PermissionDto(
+                    rp.Permission.Id,
+                    rp.Permission.Name,
+                    rp.Permission.DisplayName ?? DisplayNameHelper.Humanize(rp.Permission.Name))).ToList()))
             .ToList();
     }
 
@@ -33,11 +39,11 @@ public sealed class RoleService(
     {
         await createValidator.ValidateAndThrowAsync(request, ct);
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
-            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
+            throw new AppException("permission_denied", 403, "You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var permissions = await permissionRepository.GetByIdsAsync(request.PermissionIds, ct);
         if (permissions.Count != request.PermissionIds.Count)
-            throw new ArgumentException("One or more permission IDs are invalid.");
+            throw new AppException("invalid_permission_ids", 400, "One or more permission IDs are invalid.");
 
         var role = new WorkspaceRole
         {
@@ -80,23 +86,24 @@ public sealed class RoleService(
         return new RoleDto(
             role.Id,
             role.Name,
+            role.DisplayName ?? DisplayNameHelper.Humanize(role.Name),
             false,
-            permissions.Select(p => new PermissionDto(p.Id, p.Name)).ToList());
+            permissions.Select(p => new PermissionDto(p.Id, p.Name, p.DisplayName ?? DisplayNameHelper.Humanize(p.Name))).ToList());
     }
 
     public async Task UpdateAsync(int workspaceId, int roleId, int userId, UpdateRoleRequest request, CancellationToken ct = default)
     {
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
-            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
+            throw new AppException("permission_denied", 403, "You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var role = await roleRepository.GetByIdAsync(roleId, ct)
-            ?? throw new KeyNotFoundException("Role not found.");
+            ?? throw new AppException("role_not_found", 404, "Role not found.");
 
         if (role.WorkspaceId is null)
-            throw new InvalidOperationException("System roles cannot be modified.");
+            throw new AppException("system_role_immutable", 409, "System roles cannot be modified.");
 
         if (role.WorkspaceId != workspaceId)
-            throw new KeyNotFoundException("Role not found in this workspace.");
+            throw new AppException("role_not_in_workspace", 404, "Role not found in this workspace.");
 
         if (request.Name is not null)
             role.Name = request.Name;
@@ -105,7 +112,7 @@ public sealed class RoleService(
         {
             var permissions = await permissionRepository.GetByIdsAsync(request.PermissionIds, ct);
             if (permissions.Count != request.PermissionIds.Count)
-                throw new ArgumentException("One or more permission IDs are invalid.");
+                throw new AppException("invalid_permission_ids", 400, "One or more permission IDs are invalid.");
 
             role.RolePermissions.Clear();
             foreach (var perm in permissions)
@@ -142,16 +149,16 @@ public sealed class RoleService(
     public async Task ArchiveAsync(int workspaceId, int roleId, int userId, CancellationToken ct = default)
     {
         if (!await workspaceAccess.HasWorkspacePermissionAsync(userId, workspaceId, "manage_ws_roles", ct))
-            throw new UnauthorizedAccessException("You do not have the 'manage_ws_roles' permission in this workspace.");
+            throw new AppException("permission_denied", 403, "You do not have the 'manage_ws_roles' permission in this workspace.");
 
         var role = await roleRepository.GetByIdAsync(roleId, ct)
-            ?? throw new KeyNotFoundException("Role not found.");
+            ?? throw new AppException("role_not_found", 404, "Role not found.");
 
         if (role.WorkspaceId is null)
-            throw new InvalidOperationException("System roles cannot be deleted.");
+            throw new AppException("system_role_undeletable", 409, "System roles cannot be deleted.");
 
         if (role.WorkspaceId != workspaceId)
-            throw new KeyNotFoundException("Role not found in this workspace.");
+            throw new AppException("role_not_in_workspace", 404, "Role not found in this workspace.");
 
         role.IsArchived = true;
         await roleRepository.UpdateAsync(role, ct);
@@ -180,7 +187,7 @@ public sealed class RoleService(
         var permissions = await permissionRepository.GetAllAsync(ct);
         return permissions
             .Where(p => !p.IsArchived)
-            .Select(p => new PermissionDto(p.Id, p.Name))
+            .Select(p => new PermissionDto(p.Id, p.Name, p.DisplayName ?? DisplayNameHelper.Humanize(p.Name)))
             .ToList();
     }
 

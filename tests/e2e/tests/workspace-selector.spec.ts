@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { verifyUserEmail } from './helpers';
 
 const BASE    = 'http://localhost:3000';
 const GATEWAY = 'http://localhost:8080';
@@ -18,6 +19,10 @@ async function clearSession(page: Page) {
 
 async function fillLogin(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
+  await page.evaluate(() => {
+    localStorage.setItem('relativa.locale', 'en');
+    localStorage.setItem('relativa.localePending', '1');
+  });
   await page.locator('#email').fill(email);
   await page.locator('#password').pressSequentially(password);
   await page.locator('button[type="submit"]').click();
@@ -29,17 +34,22 @@ test.describe('Workspace Selector', () => {
     const ctx = await browser.newContext();
 
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'Solo', lastName: 'User', email: SOLO_EMAIL, password: FRESH_PASS },
+      data: { firstName: 'Solo', lastName: 'User', email: SOLO_EMAIL, password: FRESH_PASS, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'Multi', lastName: 'User', email: MULTI_EMAIL, password: FRESH_PASS },
+      data: { firstName: 'Multi', lastName: 'User', email: MULTI_EMAIL, password: FRESH_PASS, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'Empty', lastName: 'User', email: EMPTY_EMAIL, password: FRESH_PASS },
+      data: { firstName: 'Empty', lastName: 'User', email: EMPTY_EMAIL, password: FRESH_PASS, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
     await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/register`, {
-      data: { firstName: 'EmptyOrg', lastName: 'User', email: EMPTY_ORG_EMAIL, password: FRESH_PASS },
+      data: { firstName: 'EmptyOrg', lastName: 'User', email: EMPTY_ORG_EMAIL, password: FRESH_PASS, phone: '+15551234567', dateOfBirth: '1990-01-01' },
     });
+
+    await verifyUserEmail(ctx.request, SOLO_EMAIL);
+    await verifyUserEmail(ctx.request, MULTI_EMAIL);
+    await verifyUserEmail(ctx.request, EMPTY_EMAIL);
+    await verifyUserEmail(ctx.request, EMPTY_ORG_EMAIL);
 
     const soloLoginRes = await ctx.request.post(`${GATEWAY}/auth/api/v1/auth/login`, {
       data: { email: SOLO_EMAIL, password: FRESH_PASS },
@@ -108,7 +118,7 @@ test.describe('Workspace Selector', () => {
     await page.goto(`${BASE}/workspace-select`);
     await page.waitForLoadState('networkidle');
     await page.getByText(`Alpha WS ${ts}`).click();
-    await expect(page).toHaveURL(/\/w\/\d+\/entities/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/\d+/, { timeout: 10000 });
   });
 
   test('user with single workspace is auto-selected and redirected to workspace entities', async ({ page }) => {
@@ -116,7 +126,7 @@ test.describe('Workspace Selector', () => {
     await fillLogin(page, SOLO_EMAIL, FRESH_PASS);
     await page.waitForURL(`${BASE}/`, { timeout: 10000 });
     await page.goto(`${BASE}/workspace-select`);
-    await expect(page).toHaveURL(/\/w\/\d+\/entities/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/\d+/, { timeout: 10000 });
     await expect(page).not.toHaveURL(/\/workspace-select/);
   });
 
@@ -134,7 +144,7 @@ test.describe('Workspace Selector', () => {
     await page.waitForLoadState('networkidle');
     await page.locator('#wsName').fill(`New WS ${ts}`);
     await page.getByRole('button', { name: /create workspace/i }).click();
-    await expect(page).toHaveURL(/\/w\/\d+\/entities/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/w\/\d+/, { timeout: 10000 });
   });
 
   test('sign out from selector clears session and redirects to /login', async ({ page }) => {

@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.DTOs.JoinRequest;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Domain.Interfaces;
@@ -11,23 +12,28 @@ public sealed class JoinRequestService(
     IUserRoleOrganizationRepository orgMemberRepository,
     IOrganizationRoleRepository orgRoleRepository,
     IOrganizationRepository organizationRepository,
+    IOrganizationSettingsRepository organizationSettingsRepository,
     IOutboxWriter? auditOutboxWriter = null) : IJoinRequestService
 {
     public async Task<JoinRequestDto> SubmitAsync(int organizationId, int userId, CreateJoinRequestRequest request, CancellationToken ct = default)
     {
         var organization = await organizationRepository.GetByIdAsync(organizationId, ct)
-            ?? throw new KeyNotFoundException("Organization not found.");
+            ?? throw new AppException("organization_not_found", 404, "Organization not found.");
 
         if (organization.IsArchived)
-            throw new InvalidOperationException("This organization is archived.");
+            throw new AppException("organization_archived", 409, "This organization is archived.");
+
+        var orgSettings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct);
+        if (orgSettings?.JoinPolicy == "invite_only")
+            throw new AppException("org_not_accepting_joins", 403, "This organization is not accepting join requests.");
 
         var existingMembership = await orgMemberRepository.GetAsync(userId, organizationId, ct);
         if (existingMembership is not null)
-            throw new InvalidOperationException("You are already a member of this organization.");
+            throw new AppException("already_org_member", 409, "You are already a member of this organization.");
 
         var existingRequest = await joinRequestRepository.GetPendingAsync(userId, organizationId, ct);
         if (existingRequest is not null)
-            throw new InvalidOperationException("You already have a pending join request for this organization.");
+            throw new AppException("join_request_pending", 409, "You already have a pending join request for this organization.");
 
         var joinRequest = new OrganizationJoinRequest
         {
@@ -99,25 +105,29 @@ public sealed class JoinRequestService(
         await RequireOrgPermission(callerUserId, organizationId, "manage_join_requests", ct);
 
         var joinRequest = await joinRequestRepository.GetByIdAsync(requestId, ct)
-            ?? throw new KeyNotFoundException("Join request not found.");
+            ?? throw new AppException("join_request_not_found", 404, "Join request not found.");
 
         if (joinRequest.OrganizationId != organizationId)
-            throw new KeyNotFoundException("Join request not found in this organization.");
+            throw new AppException("join_request_not_found", 404, "Join request not found in this organization.");
 
         if (joinRequest.Status != "Pending")
-            throw new InvalidOperationException($"Join request is no longer pending (status: {joinRequest.Status}).");
+            throw new AppException("join_request_not_pending", 409, $"Join request is no longer pending (status: {joinRequest.Status}).");
 
         if (request.Decision == "Approved")
         {
             var existingMembership = await orgMemberRepository.GetAsync(joinRequest.UserId, organizationId, ct);
             if (existingMembership is not null)
-                throw new InvalidOperationException("The requester is already a member of this organization.");
+                throw new AppException("already_org_member", 409, "The requester is already a member of this organization.");
 
-            var memberRole = ((await orgRoleRepository.GetSystemRolesAsync(ct)) ?? [])
-                .OrderByDescending(r => r.Priority)
-                .ThenBy(r => r.Id)
-                .FirstOrDefault()
-                ?? throw new InvalidOperationException("Default system organization role not found.");
+            var settings = await organizationSettingsRepository.GetByOrganizationIdAsync(organizationId, ct);
+            var memberRole = settings?.DefaultOrgRoleId.HasValue == true
+                ? await orgRoleRepository.GetByIdAsync(settings.DefaultOrgRoleId.Value, ct)
+                    ?? throw new AppException("default_org_role_not_found", 409, "Configured default org role not found.")
+                : ((await orgRoleRepository.GetSystemRolesAsync(ct)) ?? [])
+                    .OrderByDescending(r => r.Priority)
+                    .ThenBy(r => r.Id)
+                    .FirstOrDefault()
+                    ?? throw new AppException("default_org_role_not_found", 409, "Default system organization role not found.");
 
             var membership = new UserRoleOrganization
             {
@@ -150,7 +160,7 @@ public sealed class JoinRequestService(
         }
         else if (request.Decision != "Rejected")
         {
-            throw new ArgumentException("Decision must be 'Approved' or 'Rejected'.");
+            throw new AppException("invalid_decision", 400, "Decision must be 'Approved' or 'Rejected'.");
         }
 
         joinRequest.Status = request.Decision;
@@ -196,10 +206,45 @@ public sealed class JoinRequestService(
             .ToList();
     }
 
+    public async Task CancelMineAsync(int requestId, int userId, CancellationToken ct = default)
+    {
+        var joinRequest = await joinRequestRepository.GetByIdAsync(requestId, ct)
+            ?? throw new AppException("join_request_not_found", 404, "Join request not found.");
+
+        if (joinRequest.UserId != userId)
+            throw new AppException("cancel_own_join_only", 403, "You can only cancel your own join requests.");
+
+        if (joinRequest.Status != "Pending")
+            throw new AppException("join_request_not_pending", 409, $"Join request is no longer pending (status: {joinRequest.Status}).");
+
+        joinRequest.Status = "Cancelled";
+        joinRequest.ReviewedAt = DateTime.UtcNow;
+        await joinRequestRepository.UpdateAsync(joinRequest, ct);
+
+        if (auditOutboxWriter is not null)
+        {
+            await auditOutboxWriter.EnqueueAuditAsync(
+                new AuditEventContract(
+                    EventId: Guid.NewGuid(),
+                    SchemaVersion: 1,
+                    OccurredAtUtc: DateTimeOffset.UtcNow,
+                    SourceService: "core",
+                    ActorUserId: userId,
+                    AuditScope: AuditRouting.ScopeOrganization,
+                    TargetId: joinRequest.OrganizationId,
+                    Action: "organization_join_request_cancelled",
+                    FieldName: "organization_join_requests.status",
+                    EntityType: null,
+                    OldValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Pending" }),
+                    NewValueJson: System.Text.Json.JsonSerializer.Serialize(new { Status = "Cancelled", joinRequest.UserId })),
+                ct);
+        }
+    }
+
     private async Task<UserRoleOrganization> RequireOrgMembership(int userId, int orgId, CancellationToken ct)
     {
         return await orgMemberRepository.GetAsync(userId, orgId, ct)
-            ?? throw new UnauthorizedAccessException("You are not a member of this organization.");
+            ?? throw new AppException("not_org_member", 403, "You are not a member of this organization.");
     }
 
     private async Task RequireOrgPermission(int userId, int orgId, string permission, CancellationToken ct)
@@ -208,6 +253,6 @@ public sealed class JoinRequestService(
         var hasPermission = membership.Role?.RolePermissions
             .Any(rp => rp.Permission?.Name == permission) ?? false;
         if (!hasPermission)
-            throw new UnauthorizedAccessException($"You do not have the '{permission}' permission in this organization.");
+            throw new AppException("permission_denied", 403, $"You do not have the '{permission}' permission in this organization.");
     }
 }

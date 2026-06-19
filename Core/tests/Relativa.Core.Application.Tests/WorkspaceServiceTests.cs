@@ -1,7 +1,9 @@
+using System.Text.Json;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Moq;
+using Relativa.Core.Application.Authorization;
 using Relativa.Core.Application.DTOs.Workspace;
 using Relativa.Core.Application.Exceptions;
 using Relativa.Core.Application.Services;
@@ -21,7 +23,9 @@ public sealed class WorkspaceServiceTests
     private readonly WorkspaceAccessEvaluator _workspaceAccessEvaluator;
     private readonly Mock<IValidator<CreateWorkspaceRequest>> _createValidator = new();
     private readonly Mock<IValidator<UpdateWorkspaceRequest>> _updateValidator = new();
+    private readonly Mock<IValidator<UpdateWorkspaceSettingsRequest>> _updateSettingsValidator = new();
     private readonly Mock<IOutboxWriter> _auditOutboxWriter = new();
+    private readonly Mock<IWorkspaceSettingsRepository> _workspaceSettingsRepo = new();
     private readonly WorkspaceService _sut;
 
     public WorkspaceServiceTests()
@@ -38,9 +42,15 @@ public sealed class WorkspaceServiceTests
             _roleRepo.Object,
             _orgMemberRepo.Object,
             _workspaceAccessEvaluator,
+            _workspaceSettingsRepo.Object,
             _createValidator.Object,
             _updateValidator.Object,
+            _updateSettingsValidator.Object,
             _auditOutboxWriter.Object);
+
+        _updateSettingsValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateWorkspaceSettingsRequest>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
     }
 
     private void SetupValidCreate() =>
@@ -153,7 +163,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateWorkspaceRequest("Team", 5));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*not a member of this organization*");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -172,7 +182,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, new CreateWorkspaceRequest("Team", 5));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*create_workspaces*");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -189,7 +199,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.CreateAsync(1, request);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("System ws_admin role not found.");
         _workspaceRepo.Verify(r => r.AddAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -251,7 +261,7 @@ public sealed class WorkspaceServiceTests
         var sut = new WorkspaceService(
             _workspaceRepo.Object, _memberRepo.Object, _roleRepo.Object,
             _orgMemberRepo.Object, _workspaceAccessEvaluator,
-            _createValidator.Object, _updateValidator.Object, null);
+            _workspaceSettingsRepo.Object, _createValidator.Object, _updateValidator.Object, null);
 
         SetupValidCreate();
         _orgMemberRepo.Setup(r => r.GetAsync(1, 1, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberWithPermission(1, 1, "create_workspaces"));
@@ -279,7 +289,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 99);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -292,7 +302,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetByIdAsync(5, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace not found.");
     }
 
@@ -311,7 +321,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateAsync(10, 3, new UpdateWorkspaceRequest("New Name"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<AppException>();
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -324,7 +334,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.UpdateAsync(7, 2, new UpdateWorkspaceRequest("Renamed"));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Workspace not found.");
     }
 
@@ -395,7 +405,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.ArchiveAsync(3, 5);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Only workspace admins or organization owners can archive a workspace.");
         _workspaceRepo.Verify(r => r.UpdateAsync(It.IsAny<Workspace>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -431,7 +441,7 @@ public sealed class WorkspaceServiceTests
 
         var act = () => _sut.GetByUserAsync(7, organizationId: 3);
 
-        await act.Should().ThrowAsync<ForbiddenAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*not a member of this organization*");
         _workspaceRepo.Verify(r => r.GetByUserIdAndOrganizationIdAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -494,5 +504,280 @@ public sealed class WorkspaceServiceTests
         result.Name.Should().Be("Sales");
         result.MemberCount.Should().Be(3);
         result.UserRole.Should().Be("ws_admin");
+    }
+
+    // ── GetSettingsAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetSettingsAsync_UserNotMember_ThrowsForbiddenAccessException()
+    {
+        _memberRepo.Setup(r => r.GetAsync(99, 10, It.IsAny<CancellationToken>())).ReturnsAsync((UserRoleWorkspace?)null);
+
+        var act = () => _sut.GetSettingsAsync(10, 99);
+
+        await act.Should().ThrowAsync<AppException>()
+            .WithMessage("You are not a member of this workspace.");
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_SettingsNotFound_ThrowsKeyNotFoundException()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>())).ReturnsAsync(AdminMember(1, 10));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync((WorkspaceSettings?)null);
+
+        var act = () => _sut.GetSettingsAsync(10, 1);
+
+        await act.Should().ThrowAsync<AppException>()
+            .WithMessage("Workspace settings not found.");
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_WorkspaceNotFound_ThrowsKeyNotFoundException()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>())).ReturnsAsync(AdminMember(1, 10));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkspaceSettings { Id = 1, WorkspaceId = 10, HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.4m });
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync((Workspace?)null);
+
+        var act = () => _sut.GetSettingsAsync(10, 1);
+
+        await act.Should().ThrowAsync<AppException>()
+            .WithMessage("Workspace not found.");
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_ValidMember_ReturnsMappedSettingsDto()
+    {
+        var settings = new WorkspaceSettings
+        {
+            Id = 1,
+            WorkspaceId = 10,
+            HighRiskThreshold = 0.8m,
+            MediumRiskThreshold = 0.5m,
+            RiskScoringEnabled = true,
+            Description = "Sales workspace"
+        };
+        var workspace = new Workspace { Id = 10, OrganizationId = 2, Name = "Sales WS" };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>())).ReturnsAsync(AdminMember(1, 10));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+
+        var result = await _sut.GetSettingsAsync(10, 1);
+
+        result.WorkspaceId.Should().Be(10);
+        result.Name.Should().Be("Sales WS");
+        result.HighRiskThreshold.Should().Be(0.8m);
+        result.MediumRiskThreshold.Should().Be(0.5m);
+        result.RiskScoringEnabled.Should().BeTrue();
+        result.Description.Should().Be("Sales workspace");
+    }
+
+    [Fact]
+    public async Task GetSettingsAsync_ValidMember_EnqueuesAuditReadEvent()
+    {
+        var settings = new WorkspaceSettings { Id = 1, WorkspaceId = 10, HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.4m };
+        var workspace = new Workspace { Id = 10, OrganizationId = 2, Name = "Sales WS" };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>())).ReturnsAsync(AdminMember(1, 10));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+
+        await _sut.GetSettingsAsync(10, 1);
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAuditAsync(
+                It.Is<AuditEventContract>(e =>
+                    e.AuditScope == AuditRouting.ScopeWorkspace &&
+                    e.Action == "workspace_settings_read" &&
+                    e.TargetId == 10 &&
+                    e.ActorUserId == 1),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // ── UpdateSettingsAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateSettingsAsync_UserLacksPermission_ThrowsForbiddenAccessException()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRoleWorkspace
+            {
+                UserId = 1, WorkspaceId = 10,
+                Role = new WorkspaceRole { Name = "analyst", RolePermissions = [] }
+            });
+
+        var act = () => _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("Name", null, 0.7m, 0.4m, false));
+
+        await act.Should().ThrowAsync<AppException>()
+            .WithMessage($"*{WorkspacePermissions.ManageWsSettings}*");
+        _workspaceSettingsRepo.Verify(r => r.UpdateAsync(It.IsAny<WorkspaceSettings>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_SettingsNotFound_ThrowsKeyNotFoundException()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberWithPermission(1, 10, WorkspacePermissions.ManageWsSettings));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync((WorkspaceSettings?)null);
+
+        var act = () => _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("Name", null, 0.7m, 0.4m, false));
+
+        await act.Should().ThrowAsync<AppException>()
+            .WithMessage("Workspace settings not found.");
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_WorkspaceNotFound_ThrowsKeyNotFoundException()
+    {
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberWithPermission(1, 10, WorkspacePermissions.ManageWsSettings));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkspaceSettings { Id = 1, WorkspaceId = 10, HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.4m });
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync((Workspace?)null);
+
+        var act = () => _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("Name", null, 0.7m, 0.4m, false));
+
+        await act.Should().ThrowAsync<AppException>()
+            .WithMessage("Workspace not found.");
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidationFails_ThrowsValidationExceptionBeforeAnyRepoCall()
+    {
+        _updateSettingsValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<UpdateWorkspaceSettingsRequest>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FluentValidation.ValidationException(new[] { new ValidationFailure("HighRiskThreshold", "Invalid.") }));
+
+        var act = () => _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("Name", null, 1.5m, 0.4m, false));
+
+        await act.Should().ThrowAsync<FluentValidation.ValidationException>();
+        _workspaceSettingsRepo.Verify(r => r.UpdateAsync(It.IsAny<WorkspaceSettings>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidRequest_AppliesAllFieldChanges()
+    {
+        var settings = new WorkspaceSettings { Id = 1, WorkspaceId = 10, HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.4m, RiskScoringEnabled = false };
+        var workspace = new Workspace { Id = 10, OrganizationId = 2, Name = "Old Name" };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberWithPermission(1, 10, WorkspacePermissions.ManageWsSettings));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+
+        await _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("New Name", "Desc", 0.9m, 0.6m, true));
+
+        workspace.Name.Should().Be("New Name");
+        settings.Description.Should().Be("Desc");
+        settings.HighRiskThreshold.Should().Be(0.9m);
+        settings.MediumRiskThreshold.Should().Be(0.6m);
+        settings.RiskScoringEnabled.Should().BeTrue();
+        _workspaceRepo.Verify(r => r.UpdateAsync(workspace, It.IsAny<CancellationToken>()), Times.Once);
+        _workspaceSettingsRepo.Verify(r => r.UpdateAsync(settings, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidRequest_EnqueuesAuditEventWithOldAndNewValues()
+    {
+        var settings = new WorkspaceSettings { Id = 1, WorkspaceId = 10, HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.4m, RiskScoringEnabled = false };
+        var workspace = new Workspace { Id = 10, OrganizationId = 2, Name = "Old Name" };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberWithPermission(1, 10, WorkspacePermissions.ManageWsSettings));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+
+        await _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("New Name", null, 0.9m, 0.6m, true));
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueAuditAsync(
+                It.Is<AuditEventContract>(e =>
+                    e.AuditScope == AuditRouting.ScopeWorkspace &&
+                    e.Action == "workspace_settings_updated" &&
+                    e.TargetId == 10 &&
+                    e.ActorUserId == 1 &&
+                    e.OldValueJson!.Contains("Old Name") &&
+                    e.NewValueJson!.Contains("New Name")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidRequest_EnqueuesDomainSettingsUpdatedEvent()
+    {
+        var settings = new WorkspaceSettings { Id = 1, WorkspaceId = 10, HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.4m };
+        var workspace = new Workspace { Id = 10, OrganizationId = 2, Name = "WS Name" };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberWithPermission(1, 10, WorkspacePermissions.ManageWsSettings));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+
+        await _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("WS Name", null, 0.7m, 0.4m, false));
+
+        _auditOutboxWriter.Verify(
+            x => x.EnqueueDomainAsync(
+                It.IsAny<string>(),
+                It.Is<DomainMessageEnvelope>(e => e.SourceService == "core"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_NullAuditWriter_PersistsChangesWithoutEnqueue()
+    {
+        var settings = new WorkspaceSettings { Id = 1, WorkspaceId = 10, HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.4m, RiskScoringEnabled = false };
+        var workspace = new Workspace { Id = 10, OrganizationId = 2, Name = "Old Name" };
+
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberWithPermission(1, 10, WorkspacePermissions.ManageWsSettings));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+
+        var sut = new WorkspaceService(
+            _workspaceRepo.Object,
+            _memberRepo.Object,
+            _roleRepo.Object,
+            _orgMemberRepo.Object,
+            _workspaceAccessEvaluator,
+            _workspaceSettingsRepo.Object,
+            _createValidator.Object,
+            _updateValidator.Object,
+            _updateSettingsValidator.Object,
+            null);
+
+        await sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("New Name", "Desc", 0.9m, 0.6m, true));
+
+        workspace.Name.Should().Be("New Name");
+        settings.HighRiskThreshold.Should().Be(0.9m);
+        _workspaceSettingsRepo.Verify(r => r.UpdateAsync(settings, It.IsAny<CancellationToken>()), Times.Once);
+        _auditOutboxWriter.Verify(x => x.EnqueueAuditAsync(It.IsAny<AuditEventContract>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateSettingsAsync_ValidRequest_DomainPayloadCarriesWorkspaceOrgAndActor()
+    {
+        var settings = new WorkspaceSettings { Id = 1, WorkspaceId = 10, HighRiskThreshold = 0.7m, MediumRiskThreshold = 0.4m };
+        var workspace = new Workspace { Id = 10, OrganizationId = 2, Name = "WS" };
+        DomainMessageEnvelope? captured = null;
+
+        _memberRepo.Setup(r => r.GetAsync(1, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberWithPermission(1, 10, WorkspacePermissions.ManageWsSettings));
+        _workspaceSettingsRepo.Setup(r => r.GetByWorkspaceIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(settings);
+        _workspaceRepo.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>())).ReturnsAsync(workspace);
+        _auditOutboxWriter
+            .Setup(x => x.EnqueueDomainAsync(It.IsAny<string>(), It.IsAny<DomainMessageEnvelope>(), It.IsAny<CancellationToken>()))
+            .Callback<string, DomainMessageEnvelope, CancellationToken>((_, env, _) => captured = env);
+
+        await _sut.UpdateSettingsAsync(10, 1, new UpdateWorkspaceSettingsRequest("WS", null, 0.7m, 0.4m, false));
+
+        captured.Should().NotBeNull();
+        captured!.PayloadTypeName.Should().Be(DomainPayloadTypes.WorkspaceSettingsUpdatedV1);
+        var payload = JsonSerializer.Deserialize<WorkspaceSettingsUpdatedPayloadV1>(captured.PayloadJson);
+        payload!.WorkspaceId.Should().Be(10);
+        payload.OrganizationId.Should().Be(2);
+        payload.ActorUserId.Should().Be(1);
     }
 }

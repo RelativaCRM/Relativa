@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -56,8 +57,10 @@ public sealed class WorkspaceIsolationTests
             _workspaceRoleRepo.Object,
             _orgRepo.Object,
             _workspaceAccessEvaluator,
+            new Mock<IWorkspaceSettingsRepository>().Object,
             new Mock<IValidator<CreateWorkspaceRequest>>().Object,
-            updateValidator.Object);
+            updateValidator.Object,
+            new Mock<IValidator<UpdateWorkspaceSettingsRequest>>().Object);
 
         _memberSvc = new WorkspaceMemberService(
             _memberRepo.Object,
@@ -96,7 +99,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _workspaceSvc.GetByIdAsync(workspaceId: 2, userId: 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -108,7 +111,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _workspaceSvc.UpdateAsync(workspaceId: 2, userId: 1, new UpdateWorkspaceRequest("Name"));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -120,7 +123,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _memberSvc.GetMembersAsync(workspaceId: 2, userId: 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -132,7 +135,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _memberSvc.UpdateRoleAsync(2, 5, 1, new DTOs.Member.UpdateMemberRoleRequest(3));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -144,7 +147,7 @@ public sealed class WorkspaceIsolationTests
 
         var act = () => _roleSvc.GetByWorkspaceAsync(workspaceId: 2, userId: 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 }

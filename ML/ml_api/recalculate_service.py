@@ -1,8 +1,11 @@
 import json
+import logging
 import os
 import time
 import uuid
 from datetime import date, datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 import pika
 from django.conf import settings
@@ -14,12 +17,15 @@ BATCH_TIMEOUT_SECONDS = 5.0
 DEAL_TYPE_NAME = "deal"
 DEAL_ANALYSIS_TYPE_NAME = "deal_analysis"
 CONTRACT_TYPE_NAME = "contract"
+CLIENT_TYPE_NAME = "client"
 
 REL_DEAL_ANALYSIS = "deal_analysis"
 REL_DEAL_CONTRACT = "deal_contract"
+REL_DEAL_CLIENT = "deal_client"
 
 DEAL_PROP_CREATED_AT = "created_at"
 DEAL_PROP_STATUS = "status"
+DEAL_PROP_EXPECTED_CLOSE = "expected_close"
 
 ANALYSIS_PROP_DAYS_SINCE_CREATED = "days_since_created"
 ANALYSIS_PROP_STAGE_ENCODED = "stage_encoded"
@@ -29,13 +35,21 @@ ANALYSIS_PROP_NUM_OPEN_DEALS = "num_open_deals"
 ANALYSIS_PROP_AVG_DEAL_VALUE = "avg_deal_value"
 ANALYSIS_PROP_SOURCE_UPDATED_AT = "source_updated_at"
 ANALYSIS_PROP_CALCULATED_AT = "calculated_at"
+ANALYSIS_PROP_DAYS_UNTIL_CLOSE = "days_until_expected_close"
+ANALYSIS_PROP_HIST_CLOSE_RATE = "historical_close_rate"
 
 CONTRACT_PROP_AMOUNT = "amount"
 CONTRACT_PROP_STATUS = "contract_status"
 CONTRACT_PROP_END_DATE = "end_date"
 CONTRACT_PROP_SIGNED_AT = "signed_at"
 
-FEATURE_KEYS = (
+CLIENT_PROP_LIFETIME_VALUE = "client_lifetime_value"
+CLIENT_PROP_TENURE_DAYS = "client_tenure_days"
+
+DEAL_PROP_CLOSURE_SCORE = "closure_score"
+DEAL_PROP_CHURN_SCORE = "churn_score"
+
+REQUIRED_FEATURE_KEYS = (
     ANALYSIS_PROP_DAYS_SINCE_CREATED,
     ANALYSIS_PROP_STAGE_ENCODED,
     ANALYSIS_PROP_NUM_INTERACTIONS,
@@ -43,6 +57,14 @@ FEATURE_KEYS = (
     ANALYSIS_PROP_NUM_OPEN_DEALS,
     ANALYSIS_PROP_AVG_DEAL_VALUE,
 )
+
+FEATURE_KEYS = REQUIRED_FEATURE_KEYS + (
+    ANALYSIS_PROP_DAYS_UNTIL_CLOSE,
+    ANALYSIS_PROP_HIST_CLOSE_RATE,
+)
+
+DAYS_UNTIL_CLOSE_MEDIAN = 30
+HIST_CLOSE_RATE_MEDIAN = 50.0
 
 DEAL_STATUS_TO_STAGE = {
     "opened": 1,
@@ -132,12 +154,17 @@ def publish_domain_event(routing_key, envelope):
         conn.close()
 
 
+PROGRESS_CHUNK_SIZE = 10
+
+
 def process_recalc_payload(payload):
     entity_ids = payload.get("EntityIds") or payload.get("entityIds") or []
     workspace_id = payload.get("WorkspaceId") or payload.get("workspaceId")
     job_id_raw = payload.get("JobId") or payload.get("jobId")
     job_id = str(job_id_raw) if job_id_raw else str(uuid.uuid4())
+    requested_by_user_id = int(payload.get("RequestedByUserId") or payload.get("requestedByUserId") or 0)
     started_at = datetime.now(timezone.utc)
+    today = date.today()
 
     if workspace_id is not None and not entity_ids:
         entity_ids = _load_workspace_deal_ids(int(workspace_id))
@@ -150,18 +177,35 @@ def process_recalc_payload(payload):
         return
 
     config = _load_schema_config()
-    deadline = time.perf_counter() + max(BATCH_TIMEOUT_SECONDS * 10, 30.0)
-    _ensure_deal_analysis_entities(entity_ids, config, deadline)
-    analysis_rows = _load_analysis_state(entity_ids, config)
-    deal_rows = _load_deal_inputs(entity_ids, config)
-    contracts = _load_contract_inputs(entity_ids, config)
-    contracts_by_deal = {}
-    for row in contracts:
-        contracts_by_deal.setdefault(row["deal_id"], []).append(row)
+    # Scale deadline: 3 s per deal, at least 120 s, capped at 600 s.
+    deadline = time.perf_counter() + min(max(120.0, total_count * 3.0), 600.0)
 
-    _recompute_analysis(entity_ids, analysis_rows, deal_rows, contracts_by_deal, config, deadline, date.today())
-    _emit_progress(job_id, workspace_id, total_count, total_count, "running", "recompute done")
-    _emit_completed(job_id, workspace_id, "completed", total_count, total_count, 0, started_at, None)
+    processed = 0
+    try:
+        for chunk_start in range(0, total_count, PROGRESS_CHUNK_SIZE):
+            chunk = entity_ids[chunk_start:chunk_start + PROGRESS_CHUNK_SIZE]
+            _ensure_deal_analysis_entities(chunk, config, deadline, created_by_user_id=requested_by_user_id)
+            analysis_rows = _load_analysis_state(chunk, config)
+            deal_rows = _load_deal_inputs(chunk, config)
+            contracts = _load_contract_inputs(chunk, config)
+            contracts_by_deal = {}
+            for row in contracts:
+                contracts_by_deal.setdefault(row["deal_id"], []).append(row)
+            _recompute_analysis(chunk, analysis_rows, deal_rows, contracts_by_deal, config, deadline, today)
+            processed = chunk_start + len(chunk)
+            _emit_progress(job_id, workspace_id, processed, total_count, "running", "")
+
+        _recompute_client_properties(entity_ids, config, deadline, today)
+        _emit_completed(job_id, workspace_id, "completed", total_count, total_count, 0, started_at, None)
+
+    except TimeoutError:
+        failed = total_count - processed
+        _emit_completed(job_id, workspace_id, "timeout", processed, processed, failed, started_at, "deadline exceeded")
+        raise
+    except Exception:
+        failed = total_count - processed
+        _emit_completed(job_id, workspace_id, "failed", processed, processed, failed, started_at, "unexpected error")
+        raise
 
 
 def _emit_progress(job_id, workspace_id, processed_count, total_count, status, message):
@@ -248,9 +292,9 @@ def _load_schema_config():
             """
             SELECT id, name
             FROM entity_type
-            WHERE name IN (%s, %s, %s)
+            WHERE name IN (%s, %s, %s, %s)
             """,
-            [DEAL_TYPE_NAME, DEAL_ANALYSIS_TYPE_NAME, CONTRACT_TYPE_NAME],
+            [DEAL_TYPE_NAME, DEAL_ANALYSIS_TYPE_NAME, CONTRACT_TYPE_NAME, CLIENT_TYPE_NAME],
         )
         type_ids = {name: type_id for type_id, name in cursor.fetchall()}
 
@@ -258,15 +302,16 @@ def _load_schema_config():
             """
             SELECT id, name
             FROM entity_relationship_type
-            WHERE name IN (%s, %s)
+            WHERE name IN (%s, %s, %s)
             """,
-            [REL_DEAL_ANALYSIS, REL_DEAL_CONTRACT],
+            [REL_DEAL_ANALYSIS, REL_DEAL_CONTRACT, REL_DEAL_CLIENT],
         )
         rel_ids = {name: rel_id for rel_id, name in cursor.fetchall()}
 
         all_prop_names = [
             DEAL_PROP_CREATED_AT,
             DEAL_PROP_STATUS,
+            DEAL_PROP_EXPECTED_CLOSE,
             ANALYSIS_PROP_DAYS_SINCE_CREATED,
             ANALYSIS_PROP_STAGE_ENCODED,
             ANALYSIS_PROP_NUM_INTERACTIONS,
@@ -275,10 +320,16 @@ def _load_schema_config():
             ANALYSIS_PROP_AVG_DEAL_VALUE,
             ANALYSIS_PROP_SOURCE_UPDATED_AT,
             ANALYSIS_PROP_CALCULATED_AT,
+            ANALYSIS_PROP_DAYS_UNTIL_CLOSE,
+            ANALYSIS_PROP_HIST_CLOSE_RATE,
             CONTRACT_PROP_AMOUNT,
             CONTRACT_PROP_STATUS,
             CONTRACT_PROP_END_DATE,
             CONTRACT_PROP_SIGNED_AT,
+            CLIENT_PROP_LIFETIME_VALUE,
+            CLIENT_PROP_TENURE_DAYS,
+            DEAL_PROP_CLOSURE_SCORE,
+            DEAL_PROP_CHURN_SCORE,
             "deal_value",
         ]
         cursor.execute(
@@ -294,11 +345,14 @@ def _load_schema_config():
     return {"type_ids": type_ids, "rel_ids": rel_ids, "prop_ids": prop_ids}
 
 
-def _ensure_deal_analysis_entities(deal_ids, config, deadline):
+def _ensure_deal_analysis_entities(deal_ids, config, deadline, created_by_user_id=0):
     _check_deadline(deadline)
-    deal_type_id = config["type_ids"][DEAL_TYPE_NAME]
-    analysis_type_id = config["type_ids"][DEAL_ANALYSIS_TYPE_NAME]
-    rel_type_id = config["rel_ids"][REL_DEAL_ANALYSIS]
+    deal_type_id = config["type_ids"].get(DEAL_TYPE_NAME)
+    analysis_type_id = config["type_ids"].get(DEAL_ANALYSIS_TYPE_NAME)
+    rel_type_id = config["rel_ids"].get(REL_DEAL_ANALYSIS)
+    if not deal_type_id or not analysis_type_id or not rel_type_id:
+        logger.warning("Schema config missing deal/deal_analysis type or relationship — skipping entity creation")
+        return
     with transaction.atomic():
         with connection.cursor() as cursor:
             cursor.execute(
@@ -328,8 +382,8 @@ def _ensure_deal_analysis_entities(deal_ids, config, deadline):
             for deal_id in missing_deals:
                 _check_deadline(deadline)
                 cursor.execute(
-                    "INSERT INTO entity (entity_type_id, is_archived) VALUES (%s, FALSE) RETURNING id",
-                    [analysis_type_id],
+                    "INSERT INTO entity (entity_type_id, created_by_user_id, is_archived) VALUES (%s, %s, FALSE) RETURNING id",
+                    [analysis_type_id, created_by_user_id],
                 )
                 analysis_id = cursor.fetchone()[0]
                 cursor.execute(
@@ -380,6 +434,10 @@ def _load_analysis_state(deal_ids, config):
                 row[ANALYSIS_PROP_NUM_OPEN_DEALS] = value_int
             elif property_id == prop_ids.get(ANALYSIS_PROP_AVG_DEAL_VALUE):
                 row[ANALYSIS_PROP_AVG_DEAL_VALUE] = float(value_decimal) if value_decimal is not None else None
+            elif property_id == prop_ids.get(ANALYSIS_PROP_DAYS_UNTIL_CLOSE):
+                row[ANALYSIS_PROP_DAYS_UNTIL_CLOSE] = value_int
+            elif property_id == prop_ids.get(ANALYSIS_PROP_HIST_CLOSE_RATE):
+                row[ANALYSIS_PROP_HIST_CLOSE_RATE] = float(value_decimal) if value_decimal is not None else None
             elif property_id == prop_ids.get(ANALYSIS_PROP_SOURCE_UPDATED_AT):
                 row[ANALYSIS_PROP_SOURCE_UPDATED_AT] = value_date
             elif property_id == prop_ids.get(ANALYSIS_PROP_CALCULATED_AT):
@@ -390,6 +448,14 @@ def _load_analysis_state(deal_ids, config):
 def _load_deal_inputs(deal_ids, config):
     prop_ids = config["prop_ids"]
     deal_by_id = {}
+    wanted = [
+        p for p in [
+            prop_ids.get(DEAL_PROP_CREATED_AT),
+            prop_ids.get(DEAL_PROP_STATUS),
+            prop_ids.get(DEAL_PROP_EXPECTED_CLOSE),
+            prop_ids.get("deal_value"),
+        ] if p is not None
+    ]
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -398,7 +464,7 @@ def _load_deal_inputs(deal_ids, config):
             WHERE epv.entity_id = ANY(%s)
               AND epv.property_id = ANY(%s)
             """,
-            [deal_ids, [prop_ids.get(DEAL_PROP_CREATED_AT), prop_ids.get(DEAL_PROP_STATUS), prop_ids.get("deal_value")]],
+            [deal_ids, wanted],
         )
         for entity_id, property_id, value_string, value_decimal, value_date in cursor.fetchall():
             row = deal_by_id.setdefault(entity_id, {})
@@ -406,6 +472,8 @@ def _load_deal_inputs(deal_ids, config):
                 row[DEAL_PROP_CREATED_AT] = value_date
             elif property_id == prop_ids.get(DEAL_PROP_STATUS):
                 row[DEAL_PROP_STATUS] = value_string
+            elif property_id == prop_ids.get(DEAL_PROP_EXPECTED_CLOSE):
+                row[DEAL_PROP_EXPECTED_CLOSE] = value_date
             elif property_id == prop_ids.get("deal_value"):
                 row["deal_value"] = float(value_decimal) if value_decimal is not None else None
     return deal_by_id
@@ -445,6 +513,43 @@ def _load_contract_inputs(deal_ids, config):
     return result
 
 
+def _load_client_inputs(deal_ids, config):
+    deal_client_map = _load_deal_client_map(deal_ids, config)
+    if not deal_client_map:
+        return {}
+
+    prop_ids = config["prop_ids"]
+    lifetime_prop = prop_ids.get(CLIENT_PROP_LIFETIME_VALUE)
+    tenure_prop = prop_ids.get(CLIENT_PROP_TENURE_DAYS)
+    wanted = [p for p in [lifetime_prop, tenure_prop] if p is not None]
+    if not wanted:
+        return {}
+
+    client_ids = list(set(deal_client_map.values()))
+    client_by_id = {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT epv.entity_id, epv.property_id, epv.value_decimal, epv.value_int
+            FROM entity_property_value epv
+            WHERE epv.entity_id = ANY(%s)
+              AND epv.property_id = ANY(%s)
+            """,
+            [client_ids, wanted],
+        )
+        for client_id, property_id, value_decimal, value_int in cursor.fetchall():
+            row = client_by_id.setdefault(client_id, {})
+            if property_id == lifetime_prop:
+                row[CLIENT_PROP_LIFETIME_VALUE] = float(value_decimal) if value_decimal is not None else None
+            elif property_id == tenure_prop:
+                row[CLIENT_PROP_TENURE_DAYS] = value_int
+
+    deal_client_values = {}
+    for deal_id, client_id in deal_client_map.items():
+        deal_client_values[deal_id] = client_by_id.get(client_id, {})
+    return deal_client_values
+
+
 def recompute_deal_analysis(deal_ids, deadline=None):
     if deadline is None:
         deadline = time.perf_counter() + BATCH_TIMEOUT_SECONDS
@@ -457,11 +562,56 @@ def recompute_deal_analysis(deal_ids, deadline=None):
     for row in contract_rows:
         by_deal.setdefault(row["deal_id"], []).append(row)
     _recompute_analysis(deal_ids, analysis_rows, deal_rows, by_deal, config, deadline, date.today())
+    _recompute_client_properties(deal_ids, config, deadline, date.today())
     return _load_analysis_state(deal_ids, config)
+
+
+def _load_deal_client_map(deal_ids, config):
+    rel_id = config["rel_ids"].get(REL_DEAL_CLIENT)
+    if not rel_id:
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT er.source_entity_id, er.target_entity_id
+            FROM entity_relationship er
+            WHERE er.relationship_type_id = %s
+              AND er.source_entity_id = ANY(%s)
+            """,
+            [rel_id, deal_ids],
+        )
+        return {deal_id: client_id for deal_id, client_id in cursor.fetchall()}
+
+
+def _load_client_deal_statuses(client_ids, config):
+    rel_id = config["rel_ids"].get(REL_DEAL_CLIENT)
+    status_prop = config["prop_ids"].get(DEAL_PROP_STATUS)
+    if not rel_id or not status_prop or not client_ids:
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT er.target_entity_id, epv.value_string
+            FROM entity_relationship er
+            JOIN entity e ON e.id = er.source_entity_id AND e.is_archived = FALSE
+            JOIN entity_property_value epv ON epv.entity_id = er.source_entity_id AND epv.property_id = %s
+            WHERE er.relationship_type_id = %s
+              AND er.target_entity_id = ANY(%s)
+            """,
+            [status_prop, rel_id, client_ids],
+        )
+        result = {}
+        for client_id, status in cursor.fetchall():
+            result.setdefault(client_id, []).append(status)
+        return result
 
 
 def _recompute_analysis(deal_ids, analysis_rows, deal_rows, contracts_by_deal, config, deadline, today):
     prop_ids = config["prop_ids"]
+    deal_client_map = _load_deal_client_map(deal_ids, config)
+    client_ids = list(set(deal_client_map.values()))
+    client_deal_statuses = _load_client_deal_statuses(client_ids, config) if client_ids else {}
+
     with transaction.atomic():
         with connection.cursor() as cursor:
             for deal_id in deal_ids:
@@ -486,18 +636,121 @@ def _recompute_analysis(deal_ids, analysis_rows, deal_rows, contracts_by_deal, c
                 num_open_deals = len(active_contracts)
                 signed_dates = [c.get(CONTRACT_PROP_SIGNED_AT) for c in chosen_contracts if c.get(CONTRACT_PROP_SIGNED_AT) is not None]
                 days_since_last_contact = max(0, (today - max(signed_dates)).days) if signed_dates else max(0, min(365, days_since_created // 2))
+
+                expected_close = deal.get(DEAL_PROP_EXPECTED_CLOSE)
+                days_until_close = (expected_close - today).days if expected_close is not None else None
+
+                client_id = deal_client_map.get(deal_id)
+                if client_id:
+                    client_statuses = client_deal_statuses.get(client_id, [])
+                    total = len(client_statuses)
+                    closed = sum(1 for s in client_statuses if (s or "").lower() == "closed")
+                    hist_close_rate = (closed / total * 100.0) if total > 0 else None
+                else:
+                    hist_close_rate = None
+
+                required_prop_ids = {
+                    ANALYSIS_PROP_DAYS_SINCE_CREATED:      prop_ids.get(ANALYSIS_PROP_DAYS_SINCE_CREATED),
+                    ANALYSIS_PROP_STAGE_ENCODED:           prop_ids.get(ANALYSIS_PROP_STAGE_ENCODED),
+                    ANALYSIS_PROP_NUM_INTERACTIONS:        prop_ids.get(ANALYSIS_PROP_NUM_INTERACTIONS),
+                    ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT: prop_ids.get(ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT),
+                    ANALYSIS_PROP_NUM_OPEN_DEALS:          prop_ids.get(ANALYSIS_PROP_NUM_OPEN_DEALS),
+                    ANALYSIS_PROP_AVG_DEAL_VALUE:          prop_ids.get(ANALYSIS_PROP_AVG_DEAL_VALUE),
+                    ANALYSIS_PROP_SOURCE_UPDATED_AT:       prop_ids.get(ANALYSIS_PROP_SOURCE_UPDATED_AT),
+                    ANALYSIS_PROP_CALCULATED_AT:           prop_ids.get(ANALYSIS_PROP_CALCULATED_AT),
+                }
+                if None in required_prop_ids.values():
+                    logger.warning(
+                        "Schema config is missing one or more analysis property IDs — skipping deal %s", deal_id
+                    )
+                    continue
                 updates = [
-                    (prop_ids[ANALYSIS_PROP_DAYS_SINCE_CREATED], {"value_int": days_since_created}),
-                    (prop_ids[ANALYSIS_PROP_STAGE_ENCODED], {"value_int": stage_encoded}),
-                    (prop_ids[ANALYSIS_PROP_NUM_INTERACTIONS], {"value_int": num_interactions}),
-                    (prop_ids[ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT], {"value_int": days_since_last_contact}),
-                    (prop_ids[ANALYSIS_PROP_NUM_OPEN_DEALS], {"value_int": num_open_deals}),
-                    (prop_ids[ANALYSIS_PROP_AVG_DEAL_VALUE], {"value_decimal": avg_deal_value}),
-                    (prop_ids[ANALYSIS_PROP_SOURCE_UPDATED_AT], {"value_date": today}),
-                    (prop_ids[ANALYSIS_PROP_CALCULATED_AT], {"value_date": today}),
+                    (required_prop_ids[ANALYSIS_PROP_DAYS_SINCE_CREATED], {"value_int": days_since_created}),
+                    (required_prop_ids[ANALYSIS_PROP_STAGE_ENCODED], {"value_int": stage_encoded}),
+                    (required_prop_ids[ANALYSIS_PROP_NUM_INTERACTIONS], {"value_int": num_interactions}),
+                    (required_prop_ids[ANALYSIS_PROP_DAYS_SINCE_LAST_CONTACT], {"value_int": days_since_last_contact}),
+                    (required_prop_ids[ANALYSIS_PROP_NUM_OPEN_DEALS], {"value_int": num_open_deals}),
+                    (required_prop_ids[ANALYSIS_PROP_AVG_DEAL_VALUE], {"value_decimal": avg_deal_value}),
+                    (required_prop_ids[ANALYSIS_PROP_SOURCE_UPDATED_AT], {"value_date": today}),
+                    (required_prop_ids[ANALYSIS_PROP_CALCULATED_AT], {"value_date": today}),
                 ]
+                if prop_ids.get(ANALYSIS_PROP_DAYS_UNTIL_CLOSE):
+                    updates.append((prop_ids[ANALYSIS_PROP_DAYS_UNTIL_CLOSE], {"value_int": days_until_close}))
+                if prop_ids.get(ANALYSIS_PROP_HIST_CLOSE_RATE):
+                    updates.append((prop_ids[ANALYSIS_PROP_HIST_CLOSE_RATE], {"value_decimal": hist_close_rate}))
                 for property_id, value_map in updates:
                     _upsert_property(cursor, analysis["analysis_entity_id"], property_id, value_map)
+
+
+def _recompute_client_properties(deal_ids, config, deadline, today):
+    ltv_prop = config["prop_ids"].get(CLIENT_PROP_LIFETIME_VALUE)
+    tenure_prop = config["prop_ids"].get(CLIENT_PROP_TENURE_DAYS)
+    if not ltv_prop and not tenure_prop:
+        return
+
+    rel_id = config["rel_ids"].get(REL_DEAL_CLIENT)
+    if not rel_id:
+        return
+
+    deal_client_map = _load_deal_client_map(deal_ids, config)
+    client_ids = list(set(deal_client_map.values()))
+    if not client_ids:
+        return
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT er.target_entity_id, er.source_entity_id
+            FROM entity_relationship er
+            JOIN entity e ON e.id = er.source_entity_id AND e.is_archived = FALSE
+            WHERE er.relationship_type_id = %s
+              AND er.target_entity_id = ANY(%s)
+            """,
+            [rel_id, client_ids],
+        )
+        client_to_deals = {}
+        for client_id, deal_id in cursor.fetchall():
+            client_to_deals.setdefault(client_id, []).append(deal_id)
+
+        all_deal_ids = [d for deals in client_to_deals.values() for d in deals]
+        if not all_deal_ids:
+            return
+
+        prop_ids = config["prop_ids"]
+        deal_value_prop = prop_ids.get("deal_value")
+        created_at_prop = prop_ids.get(DEAL_PROP_CREATED_AT)
+        wanted = [p for p in [deal_value_prop, created_at_prop] if p is not None]
+        cursor.execute(
+            """
+            SELECT epv.entity_id, epv.property_id, epv.value_decimal, epv.value_date
+            FROM entity_property_value epv
+            WHERE epv.entity_id = ANY(%s)
+              AND epv.property_id = ANY(%s)
+            """,
+            [all_deal_ids, wanted],
+        )
+        deal_values = {}
+        deal_dates = {}
+        for deal_id, prop_id, value_decimal, value_date in cursor.fetchall():
+            if prop_id == deal_value_prop and value_decimal is not None:
+                deal_values[deal_id] = float(value_decimal)
+            elif prop_id == created_at_prop and value_date is not None:
+                deal_dates[deal_id] = value_date
+
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            for client_id in client_ids:
+                _check_deadline(deadline)
+                client_deal_ids = client_to_deals.get(client_id, [])
+                if not client_deal_ids:
+                    continue
+                ltv = sum(deal_values.get(d, 0.0) for d in client_deal_ids)
+                dates = [deal_dates[d] for d in client_deal_ids if d in deal_dates]
+                tenure_days = (today - min(dates)).days if dates else None
+                if ltv_prop:
+                    _upsert_property(cursor, client_id, ltv_prop, {"value_decimal": ltv})
+                if tenure_prop and tenure_days is not None:
+                    _upsert_property(cursor, client_id, tenure_prop, {"value_int": tenure_days})
 
 
 def _upsert_property(cursor, entity_id, property_id, value_map):

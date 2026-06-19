@@ -203,7 +203,7 @@ public partial class AddDealAnalysisAndContractSchemaSeeds : EfMigration
                 IF NOT EXISTS (
                     SELECT 1 FROM entity WHERE entity_type_id = v_deal_type_id AND is_archived = FALSE
                 ) THEN
-                    SELECT id INTO v_workspace_id FROM workspace WHERE is_archived = FALSE ORDER BY id LIMIT 1;
+                    SELECT id INTO v_workspace_id FROM workspaces WHERE is_archived = FALSE ORDER BY id LIMIT 1;
 
                     IF v_workspace_id IS NOT NULL THEN
                         FOR v_deal_id IN 1..3 LOOP

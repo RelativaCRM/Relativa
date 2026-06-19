@@ -1,6 +1,6 @@
 # Frontend UI Guide
 
-> **Last verified:** 2026-05-08 (Graph rendering section updated: multi-type dynamic color palette replaces monochromatic blue; node action panel introduced; graph moved to org scope.)
+> **Last verified:** 2026-06-03 (CR-267 frontend code quality pass: `MainLayout.vue` sidebar is now always visible — at `< lg` (1024 px) it collapses to a 56 px icon-only rail via the `.nav-label`, `.nav-divider`, `.nav-entry`, `.nav-scroll`, `.nav-sub` CSS classes; popover panels reposition from `left-[248px]` to `left-16` accordingly. `authApi.login` is called with `{ silent: true }` so the auth `409`/`500` toast no longer duplicates the inline `<Message>` on `LoginView`. `HomeView.vue` no longer renders the Session card (Email + Token expiry). Form-action button policy: secondary action = `Button … severity="secondary" outlined class="!h-10"`, primary action = `Button … class="!h-10"`; do not use the `text` prop on Cancel/Create/Link/Save — borders must be visible. Form inputs `InputText`, `Select`, `InputNumber`, `DatePicker` standardize on **40 px** height (`!h-10` for `InputText`/`Select`, `:input-class="'!h-10 w-full'"` for `InputNumber`/`DatePicker`). FilterPanel "Reset all" + "x of y visible" pills changed from `rounded-full` to `rounded` for chrome consistency. Link-existing dialog on `EntityReadView.vue` now searches across `id` + a fixed set of identifier property names (`name`, `first_name`, `last_name`, `title`, `email`) — phone, country and other filter-style props are deliberately excluded. Each row shows full name (or `name`/`title`) on the primary line and email on the subtitle line. Search input auto-focuses on open and shows a real-time result counter; see "Connections sidebar — Link existing dialog" below. Graph deal nodes color by ML closure-score risk tier — see the "Risk-based deal coloring" subsection under "Graph rendering". GraphView hosts a combined `FilterPanel` (risk pills + manager / workspace dropdowns + entity-type chips + real-time visible/total counter) — see "Combined graph filter panel". Global error boundary + centralized HTTP toast wired up via `setGlobalToast` / `notifyGlobal`; loading skeletons standardized through `LoadingSkeleton` and `ChartSkeleton` — see "Error handling" and "Loading states" sections.)
 
 > **Maintenance obligation:** If you change the design system, the brand mark, or how the SPA expresses tone-of-voice (technical role names, system jargon), update this file and its "Last verified" date before finishing your task. See [AI-GUIDES-INDEX.md](../../AI-GUIDES-INDEX.md) for the full update matrix.
 
@@ -107,7 +107,22 @@ The vis-network graph in [GraphView.vue](../../Client/src/views/GraphView.vue) u
 | `workspace` | `#0d9488` | teal-600 |
 
 **Entity type colors (dynamic palette):**
-Entity nodes receive colors from `ENTITY_PALETTE` (violet-600, amber-600, green-600, red-600, cyan-600, purple-600, orange-600, sky-600). Colors are assigned at render time by sequential discovery order of `entityTypeName` values — **no color is hardcoded to any entity type name in source**. The mapping is built fresh on each render. If there are more entity types than palette slots, colors wrap around (modulo).
+Entity nodes receive colors from `ENTITY_PALETTE` (violet-600, amber-600, green-600, red-600, cyan-600, purple-600, orange-600, sky-600). Colors are assigned at render time by sequential discovery order of `entityTypeName` values — **no color is hardcoded to any entity type name in source**. The mapping is built fresh on each render. If there are more entity types than palette slots, colors wrap around (modulo). Deal nodes are the one **exception** — they are colored from the risk palette below, not the entity palette, and the `deal` swatch is intentionally suppressed from the type-legend row so the chrome doesn't double up.
+
+**Risk-based deal coloring:**
+Deal nodes are colored by their ML closure score, not by the type palette. After `graphStore.fetchGraph` resolves, `loadDealScores()` posts every deal id to `POST /ml/api/ml/score/batch` via `mlApi.scoreBatch` and stores the response in a local `dealScores: Map<entityId, DealScoreDto>`. `nodeColor()` then short-circuits for `type === 'entity' && entityTypeName === 'deal'` and picks a fill from `RISK_COLORS` based on the closure-score tier:
+
+| Closure score | Tier | Fill / border | Reads as |
+|---|---|---|---|
+| `> 70` | High risk | `#ef4444` / `#b91c1c` (red-500 / red-700) | Top-of-funnel attention |
+| `40 – 70` | Medium risk | `#f59e0b` / `#b45309` (amber-500 / amber-700) | Worth a check |
+| `< 40` | Low risk | `#10b981` / `#047857` (emerald-500 / emerald-700) | Healthy |
+| `unavailable_reason !== null` | Score unavailable / stale | `#94a3b8` / `#475569` (slate-400 / slate-600) | Score has not been computed |
+| no score row at all | — | falls back to the entity palette | Score request still in flight or backend skipped the deal |
+
+These hues are the same red-500 / amber-500 / emerald-500 the dashboard risk-distribution doughnut uses (see `riskChartData` in `WorkspaceDashboardView.vue`) — do not invent a separate palette for the graph. The score fetch is **soft-fail**: if `mlApi.scoreBatch` throws, the graph still renders with the type palette as a fallback (the http-layer toast surfaces the error).
+
+**Selected-node ML panel:** when the clicked node is a deal, the right-side detail panel renders a `<ProgressBar>` for `closure_score` (recolored inline to match the closure tier via `closureBarColor()`) and a rounded badge for `churn_score` (tone keyed by `churnBadgeClass()` — red-50 / amber-50 / emerald-50 background with a matching ring). The badge uses the **same threshold logic** as the closure tier so high churn reads as red regardless of which side of the panel you scan. If both scores are null but `unavailable_reason` is set, the panel renders the reason verbatim as an italic ink-400 line instead of empty tiles.
 
 **Edges:**
 | Edge type | Style | Color |
@@ -117,13 +132,63 @@ Entity nodes receive colors from `ENTITY_PALETTE` (violet-600, amber-600, green-
 | `entity_entity` | dashed + arrow | slate-400; carries relationship type name as label |
 | `user_user` | solid | brand-200 |
 
-**Node action panel:** clicking a node opens a detail panel (`w-64`, right side of the graph area) showing type badge, label, subtitle, and action buttons: **View** (always shown), **Edit** (if `node.permissions` includes `"edit"`), **Delete** (if `permissions` includes `"delete"` AND `node.type === "entity"`). Delete uses PrimeVue `useConfirm` + `ConfirmDialog`. Non-entity resources navigate to their existing detail views for editing/deletion.
+**Node action panel:** clicking a node opens a detail panel (`w-64`, right side of the graph area) showing type badge, label, subtitle, and action buttons: **View** (always shown), **Edit** (if `node.permissions` includes `"edit"`), **Delete** (if `permissions` includes `"delete"` AND `node.type === "entity"`). Delete uses PrimeVue `useConfirm` + `ConfirmDialog`. Non-entity resources navigate to their existing detail views for editing/deletion. The type badge above the label uses `rounded` (square chip) with a `border-brand-100` ring — do **not** revert it to `rounded-full`; the squared chrome is what aligns it with the rest of the chips/pills.
 
 **Canvas background:** `radial-gradient` dot grid (16 px, `brand-600` at 6 % opacity) for spatial reference — consistent with previous placeholder.
 
-**Legend:** a row of color swatches above the canvas is built dynamically from the same type color map — one entry per node type/entity type actually present in the response.
+**Legend:** a row of color swatches above the canvas is built dynamically from the same type color map — one entry per node type/entity type actually present in the response. When at least one deal node is on the canvas, a **second legend group** (separated by a vertical `border-line` divider and labeled `DEAL RISK`) lists the High / Medium / Low risk swatches; the `Score unavailable` swatch is appended only when at least one deal in `dealScores` has a non-null `unavailable_reason`, so the chrome stays quiet when nothing is stale.
 
 **Graph scope:** graph is org-level (route `/graph`, not workspace-scoped). Data fetched from `GET /graph/api/v1/graph?organizationId={id}` via [`Client/src/api/graph.ts`](../../Client/src/api/graph.ts). Graph store ([`Client/src/stores/graph.ts`](../../Client/src/stores/graph.ts)) holds `nodes`, `edges`, `isLoading`, `error`.
+
+## Combined graph filter panel
+
+GraphView hosts a single combined filter panel ([Client/src/components/graph/FilterPanel.vue](../../Client/src/components/graph/FilterPanel.vue)) that bundles every supported way of narrowing the graph plus a real-time visible/total counter. The host (`GraphView.vue`) owns a single `filters: FilterPanelState` ref with shape `{ risk, managerUserId, workspaceId, entityTypeNames }`. The panel emits `update:modelValue` for the whole state; GraphView decides what to do with each slice.
+
+| Filter | Where it runs | Notes |
+|---|---|---|
+| **Risk** (`high`/`medium`/`low` pills) | Server-side via `?riskLevel=` on `GET /graph` | A `watch(filters.risk, load)` re-issues the fetch so the backend can apply the WHERE clause on `closure_score`. Don't filter risk in the SPA — the server already trims the response. |
+| **Manager** (dropdown) | Client-side, derived from `user_workspace` edges | Visible only when `canManagerFilter` is true (org_owner / org_admin / any ws_admin or ws_analyst membership — see Voice & terminology for role identifiers). Selecting a manager keeps the manager's user node, the workspaces they're a member of, and the entities inside those workspaces; everything else is hidden. |
+| **Workspace** (dropdown) | Client-side | Narrows the canvas to one workspace's chrome + entities (and to users connected to it). Source: workspace nodes already on the canvas — no extra fetch. |
+| **Entity type** (toggle chips) | Client-side | Multi-select; built from the distinct `entityTypeName` values currently in `graphStore.nodes` (so chips never reference a type the user can't see). User/workspace nodes are always kept regardless of the type set. |
+
+**Real-time counter** lives in the panel header as a `bg-brand-50` pill: `{visibleCount} of {totalCount} visible`. `visibleCount` comes from `filteredNodes.length` (the post-client-filter set); `totalCount` from `graphStore.nodeCount` (post-server-risk-filter). The pill updates synchronously on each filter toggle because both numbers are reactive computeds.
+
+**Per-filter reset** affordances:
+- Risk pills: clicking the active pill again deselects it; a small `pi pi-times-circle` next to the pill group clears it explicitly.
+- Manager / workspace dropdowns: PrimeVue's `Select` `show-clear` X cleans the field.
+- Entity-type chips: a trailing `pi pi-times-circle` clears the whole multi-select.
+- A single **Reset all** button on the panel header clears every slice in one click; it renders only when at least one filter is active.
+
+**Selection drop-off:** if the user has a node selected in the side panel and a filter change hides it, GraphView clears `selectedNode` so the detail card never hovers over an invisible record.
+
+**Org-switch behavior:** changing the active org resets every filter to its empty default (the same `risk:null, managerUserId:null, workspaceId:null, entityTypeNames:[]`) before re-fetching — a stale predicate would silently apply to a fresh dataset and could render an empty graph for reasons the user can't see.
+
+**Two empty states:**
+- Server returns zero nodes (e.g. risk filter matches no deals) → existing "No nodes match the active filters" card + **Clear all filters** button.
+- Server returned nodes but the client-side combination filters them all out → `pi pi-filter-slash` card with the same "too narrow" copy and **Clear all filters** button. This is split from the first state so the empty-state stays accurate when an org genuinely has no data vs. when filters are the cause.
+
+**Color rules:** the risk pills paint with the same red / amber / emerald hues as the deal-risk legend below the canvas (do not reintroduce blue brand tokens for the active risk pill — the colored fills are what tie the filter to the legend). Manager / workspace / entity-type controls stay inside the blue brand palette (`bg-brand-600` for active type chips, `bg-brand-50` for active-filter pills in the chip row). The active-filter chip row beneath the controls is the bridge between "what I'm currently filtering by" and the legend, so don't hide it once the chip row exists.
+
+**Semantic note (carry-over from the standalone risk filter):** the backend's risk thresholds are inverted relative to the frontend's `RISK_COLORS`/`classifyRisk` — backend treats `closure_score < 33` as "high risk", while the canvas treats `closure_score > 70` as "high risk". That mismatch predates this filter and is tracked separately; do not paper over it by re-mapping levels in the SPA before re-issuing the call.
+
+## Connections sidebar — Link existing dialog
+
+The right-side **Connections** aside on [EntityReadView.vue](../../Client/src/views/EntityReadView.vue) has, per relationship tab, a "Link existing" (chain icon) and a "Create & link" (plus icon) button. The "Link existing" button opens a modal listing every candidate of the target entity type that is not already linked (and, for `one_to_*` cardinalities, not already saturated). When the workspace has many candidates the unfiltered list is unusable — so the dialog renders a search field above the list, an auto-focused input that filters live as the user types.
+
+Constraints (do not regress):
+
+- **Client-side filter only.** `openLinkModal()` already fetches the full candidate set via `entityApi.list(workspaceId, { entityTypeId, excludeLinked*RelTypeId })` and stores it in `linkCandidates`. The search input binds to a local `linkSearch` ref; `filteredLinkCandidates` is a `computed` that lower-cases the query and matches it against `String(item.id)` (substring — so `21` matches `#218`) **and** any `String`-typed property value whose `propertyName.toLowerCase()` is in `SEARCHABLE_PROPS` (`name`, `first_name`, `last_name`, `title`, `email`). Do **not** re-fetch on each keystroke — the list is bounded by the candidate count already filtered server-side by relationship cardinality, and per-keystroke fetches would flood Core.
+- **Why this exact whitelist.** The list is identifier-only on purpose: phone numbers, country, city, department, job_title and similar are filter-style fields (their place is in EntitiesView, not a quick link picker). Phone search is intentionally excluded — `phone_number` is stored unformatted (`+380671234567`) while users typically type formatted (`+38 067 123-45-67`), so naive substring would produce silent zero-matches and noisy false positives. Add a normalization helper before reopening that door.
+- **Reset on open.** `openLinkModal()` clears `linkSearch.value = ''` before showing the dialog — leftover query from a previous tab would silently hide rows.
+- **Autofocus.** A `watch` on `[linkModalOpen, linkLoading, linkCandidates.length]` waits for the modal to be open, finished loading and to have at least one candidate, then `await nextTick()` + `linkSearchInputRef.value?.$el?.focus()`. The input is **not** mounted until `linkLoading === false`, so naively focusing on `linkModalOpen` flip would be a no-op — keep the three-source watch. The `linkSearchInputRef` is typed as `ref<{ $el?: HTMLInputElement } | null>` because PrimeVue `InputText` exposes the underlying `<input>` as `$el`.
+- **Result counter** lives between the input and the list. When `linkSearch.trim()` is empty: `{n} record(s)` (gives the user a sense of the bucket size before typing). When non-empty: `Showing {visible} of {total}` — the same wording used by `FilterPanel` on the graph for consistency.
+- **Two-line rows.** Each candidate renders as a primary line and an optional subtitle:
+  - Primary: `candidatePrimary(item)` — composes `first_name + " " + last_name` when either exists (works for client/contact), or falls back to `name` (deal/contract) / `title` (task/note) / `#id`.
+  - Subtitle: `candidateSecondary(item)` — `email` when present, otherwise nothing (no empty line). The header line above the primary keeps the existing `{humanize(entityTypeName)} #{id}` chip pair so users can scan IDs without losing the human-readable identity.
+  - The single-property `previewLinkLabel(item)` helper is kept **only** for the `Create & link` Select dropdown (`createLinkRelOptions`) where labels must be one short line — do not reuse it for the link-existing list.
+- **Two empty states.** The pre-existing "No linkable records found" copy still renders when `linkCandidates.length === 0` (workspace has no candidates at all, before any search input exists). A second empty state — "No records match your search." — renders when the query filtered all candidates out. Do not collapse these into one message: the user needs to know whether to clear the query vs. create a new record.
+- **Styling matches the chrome.** Use `InputText` with `class="!h-10 !pl-9"` and a `pi pi-search text-ink-400` icon absolutely positioned at `left-3 top-1/2 -translate-y-1/2`. No `IconField`/`InputIcon` imports — the codebase does not use them elsewhere and the absolute-positioned icon keeps the dialog import footprint unchanged. Placeholder is `Search {humanize(otherEntityTypeName)} by name, email or id…` so the user knows what to type.
+- **No server search here.** Workspace-level entity search (with the `q=` query param on `GET /core/api/v1/.../entities`) belongs to [EntitiesView.vue](../../Client/src/views/EntitiesView.vue), not to this modal. Keep the two distinct: EntitiesView is unbounded and paginated; the link dialog is a bounded candidate set already in memory. Also note that backend `?q=` is case-sensitive `Contains` against `ValueString`, so a future migration to server search would need an `ILIKE` change on the Core side first.
 
 ## Deal scores panel
 
@@ -136,6 +201,35 @@ Constraints (do not regress):
 - **Three render states use only existing tokens** (no new accent hues): loading shows `pi pi-spin pi-spinner` + an "ink-500" message; available shows two `bg-surface/40` stat tiles with `text-brand-700` numbers; unavailable shows a single PrimeVue `<Message severity="info">` carrying `score.unavailable_reason` verbatim. A network failure renders `<Message severity="warn">` with the normalized error.
 - **"Refresh data" button** lives on the card header (PrimeVue `Button` `outlined size="small"` with `pi pi-refresh`). It re-runs the same `score/batch` call and emits a single toast (success or error) so the user gets a clear signal — the staleness check that decides whether to recompute analysis features is server-side in `score_batch` and does not need a separate "recalculate" endpoint from the SPA.
 - **Other entity types render no Scores card.** The `isDeal` gate prevents wasted ML calls on `client`, `contract`, `deal_analysis`, etc. The two `closure_score` / `churn_score` deal properties continue to appear in the bottom property grid as system-readonly fields — they will stay empty until score persistence is wired up; the live values surface only through the Scores card today.
+
+## Error handling
+
+The SPA has a **two-layer error boundary**:
+
+1. **HTTP layer** — [`Client/src/api/http.ts`](../../Client/src/api/http.ts) throws `ApiError` on every non-2xx response and, for the statuses **400 / 403 / 409 / 422 / 500 / 502 / 503 / 504**, automatically pushes a toast via `notifyGlobal()` from [`Client/src/api/errorToast.ts`](../../Client/src/api/errorToast.ts). `401` is deliberately excluded (the auth flow handles the redirect) and so is `404` (detail screens render inline "not found" UI).
+2. **Vue layer** — [`Client/src/main.ts`](../../Client/src/main.ts) installs `app.config.errorHandler` (uncaught render/lifecycle errors) and a `window.unhandledrejection` listener (forgotten `await`s, fire-and-forget calls). Both funnel into `notifyGlobal()` so the user always sees something instead of a silent broken view.
+
+`useApiErrorHandler().notify()` and `notifyGlobal()` share a short dedup window (3 s, keyed by `status + summary + message`) so a single failed request never produces two toasts when both layers fire for the same error.
+
+**Opt-out:** API helpers (`api.get/post/put/patch/del`) accept `{ silent: true }` — use it when the caller already renders the error inline (form field highlighting, an inline `<Message>` etc.) and the toast would be redundant. Components that explicitly call `useApiErrorHandler().notify()` should NOT also rely on the http-level toast — the dedup window covers the overlap, but `silent: true` makes the intent explicit.
+
+**Graph & chart fallback:** when async visualization data is unavailable, the corresponding view renders an inline error card with a `Try again` button (see [GraphView.vue](../../Client/src/views/GraphView.vue) — the `graphStore.error` branch). Do not bury graph failures in a toast only; the user needs the retry affordance in place of the canvas.
+
+## Loading states
+
+All async views show a **layout-matching skeleton** instead of plain "Loading…" text, so the chrome doesn't shift when data lands. Two reusable components live in [`Client/src/components/feedback/`](../../Client/src/components/feedback/):
+
+| Component | Use for | Variants |
+|---|---|---|
+| `LoadingSkeleton` | Tables, card grids, key/value detail, lists, stat tiles | `variant="table" \| "cards" \| "list" \| "detail" \| "stats"` plus `rows` |
+| `ChartSkeleton` | Graph / chart canvases | Pass `fill` when the parent is a flex column with defined height; otherwise pass `height="..."` |
+
+Rules:
+
+- **Never render the literal string "Loading..."** in a top-level async view. Pick the `LoadingSkeleton` variant whose shape matches the eventual content (`table` for member lists, `cards` for workspaces, `detail` for entity read/edit, `stats` for the deal Scores card, `list` for compact stacks).
+- **PrimeVue `DataTable` already handles its own loading state** via `:loading="..."`. Don't wrap a DataTable with `LoadingSkeleton` — let PrimeVue render its built-in skeleton rows.
+- **Graph view** uses `<ChartSkeleton fill ... />` inside the existing flex-column shell. The legend is part of the skeleton so the layout never jumps when the real legend renders.
+- Inline skeletons for small sections (e.g. the deal Scores card on `EntityReadView.vue`) can use `<Skeleton>` from `primevue/skeleton` directly to avoid double-wrapping a card already provided by the parent.
 
 ## Voice & terminology
 
@@ -182,18 +276,25 @@ Two rules:
 | File | Role |
 |---|---|
 | [Client/src/layouts/AuthLayout.vue](../../Client/src/layouts/AuthLayout.vue) | Centered card on a soft, gridded blue-tinted backdrop. Used by Login, Register, Onboarding, WorkspaceSelector. Renders `<BrandMark size="lg" />` above the slot. |
-| [Client/src/layouts/MainLayout.vue](../../Client/src/layouts/MainLayout.vue) | Sticky header (logo + org/workspace switchers + user) and a left sidebar with the `.nav-link` / `.nav-link--active` pattern (small leading accent bar on the active item). |
+| [Client/src/layouts/MainLayout.vue](../../Client/src/layouts/MainLayout.vue) | Sticky header (logo + org/workspace switchers + user) and a responsive left sidebar with the `.nav-link` / `.nav-link--active` pattern (small leading accent bar on the active item). |
 | [Client/src/layouts/WorkspaceLayout.vue](../../Client/src/layouts/WorkspaceLayout.vue) | Thin wrapper that syncs the `:workspaceId` route param with the workspace store. |
 
 Active-state convention for the sidebar: `bg-brand-50 text-brand-700` plus a 3 px `brand-600` indicator bar on the left edge. New nav links should reuse the `.nav-link` / `.nav-link--active` classes already defined in `MainLayout.vue`.
+
+**Sidebar responsive collapse:** the sidebar is **always visible** (no `hidden md:flex` gate) and switches between two widths driven purely by CSS — `w-60` (full) at `≥ lg` (1024 px) and `w-14` (icon-only rail) below it. The scoped style block in `MainLayout.vue` hides the following at `< lg` via a `max-width: 1023.98px` media query: `.nav-label` (every text label, including the avatar's name/email block), `.nav-divider` (the `hr` separators), `.nav-entry` (the org / workspace expander rows with their side-panel chevrons) and `.nav-scroll` (the inline workspace list). The remaining direct nav links (Home, Members, Graph, Audit log, Settings, Dashboard, Workspace Members/Settings) reflow to a centered icon-only layout and the active-state accent bar is pulled in (`left: -0.375rem`). The `showOrgPanel` / `showWsPanel` / `showProfilePanel` popovers reposition from `left-[248px]` to `left-16` via a `lg:` prefix so they still dock against the sidebar's right edge in either mode. When you add a new sidebar nav item, wrap its visible text in `<span class="nav-label">…</span>` (so it disappears with the rest at narrow widths) and put a `title` attribute on the parent so the icon-only tooltip survives.
 
 ---
 
 ## Forms
 
-* **Auth forms** (Login, Register, Workspace selector): every visible field is required by definition, so labels stay clean — no red asterisks.
+* **Auth forms** (Login, Register, Workspace selector): every visible field is required by definition, so labels stay clean — no red asterisks. `authApi.login` runs with `{ silent: true }` so a 4xx/5xx response surfaces **only** through the form's inline `<Message severity="error">` — do not also push a toast for the same failure (it would duplicate the form-level message). Reuse this pattern for any other endpoint whose caller renders the error inline.
 * **Multi-field record forms** (Create entity, etc.): mark required labels with a `<span class="text-danger">*</span>` so users can distinguish required from optional. The asterisk should follow the actual validation rule, not just the backend's `isRequired` flag — see `isPropertyRequired()` in `EntityCreateForm.vue` for the canonical example (treats all non-Bool properties as required to match the form's own empty-check).
-* Inputs are 40 px tall (`!h-10`) for text and password, 44 px (`!h-11`) for the primary submit button.
+* Inputs are **40 px tall (`!h-10`) across the board** — `InputText`, `Password`, `Select`, `InputNumber`, `DatePicker`. For `InputNumber` and `DatePicker` the height is set via `:input-class="'!h-10 w-full'"` (PrimeVue wraps the underlying `<input>`, so a top-level class won't reach it). Primary auth submit buttons stay 44 px (`!h-11`); form-action `Button` controls in dialogs / record forms keep parity with their inputs at 40 px (`class="!h-10"`).
+* **Form-action button styling** (Cancel / Create / Save / Link & co.): both actions render in the brand-blue palette and must show a clearly visible border, so neither reads as a link. The canonical classes (added on top of `<Button outlined ...>` for Cancel and the default `<Button ...>` for Create/Save/Link) are:
+  * Cancel: `class="!h-10 !px-4 !bg-white !border !border-brand-600 !text-brand-600 hover:!bg-brand-50"`
+  * Create/Save/Link: `class="!h-10 !px-4 !bg-brand-600 !border !border-brand-600 !text-white hover:!bg-brand-700 hover:!border-brand-700"`
+
+  Do **not** apply the `text` prop or use `severity="secondary"` on these — both wash out the chrome and were the root cause of CR-267's "buttons look like plain text" report. The two buttons share a 12 px gutter (`gap-3`) so they read as separate controls. Apply the same pair to every form action dialog (`MainLayout.vue` Create workspace, `EntityCreateForm.vue` main + nested Create-and-link, `EntityReadView.vue` Edit/Save row + Create-and-link dialog).
 * Avoid sample-data placeholders (`you@example.com`, `••••••••`). The label tells the user what the field is.
 * The primary submit button keeps a single static label (e.g. `Sign in`, `Create account`). Validation messages surface via the inline `<Message severity="error">` slot above the button — not by rewriting the button text.
 
@@ -202,6 +303,18 @@ Active-state convention for the sidebar: `bg-brand-50 text-brand-700` plus a 3 p
 ## Time-of-day greeting
 
 The home dashboard uses a time-of-day greeting (`Good morning` / `Good afternoon` / `Good evening`) keyed off the user's local clock. Implementation: [Client/src/views/HomeView.vue](../../Client/src/views/HomeView.vue). Boundaries are 05:00–11:59 morning, 12:00–17:59 afternoon, otherwise evening. The component re-evaluates every minute via `setInterval`. The date eyebrow above the greeting is forced to `en-US` locale so the dashboard stays in English regardless of the browser's `Accept-Language`.
+
+## Home session card
+
+Below the greeting on [HomeView.vue](../../Client/src/views/HomeView.vue) sits a single `.session-card` (Microsoft-365-admin-style) that summarizes the active session + organization context. It is the **only** card in that region — do not reintroduce the deprecated "Session" tile that exposed raw token-expiry timestamps and email.
+
+Composition rules:
+- A 3 px gradient accent strip (`brand-700 → brand-500 → brand-300`) on top — implemented as `.session-card__accent`, not as a child `<div>` styled inline. Keep the gradient direction left-to-right; it ties the card to the brand mark in the sidebar.
+- A square 44 × 44 px avatar (`.session-card__avatar`, `border-radius: 0.5rem`) filled with a 135° brand-blue gradient and a soft inset highlight. The square corner is deliberate so it reads as a corporate tile, not a profile photo — do not switch it to `rounded-full`.
+- The "Active" pill on the right uses an emerald palette with a pinging dot. This is the **only** place in the SPA where emerald is allowed in steady-state chrome (it semantically maps to liveness, not to brand). Do not extend the emerald accent into other widgets — keep it scoped to this single pill.
+- The org-name section uses the page-level emphasis pattern (`text-xl font-semibold text-ink-900`) paired with the `roleBadgeFullClass()` chip from [Client/src/utils/roleBadge.ts](../../Client/src/utils/roleBadge.ts). Never invent a local `displayOrgRole()` helper; use `roleDisplayName()` from the same utility.
+- The stats strip is a `grid-cols-3` with `divide-x divide-line` inside a rounded container so the three tiles read as a single connected block. Tiles share a `bg-surface/40` wash. The "Role" tile uses smaller text (`text-sm`) because the value is multi-word, not a count.
+- The "Manage organization" footer link only renders when `orgStore.currentOrg.myPermissions` includes `manage_org_settings`. It routes to `org-settings`; do not link to workspace-level settings here.
 
 ---
 

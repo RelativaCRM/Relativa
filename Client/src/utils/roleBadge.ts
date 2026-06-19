@@ -1,6 +1,4 @@
-// Single source of truth for how role identifiers (org_*, ws_*) render as
-// human-friendly labels and weight-ladder badges across the SPA. Tiered in
-// blue only — never reach for emerald/amber severities to express seniority.
+import { i18n } from '@/i18n';
 
 export type RoleName =
   | 'org_owner'
@@ -11,16 +9,6 @@ export type RoleName =
   | 'ws_analyst'
   | 'ws_member'
   | (string & {}); // tolerate forward-compat custom role names
-
-const DISPLAY: Record<string, string> = {
-  org_owner: 'Owner',
-  org_admin: 'Admin',
-  org_member: 'Member',
-  ws_admin: 'Admin',
-  ws_manager: 'Manager',
-  ws_analyst: 'Analyst',
-  ws_member: 'Member',
-};
 
 // Badge tiers, heaviest → lightest
 const HEAVIEST = 'bg-brand-700 text-white shadow-sm';
@@ -38,11 +26,6 @@ const BADGE: Record<string, string> = {
   ws_member: BACKGROUND,
 };
 
-export function roleDisplayName(roleName: RoleName | null | undefined): string {
-  if (!roleName) return 'Member';
-  return DISPLAY[roleName] ?? roleName;
-}
-
 export function roleBadgeClass(roleName: RoleName | null | undefined): string {
   if (!roleName) return BACKGROUND;
   return BADGE[roleName] ?? BACKGROUND;
@@ -52,4 +35,14 @@ export function roleBadgeClass(roleName: RoleName | null | undefined): string {
 // Use this when you don't already have a wrapping <span> with sizing classes.
 export function roleBadgeFullClass(roleName: RoleName | null | undefined): string {
   return `inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold tracking-tight ${roleBadgeClass(roleName)}`;
+}
+
+export function roleLabel(
+  roleName: string | null | undefined,
+  fallback?: string | null,
+): string {
+  if (!roleName) return fallback ?? '';
+  const key = `roles.${roleName.toLowerCase()}`;
+  const translated = i18n.global.t(key);
+  return translated === key ? (fallback ?? roleName) : translated;
 }

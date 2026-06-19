@@ -1,3 +1,4 @@
+using Relativa.Core.Application.Exceptions;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -87,7 +88,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.GetByWorkspaceAsync(2, 5);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
     }
 
@@ -121,7 +122,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.CreateAsync(4, 7, new CreateRoleRequest("analyst", [1]));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
         _roleRepo.Verify(r => r.AddAsync(It.IsAny<WorkspaceRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -136,7 +137,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.CreateAsync(4, 1, new CreateRoleRequest("analyst", [1]));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*manage_ws_roles*");
         _roleRepo.Verify(r => r.AddAsync(It.IsAny<WorkspaceRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -155,7 +156,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.CreateAsync(4, 1, request);
 
-        await act.Should().ThrowAsync<ArgumentException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("One or more permission IDs are invalid.");
     }
 
@@ -216,7 +217,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 1, 9, new UpdateRoleRequest("renamed", null));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("You are not a member of this workspace.");
         _roleRepo.Verify(r => r.UpdateAsync(It.IsAny<WorkspaceRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -230,7 +231,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 1, 1, new UpdateRoleRequest("renamed", null));
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("*manage_ws_roles*");
         _roleRepo.Verify(r => r.UpdateAsync(It.IsAny<WorkspaceRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -245,7 +246,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 99, 1, new UpdateRoleRequest("renamed", null));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Role not found.");
     }
 
@@ -260,7 +261,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 1, 1, new UpdateRoleRequest("renamed", null));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("System roles cannot be modified.");
         _roleRepo.Verify(r => r.UpdateAsync(It.IsAny<WorkspaceRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -276,7 +277,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.UpdateAsync(5, 8, 1, new UpdateRoleRequest("renamed", null));
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Role not found in this workspace.");
     }
 
@@ -313,7 +314,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.ArchiveAsync(5, 2, 1);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        await act.Should().ThrowAsync<AppException>();
         _roleRepo.Verify(r => r.UpdateAsync(It.IsAny<WorkspaceRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -327,7 +328,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.ArchiveAsync(5, 99, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Role not found.");
     }
 
@@ -342,7 +343,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.ArchiveAsync(5, 2, 1);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("System roles cannot be deleted.");
     }
 
@@ -357,7 +358,7 @@ public sealed class RoleServiceTests
 
         var act = () => _sut.ArchiveAsync(5, 8, 1);
 
-        await act.Should().ThrowAsync<KeyNotFoundException>()
+        await act.Should().ThrowAsync<AppException>()
             .WithMessage("Role not found in this workspace.");
     }
 

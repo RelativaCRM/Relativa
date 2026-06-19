@@ -2,6 +2,7 @@ using System.Text;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Relativa.Authentication.Application.Interfaces;
 using Relativa.Authentication.Application.Options;
@@ -44,6 +45,11 @@ try
 
     builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 
+    builder.Services.AddSingleton<IValidateOptions<OAuthOptions>, OAuthOptionsValidator>();
+    builder.Services.AddOptions<OAuthOptions>()
+        .Bind(builder.Configuration.GetSection(OAuthOptions.SectionKey))
+        .ValidateOnStart();
+
     builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
@@ -68,12 +74,34 @@ try
     builder.Services.AddValidatorsFromAssemblyContaining<IAuthService>();
 
     builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<IUserSettingsRepository, UserSettingsRepository>();
     builder.Services.AddScoped<ITokenService, JwtTokenService>();
+    builder.Services.AddSingleton<IExternalIdentityVerifier, OpenIdConnectIdentityVerifier>();
     builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
     builder.Services.AddScoped<IUserProvisioningService, UserProvisioningService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
+    builder.Services.AddScoped<IUserSettingsService, UserSettingsService>();
+    builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
+    builder.Services.AddScoped<ITwoFactorService, TwoFactorService>();
+    builder.Services.AddScoped<IEmailAddressService, EmailAddressService>();
+    builder.Services.AddSingleton<ITotpProvider, OtpNetTotpProvider>();
+    builder.Services.Configure<TwoFactorOptions>(builder.Configuration.GetSection(TwoFactorOptions.SectionKey));
+    builder.Services.AddScoped<ISupportService, SupportService>();
+    builder.Services.AddSingleton<IEmailLocalizer, JsonEmailLocalizer>();
+    builder.Services.AddSingleton<IEmailRateLimiter, MemoryEmailRateLimiter>();
+    builder.Services.Configure<EmailVerificationOptions>(builder.Configuration.GetSection(EmailVerificationOptions.SectionKey));
+    builder.Services.Configure<SupportOptions>(builder.Configuration.GetSection(SupportOptions.SectionKey));
     builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
     builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
+    builder.Services.Configure<SmsOptions>(builder.Configuration.GetSection(SmsOptions.SectionKey));
+    if (string.Equals(builder.Configuration["Sms:Provider"], "http", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddScoped<ISmsSender, HttpSmsSender>();
+    }
+    else
+    {
+        builder.Services.AddScoped<ISmsSender, SmtpSmsSender>();
+    }
     builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
     builder.Services.AddHostedService<AuditOutboxDispatcher>();
 
@@ -93,6 +121,7 @@ try
 
     app.MapHealthChecks("/health");
     app.MapAuthEndpoints();
+    app.MapSupportEndpoints();
 
     app.Run();
 }

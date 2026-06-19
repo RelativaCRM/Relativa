@@ -6,6 +6,7 @@ export interface WorkspaceDto {
   name: string;
   memberCount: number;
   userRole: string | null;
+  userRoleDisplayName: string | null;
   /** Effective permission names for the current user in this workspace (e.g. `create_entities`). */
   myPermissions?: string[];
 }
@@ -16,19 +17,39 @@ export interface WorkspaceMemberDto {
   lastName: string;
   email: string;
   roleName: string;
+  roleDisplayName: string;
   joinedAt: string;
 }
 
 export interface WorkspacePermissionDto {
   id: number;
   name: string;
+  displayName: string;
 }
 
 export interface WorkspaceRoleDto {
   id: number;
   name: string;
+  displayName: string;
   isSystem: boolean;
   permissions: WorkspacePermissionDto[];
+}
+
+export interface WorkspaceSettingsDto {
+  workspaceId: number;
+  name: string;
+  description: string | null;
+  highRiskThreshold: number;
+  mediumRiskThreshold: number;
+  riskScoringEnabled: boolean;
+}
+
+export interface UpdateWorkspaceSettingsRequest {
+  name: string;
+  description?: string | null;
+  highRiskThreshold: number;
+  mediumRiskThreshold: number;
+  riskScoringEnabled: boolean;
 }
 
 const CORE = '/core/api/v1';
@@ -87,6 +108,13 @@ export const workspaceApi = {
 
   listRoles(wsId: number): Promise<WorkspaceRoleDto[]> {
     return api.get<WorkspaceRoleDto[]>(`${CORE}/workspaces/${wsId}/roles`);
+  },
+
+  getSettings(wsId: number): Promise<WorkspaceSettingsDto> {
+    return api.get<WorkspaceSettingsDto>(`${CORE}/workspaces/${wsId}/settings`);
+  },
+  updateSettings(wsId: number, data: UpdateWorkspaceSettingsRequest): Promise<void> {
+    return api.put(`${CORE}/workspaces/${wsId}/settings`, data);
   },
 };
 

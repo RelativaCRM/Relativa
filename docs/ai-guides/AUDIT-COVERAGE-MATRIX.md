@@ -1,6 +1,6 @@
 # Audit Coverage Matrix
 
-> **Last verified:** 2026-05-08 (entity graph Rabbit path uses same Core `EntityService` audits as HTTP create.)
+> **Last verified:** 2026-05-29 (Added `organization_settings` and `workspace_settings` settings read/update audit events.)
 
 This matrix defines which database tables are currently required to be audited, and whether both prerequisites are present:
 - audit table exists
@@ -20,6 +20,8 @@ This matrix defines which database tables are currently required to be audited, 
 | `user_role_workspace` | Core | Yes | Yes (`workspace_audit_log`) | Yes (`workspace_member_added`, `workspace_member_removed`, `workspace_member_role_changed`; legacy only: `workspace_member_added_via_invitation`, `workspace_member_added_via_join_request`) | No |
 | `organization_roles` | Core | Yes | Yes (`organization_audit_log`) | Yes (`organization_role_created`, `organization_role_updated`, `organization_role_archived`) | No |
 | `workspace_roles` | Core | Yes | Yes (`workspace_audit_log`) | Yes (`workspace_role_created`, `workspace_role_updated`, `workspace_role_archived`) | No |
+| `workspace_settings` | Core | Yes | Yes (`workspace_audit_log`) | Yes (`workspace_settings_read`, `workspace_settings_updated`) | No |
+| `organization_settings` | Core | Yes | Yes (`organization_audit_log`) | Yes (`organization_settings_read`, `organization_settings_updated`) | No |
 
 ## Notes
 

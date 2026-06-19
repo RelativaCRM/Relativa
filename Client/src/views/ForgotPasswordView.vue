@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { RouterLink } from 'vue-router';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
+import FloatLabel from 'primevue/floatlabel';
 import AuthLayout from '@/layouts/AuthLayout.vue';
+import FormError from '@/components/feedback/FormError.vue';
 import { authApi } from '@/api/auth';
 import { normalizeError } from '@/api/errors';
+
+const { t } = useI18n();
 
 const email = ref('');
 const submitting = ref(false);
@@ -24,7 +29,7 @@ async function handleSubmit() {
     await authApi.forgotPassword(email.value);
     submitted.value = true;
   } catch (err) {
-    serverError.value = normalizeError(err, 'Something went wrong. Please try again.').message;
+    serverError.value = normalizeError(err).message;
   } finally {
     submitting.value = false;
   }
@@ -43,21 +48,22 @@ function tryAgain() {
         <div class="w-12 h-12 rounded-full bg-brand-50 flex items-center justify-center mb-4">
           <i class="pi pi-envelope text-brand-600 text-xl" />
         </div>
-        <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">Check your inbox</h1>
-        <p class="mt-2 text-[13px] text-ink-500 leading-relaxed">
-          If <span class="font-medium text-ink-700">{{ email }}</span> is registered,
-          you'll receive a reset link shortly. Check your spam folder if you don't see it.
-        </p>
+        <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">{{ t('auth.checkInboxTitle') }}</h1>
+        <i18n-t keypath="auth.checkInboxBody" tag="p" class="mt-2 text-[13px] text-ink-500 leading-relaxed" scope="global">
+          <template #email>
+            <span class="font-medium text-ink-700">{{ email }}</span>
+          </template>
+        </i18n-t>
         <button
           type="button"
           class="mt-5 text-[13px] text-brand-600 hover:underline font-medium"
           @click="tryAgain"
         >
-          Try a different email
+          {{ t('auth.tryDifferentEmail') }}
         </button>
         <div class="mt-3 border-t border-line w-full pt-4">
           <RouterLink :to="{ name: 'login' }" class="text-[13px] text-ink-500 hover:text-ink-700">
-            Back to sign in
+            {{ t('auth.backToSignIn') }}
           </RouterLink>
         </div>
       </div>
@@ -65,37 +71,35 @@ function tryAgain() {
 
     <template v-else>
       <h1 class="text-[22px] font-bold text-ink-900 leading-[33px]">
-        Forgot your password?
+        {{ t('auth.forgotTitle') }}
       </h1>
       <p class="mt-1 text-[13px] text-ink-500">
-        Enter your email and we'll send you a reset link.
+        {{ t('auth.forgotSubtitle') }}
       </p>
 
       <form class="mt-6 flex flex-col gap-5" novalidate @submit.prevent="handleSubmit">
         <div class="flex flex-col gap-1.5">
-          <label for="email" class="text-xs font-medium text-ink-600">
-            Email address
-          </label>
-          <InputText
-            id="email"
-            v-model="email"
-            type="email"
-            autocomplete="email"
-            :invalid="emailInvalid"
-            class="!h-10"
-          />
+          <FloatLabel variant="on">
+            <InputText
+              id="email"
+              v-model="email"
+              type="email"
+              autocomplete="email"
+              :invalid="emailInvalid"
+              class="!h-11 w-full"
+            />
+            <label for="email">{{ t('auth.emailLabel') }}</label>
+          </FloatLabel>
           <small v-if="emailInvalid" class="text-xs text-danger">
-            <i class="pi pi-exclamation-circle mr-1" />Invalid email format
+            <i class="pi pi-exclamation-circle mr-1" />{{ t('auth.invalidEmailFormat') }}
           </small>
         </div>
 
-        <p v-if="serverError" class="text-xs text-danger flex items-start gap-1.5">
-          <i class="pi pi-exclamation-circle mt-0.5 shrink-0" />{{ serverError }}
-        </p>
+        <FormError v-if="serverError" :message="serverError" />
 
         <Button
           type="submit"
-          label="Send reset link"
+          :label="t('auth.sendResetLink')"
           :loading="submitting"
           :class="[
             '!h-11 !rounded-none !font-semibold w-full transition-colors',
@@ -107,7 +111,7 @@ function tryAgain() {
 
         <p class="text-center text-[13px] text-ink-500">
           <RouterLink :to="{ name: 'login' }" class="font-medium text-brand-600 hover:underline">
-            Back to sign in
+            {{ t('auth.backToSignIn') }}
           </RouterLink>
         </p>
       </form>

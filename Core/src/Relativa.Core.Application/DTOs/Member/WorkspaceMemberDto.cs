@@ -6,4 +6,5 @@ public sealed record WorkspaceMemberDto(
     string LastName,
     string Email,
     string RoleName,
+    string RoleDisplayName,
     DateTime JoinedAt);

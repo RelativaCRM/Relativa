@@ -1,6 +1,8 @@
 # RabbitMQ choreography, DLQ, and operations
 
-This runbook summarizes how Relativa uses RabbitMQ for **audit fan-out** and **choreographed domain** messaging after the transactional outbox pattern.
+> **Last verified:** 2026-05-15 (added `relativa.graph_ml` exchange for Graph→ML RPC scoring; `run_graph_score_consumer` added to ML.)
+
+This runbook summarizes how Relativa uses RabbitMQ for **audit fan-out**, **choreographed domain** messaging, and **RPC request/reply**.
 
 ## Exchanges
 
@@ -8,6 +10,7 @@ This runbook summarizes how Relativa uses RabbitMQ for **audit fan-out** and **c
 |----------|------|------------|-----------|
 | `audit.events` (configure via `RabbitMqAudit:Exchange`) | Topic | Core, Authentication (outbox dispatcher) | Audit (`audit.#`) |
 | `relativa.domain` (configure via `RabbitMqAudit:DomainExchange` / defaults) | Topic | Core (outbox, domain routing keys such as `core.workspace.*`) | Graph, ML |
+| `relativa.graph_ml` | Topic | Graph (`RabbitMqMlScoringClient`) | ML (`run_graph_score_consumer`, routing key `graph.score.request`) |
 
 Routing rule: **`audit.*`** (case-insensitive `audit.` prefix) goes to the audit exchange; all other routing keys use the domain exchange.
 
@@ -27,6 +30,7 @@ Purge DLQ once root cause is fixed:
 docker exec relativa-rabbitmq rabbitmqctl purge_queue domain.events.graph.workspace.v1.failed
 docker exec relativa-rabbitmq rabbitmqctl purge_queue domain.events.ml.workspace.v1.failed
 docker exec relativa-rabbitmq rabbitmqctl purge_queue domain.events.ml.recalculate.v1.failed
+docker exec relativa-rabbitmq rabbitmqctl purge_queue ml.graph.score_request.v1.failed
 ```
 
 ## Consumer idempotency
@@ -53,6 +57,11 @@ Envelope `DomainMessageEnvelope` carries `MessageId`, `CorrelationId`, and optio
 - `domain.events.ml.workspace.v1` — domain freshness events (`core.workspace.*`, `core.entity.*`)
 - `domain.events.ml.recalculate.v1` — async recomputation jobs (`ml.recalculate.enqueued`)
 - DLQ: `domain.events.ml.workspace.v1.failed`, `domain.events.ml.recalculate.v1.failed`
+
+### ML graph score RPC queue (Graph→ML)
+
+- `ml.graph.score_request.v1` — RPC request queue; exchange `relativa.graph_ml`; routing key `graph.score.request`; DLX `relativa.graph_ml.dlx`; DLQ `ml.graph.score_request.v1.failed`
+- No idempotency table used — reply queues are ephemeral (auto-delete, exclusive) and disappear when Graph disconnects.
 
 ## Automated tests
 

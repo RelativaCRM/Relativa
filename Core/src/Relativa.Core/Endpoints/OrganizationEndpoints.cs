@@ -31,13 +31,13 @@ public static class OrganizationEndpoints
         .WithSummary("List organizations for the authenticated user")
         .Produces<List<OrganizationDto>>();
 
-        group.MapGet("/search", async (string q, IOrganizationService service, CancellationToken ct) =>
+        group.MapGet("/search", async (string? q, IOrganizationService service, CancellationToken ct) =>
         {
-            var result = await service.SearchAsync(q, ct);
+            var result = await service.SearchAsync(q ?? string.Empty, ct);
             return Results.Ok(result);
         })
         .WithName("SearchOrganizations")
-        .WithSummary("Search organizations by name")
+        .WithSummary("Search organizations by name, or browse when no query is given")
         .Produces<List<OrganizationSearchResultDto>>();
 
         group.MapGet("/{id:int}", async (int id, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
@@ -58,6 +58,27 @@ public static class OrganizationEndpoints
         })
         .WithName("UpdateOrganization")
         .WithSummary("Update organization details")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesValidationProblem();
+
+        group.MapGet("/{id:int}/settings", async (int id, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            var result = await service.GetSettingsAsync(id, userId, ct);
+            return Results.Ok(result);
+        })
+        .WithName("GetOrganizationSettings")
+        .WithSummary("Get settings for an organization (any org member)")
+        .Produces<OrganizationSettingsDto>();
+
+        group.MapPut("/{id:int}/settings", async (int id, UpdateOrganizationSettingsRequest request, IOrganizationService service, HttpContext httpContext, CancellationToken ct) =>
+        {
+            var userId = WorkspaceEndpoints.GetUserId(httpContext);
+            await service.UpdateSettingsAsync(id, userId, request, ct);
+            return Results.NoContent();
+        })
+        .WithName("UpdateOrganizationSettings")
+        .WithSummary("Update settings for an organization (requires manage_org_settings)")
         .Produces(StatusCodes.Status204NoContent)
         .ProducesValidationProblem();
 

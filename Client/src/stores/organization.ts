@@ -7,8 +7,12 @@ import {
   type OrgMemberDto,
   type OrgRoleDto,
   type OrgInvitationDto,
+  type OrganizationSettingsDto,
+  type UpdateOrganizationSettingsRequest,
 } from '@/api/organizations';
 import { loadNumber, saveNumber } from '@/api/persistence';
+import { getAccountOrg, setAccountOrg } from '@/utils/accountOrgs';
+import { useAuthStore } from '@/stores/auth';
 
 const ORG_KEY = 'relativa_org_id';
 
@@ -18,6 +22,7 @@ export const useOrganizationStore = defineStore('organization', () => {
   const members = ref<OrgMemberDto[]>([]);
   const roles = ref<OrgRoleDto[]>([]);
   const invitations = ref<OrgInvitationDto[]>([]);
+  const orgSettings = ref<OrganizationSettingsDto | null>(null);
 
   const currentOrg = computed(() =>
     organizations.value.find((o) => o.id === currentOrgId.value) ?? null,
@@ -27,14 +32,28 @@ export const useOrganizationStore = defineStore('organization', () => {
   function setCurrentOrg(id: number) {
     currentOrgId.value = id;
     saveNumber(ORG_KEY, id);
+    setAccountOrg(useAuthStore().user?.email, id);
   }
 
   async function fetchOrganizations() {
     organizations.value = await orgApi.list();
-    const first = organizations.value[0];
-    if (first && !currentOrgId.value) {
-      setCurrentOrg(first.id);
+
+    const ids = new Set(organizations.value.map((o) => o.id));
+
+    if (currentOrgId.value !== null && !ids.has(currentOrgId.value)) {
+      currentOrgId.value = null;
+      saveNumber(ORG_KEY, null);
     }
+
+    if (!currentOrgId.value) {
+      const remembered = getAccountOrg(useAuthStore().user?.email);
+      if (remembered !== null && ids.has(remembered)) {
+        setCurrentOrg(remembered);
+      } else if (organizations.value.length === 1) {
+        setCurrentOrg(organizations.value[0]!.id);
+      }
+    }
+
     return organizations.value;
   }
 
@@ -43,6 +62,14 @@ export const useOrganizationStore = defineStore('organization', () => {
     organizations.value.push(org);
     setCurrentOrg(org.id);
     return org;
+  }
+
+  async function updateOrganization(id: number, name: string) {
+    await orgApi.update(id, name);
+    const idx = organizations.value.findIndex((o) => o.id === id);
+    if (idx !== -1) {
+      organizations.value[idx] = { ...organizations.value[idx]!, name };
+    }
   }
 
   async function fetchMembers() {
@@ -110,12 +137,29 @@ export const useOrganizationStore = defineStore('organization', () => {
     members.value = members.value.filter((m) => m.userId !== userId);
   }
 
+  async function fetchSettings(orgId?: number) {
+    const id = orgId ?? currentOrgId.value;
+    if (!id) return;
+    orgSettings.value = await orgApi.getSettings(id);
+    return orgSettings.value;
+  }
+
+  async function updateSettings(data: UpdateOrganizationSettingsRequest, orgId?: number) {
+    const id = orgId ?? currentOrgId.value;
+    if (!id) return;
+    await orgApi.updateSettings(id, data);
+    if (orgSettings.value) {
+      orgSettings.value = { ...orgSettings.value, ...data };
+    }
+  }
+
   function clear() {
     organizations.value = [];
     currentOrgId.value = null;
     members.value = [];
     roles.value = [];
     invitations.value = [];
+    orgSettings.value = null;
     saveNumber(ORG_KEY, null);
   }
 
@@ -127,9 +171,11 @@ export const useOrganizationStore = defineStore('organization', () => {
     members,
     roles,
     invitations,
+    orgSettings,
     setCurrentOrg,
     fetchOrganizations,
     createOrganization,
+    updateOrganization,
     fetchMembers,
     fetchRoles,
     fetchInvitations,
@@ -140,6 +186,8 @@ export const useOrganizationStore = defineStore('organization', () => {
     removeMember,
     createOrgUser,
     deleteOrgUser,
+    fetchSettings,
+    updateSettings,
     clear,
   };
 });

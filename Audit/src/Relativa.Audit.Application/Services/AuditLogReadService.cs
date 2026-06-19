@@ -1,6 +1,7 @@
 using FluentValidation;
 using Microsoft.Extensions.Options;
 using Relativa.Audit.Application.DTOs;
+using Relativa.Audit.Application.Exceptions;
 using Relativa.Audit.Application.Interfaces;
 using Relativa.Audit.Application.Options;
 using Relativa.Audit.Application.Validators;
@@ -42,7 +43,7 @@ public sealed class AuditLogReadService(
             "user" => await repository.GetUserScopeAsync(
                 from, to, q.Action, q.ActorUserId, q.TargetUserId, callerUserId, skip, pageSize, index,
                 filterContext, ct),
-            _ => throw new ArgumentException("Invalid category.")
+            _ => throw new AppException("invalid_category", 400, "Invalid category.")
         };
     }
 }
