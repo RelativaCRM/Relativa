@@ -87,6 +87,7 @@ try
     builder.Services.AddScoped<IJoinRequestService, JoinRequestService>();
     builder.Services.AddScoped<IOrganizationUserAdminService, OrganizationUserAdminService>();
 
+    builder.Services.AddMemoryCache();
     builder.Services.AddSignalR();
     builder.Services.AddScoped<IEntityRelationshipNotifier, EntityRelationshipNotifier>();
 

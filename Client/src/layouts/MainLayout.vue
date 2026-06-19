@@ -173,7 +173,7 @@ watch(
 
 onMounted(async () => {
   ensureLoaded();
-  if (orgStore.currentOrgId) {
+  if (orgStore.currentOrgId && !wsStore.workspaces.length) {
     try {
       await wsStore.fetchWorkspaces(orgStore.currentOrgId);
     } catch {

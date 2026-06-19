@@ -27,5 +27,6 @@ public class EntityPropertyValueConfiguration : IEntityTypeConfiguration<EntityP
             .HasForeignKey(e => e.PropertyId)
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("fk_epv_property");
+        builder.HasIndex(e => e.PropertyId).HasDatabaseName("ix_epv_property_id");
     }
 }

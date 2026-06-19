@@ -543,7 +543,7 @@ public sealed class DashboardService(GraphQueryDbContext db, IMlScoringClient ml
         var dealProps = await GetPropertyValuesAsync(dealIds,
             ["title", "deal_value", "deal_stage", "priority", "status"], ct);
         var clientProps = await GetPropertyValuesAsync(clientIds,
-            ["company_name", "name", "industry", "client_lifetime_value", "client_status"], ct);
+            ["company_name", "name", "industry", "client_status"], ct);
 
         // Top 10 deals by value
         var top10DealIds = dealIds
@@ -596,42 +596,52 @@ public sealed class DashboardService(GraphQueryDbContext db, IMlScoringClient ml
             );
         }).ToList();
 
-        // Top 10 clients by lifetime value
-        var top10ClientIds = clientIds
-            .Select(id =>
-            {
-                var rawLtv = clientProps.GetValueOrDefault(id)?.GetValueOrDefault("client_lifetime_value");
-                var ltv = decimal.TryParse(rawLtv, out var dv) ? dv : 0m;
-                return (id, ltv);
-            })
-            .OrderByDescending(x => x.ltv)
-            .Take(10)
-            .Select(x => x.id)
-            .ToList();
-
-        // Active deal count per client + avg ML score
-        var clientDealRels = await db.EntityRelationships
+        // Compute LTV per client as sum of closed deal values
+        var allClientDealRels = await db.EntityRelationships
             .Where(er => dealIds.Contains(er.SourceEntityId)
-                         && top10ClientIds.Contains(er.TargetEntityId)
+                         && clientIds.Contains(er.TargetEntityId)
                          && er.RelationshipType.Name == "deal_client")
             .Select(er => new { er.SourceEntityId, er.TargetEntityId })
             .ToListAsync(ct);
 
-        // Get ML scores for all deals linked to top clients
-        var allLinkedDealIds = clientDealRels.Select(r => r.SourceEntityId).Distinct().ToList();
-        var allMlScores = await mlClient.ScoreBatchAsync(allLinkedDealIds, ct);
-
-        var clientDealMap = clientDealRels
+        var allClientDealMap = allClientDealRels
             .GroupBy(r => r.TargetEntityId)
             .ToDictionary(g => g.Key, g => g.Select(r => r.SourceEntityId).ToList());
 
-        var topClients = top10ClientIds.Select(id =>
-        {
-            var p = clientProps.GetValueOrDefault(id);
-            var rawLtv = p?.GetValueOrDefault("client_lifetime_value");
-            var ltv = decimal.TryParse(rawLtv, out var dv) ? dv : 0m;
+        decimal DealValue(int dealId) =>
+            decimal.TryParse(dealProps.GetValueOrDefault(dealId)?.GetValueOrDefault("deal_value"), out var dv) ? dv : 0m;
 
-            var linkedDeals = clientDealMap.GetValueOrDefault(id, []);
+        (decimal value, bool isExpected) ClientLtv(int clientId)
+        {
+            var deals = allClientDealMap.GetValueOrDefault(clientId, []);
+            var closed = deals
+                .Where(did => (dealProps.GetValueOrDefault(did)?.GetValueOrDefault("status") ?? "") == "closed")
+                .Sum(DealValue);
+            if (closed > 0) return (closed, false);
+            var expected = deals
+                .Where(did => (dealProps.GetValueOrDefault(did)?.GetValueOrDefault("status") ?? "") is "opened" or "pending")
+                .Sum(DealValue);
+            return (expected, true);
+        }
+
+        // Top 10 clients by computed LTV, excluding those with no measurable value
+        var clientLtvs = clientIds
+            .Select(id => { var (ltv, isExp) = ClientLtv(id); return (id, ltv, isExp); })
+            .Where(x => x.ltv > 0)
+            .OrderByDescending(x => x.ltv)
+            .Take(10)
+            .ToList();
+
+        var top10ClientIds   = clientLtvs.Select(x => x.id).ToList();
+        var allLinkedDealIds = top10ClientIds.SelectMany(id => allClientDealMap.GetValueOrDefault(id, [])).Distinct().ToList();
+        var allMlScores = await mlClient.ScoreBatchAsync(allLinkedDealIds, ct);
+
+        var topClients = clientLtvs.Select(x =>
+        {
+            var (id, ltv, isExpected) = x;
+            var p = clientProps.GetValueOrDefault(id);
+
+            var linkedDeals = allClientDealMap.GetValueOrDefault(id, []);
             var activeDeals = linkedDeals.Count(did =>
             {
                 var s = dealProps.GetValueOrDefault(did)?.GetValueOrDefault("status") ?? "";
@@ -652,7 +662,7 @@ public sealed class DashboardService(GraphQueryDbContext db, IMlScoringClient ml
 
             return new TopClientDto(
                 id, name, p?.GetValueOrDefault("industry"),
-                ltv, activeDeals, avgScore);
+                ltv, isExpected, activeDeals, avgScore);
         }).ToList();
 
         return new TopEntitiesDto(topDeals, topClients);
@@ -674,20 +684,45 @@ public sealed class DashboardService(GraphQueryDbContext db, IMlScoringClient ml
             .Select(w => new { w.Id, w.Name })
             .ToListAsync(ct);
 
+        if (workspaces.Count == 0)
+            return [];
+
+        var allWorkspaceIds = workspaces.Select(w => w.Id).ToList();
+
+        // Single query: entity IDs + workspace ID + type for all workspaces at once
+        var entityRows = await db.EntityWorkspaces
+            .Where(ew => allWorkspaceIds.Contains(ew.WorkspaceId) && !ew.Entity.IsArchived)
+            .Select(ew => new { ew.EntityId, ew.WorkspaceId, TypeName = ew.Entity.EntityType.Name })
+            .ToListAsync(ct);
+
+        var dealsByWs = entityRows
+            .Where(r => r.TypeName == "deal")
+            .GroupBy(r => r.WorkspaceId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.EntityId).ToList());
+
+        var clientsByWs = entityRows
+            .Where(r => r.TypeName == "client")
+            .GroupBy(r => r.WorkspaceId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.EntityId).ToList());
+
+        // Single property fetch for all deals across all workspaces
+        var allDealIds = dealsByWs.Values.SelectMany(ids => ids).Distinct().ToList();
+        var allDealProps = await GetPropertyValuesAsync(allDealIds, ["deal_value", "status", "deal_stage"], ct);
+
+        // Single member count query for all workspaces
+        var memberCounts = await db.UserRoleWorkspaces
+            .Where(urw => allWorkspaceIds.Contains(urw.WorkspaceId) && !urw.IsArchived)
+            .GroupBy(urw => urw.WorkspaceId)
+            .Select(g => new { WorkspaceId = g.Key, Count = g.Select(u => u.UserId).Distinct().Count() })
+            .ToDictionaryAsync(x => x.WorkspaceId, x => x.Count, ct);
+
         var result = new List<WorkspaceComparisonDto>();
 
         foreach (var ws in workspaces)
         {
-            var wsList    = new List<int> { ws.Id };
-            var dealIds   = await GetEntityIdsByTypeAsync(wsList, "deal",   ct);
-            var clientIds = await GetEntityIdsByTypeAsync(wsList, "client", ct);
-            var dealProps = await GetPropertyValuesAsync(dealIds, ["deal_value", "status", "deal_stage"], ct);
-
-            var memberCount = await db.UserRoleWorkspaces
-                .Where(urw => urw.WorkspaceId == ws.Id && !urw.IsArchived)
-                .Select(urw => urw.UserId)
-                .Distinct()
-                .CountAsync(ct);
+            var dealIds   = dealsByWs.GetValueOrDefault(ws.Id) ?? [];
+            var clientIds = clientsByWs.GetValueOrDefault(ws.Id) ?? [];
+            var memberCount = memberCounts.GetValueOrDefault(ws.Id, 0);
 
             int won = 0, lost = 0;
             decimal totalValue = 0m;
@@ -695,7 +730,7 @@ public sealed class DashboardService(GraphQueryDbContext db, IMlScoringClient ml
 
             foreach (var id in dealIds)
             {
-                var p      = dealProps.GetValueOrDefault(id);
+                var p      = allDealProps.GetValueOrDefault(id);
                 var status = (p?.GetValueOrDefault("status") ?? "").ToLowerInvariant();
                 var value  = decimal.TryParse(p?.GetValueOrDefault("deal_value"), out var dv) ? dv : 0m;
                 totalValue += value;

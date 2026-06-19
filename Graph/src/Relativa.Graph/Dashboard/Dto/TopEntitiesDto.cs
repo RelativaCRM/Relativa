@@ -20,6 +20,7 @@ public record TopClientDto(
     string Name,
     string? Industry,
     decimal LifetimeValue,
+    bool IsExpectedLtv,
     int ActiveDeals,
     double? AvgClosureScore
 );

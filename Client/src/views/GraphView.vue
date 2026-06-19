@@ -393,36 +393,42 @@ function edgeColor(type: string): string {
 }
 
 async function loadDealScores() {
-  const dealIds = graphStore.nodes
+  const allDealIds = graphStore.nodes
     .filter(n => n.type === 'entity' && n.entityTypeName === 'deal')
     .map(n => n.resourceId);
 
-  if (dealIds.length === 0) {
+  if (allDealIds.length === 0) {
     dealScores.value = new Map();
     return;
   }
 
+  const missing = allDealIds.filter(id => !dealScores.value.has(id));
+  if (missing.length === 0) return;
+
   try {
-    const results = await mlApi.scoreBatch(dealIds);
-    const map = new Map<number, DealScoreDto>();
-    for (const r of results) map.set(r.entity_id, r);
-    dealScores.value = map;
+    const results = await mlApi.scoreBatch(missing);
+    const updated = new Map(dealScores.value);
+    for (const r of results) updated.set(r.entity_id, r);
+    dealScores.value = updated;
   } catch {
-    dealScores.value = new Map();
+    // keep existing scores on error rather than clearing them
   }
 }
 
 async function load() {
   if (!orgId.value) return;
   selectedNode.value = null;
-  dealScores.value = new Map();
   await graphStore.fetchGraph(orgId.value, filters.value.risk);
   if (graphStore.error) return;
   await loadDealScores();
   await render();
 }
 
+let _suppressRiskWatch = false;
+
 watch(orgId, () => {
+  _suppressRiskWatch = true;
+  dealScores.value = new Map();
   filters.value = {
     risk: null,
     managerUserId: null,
@@ -432,7 +438,10 @@ watch(orgId, () => {
   load();
 });
 
-watch(() => filters.value.risk, () => { load(); });
+watch(() => filters.value.risk, () => {
+  if (_suppressRiskWatch) { _suppressRiskWatch = false; return; }
+  load();
+});
 
 onMounted(() => {
   load();
@@ -490,9 +499,9 @@ function churnBadgeClass(score: number): string {
 }
 
 function closureBarColor(score: number): string {
-  if (score > 70) return RISK_COLORS.high.fill;
+  if (score > 70) return RISK_COLORS.low.fill;
   if (score >= 40) return RISK_COLORS.medium.fill;
-  return RISK_COLORS.low.fill;
+  return RISK_COLORS.high.fill;
 }
 
 function viewNode(node: GraphNodeDto) {
@@ -500,7 +509,7 @@ function viewNode(node: GraphNodeDto) {
     router.push({
       name: 'workspace-entities',
       params: { workspaceId: String(node.workspaceId) },
-      query: { id: String(node.resourceId) },
+      query: { id: String(node.resourceId), entityType: node.entityTypeName },
     });
   } else if (node.resourceType === 'workspace') {
     router.push({ name: 'workspace-members', params: { workspaceId: String(node.resourceId) } });
@@ -514,7 +523,7 @@ function editNode(node: GraphNodeDto) {
     router.push({
       name: 'workspace-entities',
       params: { workspaceId: String(node.workspaceId) },
-      query: { id: String(node.resourceId), action: 'edit' },
+      query: { id: String(node.resourceId), action: 'edit', entityType: node.entityTypeName },
     });
   } else {
     router.push({ name: 'member', params: { memberUserId: String(node.resourceId) } });

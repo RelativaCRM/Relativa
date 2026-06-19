@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Relativa.Graph.Dashboard.Dto;
 using Relativa.Graph.Data;
 using Relativa.Graph.ML;
@@ -8,9 +9,11 @@ namespace Relativa.Graph.Dashboard;
 public sealed class WorkspaceDashboardService(
     GraphQueryDbContext db,
     IMlScoringClient mlClient,
-    IMlRecalculationClient mlRecalc)
+    IMlRecalculationClient mlRecalc,
+    IMemoryCache cache)
     : IWorkspaceDashboardService
 {
+    private const string EnqueueCooldownPrefix = "ml-enqueue-cooldown:";
     private const string ViewAnalytics   = "view_analytics";
     private const string ViewBasicStats  = "view_basic_stats";
     private const string ViewTeamAnalytics = "view_team_analytics";
@@ -19,9 +22,29 @@ public sealed class WorkspaceDashboardService(
     // Permission helpers
     // ──────────────────────────────────────────────────────────────────────────
 
+    private async Task<bool> IsOrgOwnerAsync(int userId, int workspaceId, CancellationToken ct)
+    {
+        var orgId = await db.Workspaces
+            .Where(w => w.Id == workspaceId && !w.IsArchived)
+            .Select(w => (int?)w.OrganizationId)
+            .FirstOrDefaultAsync(ct);
+
+        if (orgId is null)
+            return false;
+
+        return await db.UserRoleOrganizations
+            .Where(uro => uro.UserId == userId
+                          && uro.OrganizationId == orgId
+                          && !uro.IsArchived)
+            .AnyAsync(uro => uro.Role.Name == "org_owner", ct);
+    }
+
     private async Task<HashSet<string>> GetWorkspacePermissionsAsync(
         int userId, int workspaceId, CancellationToken ct)
     {
+        if (await IsOrgOwnerAsync(userId, workspaceId, ct))
+            return [ViewAnalytics, ViewBasicStats, ViewTeamAnalytics];
+
         return await db.UserRoleWorkspaces
             .Where(urw => urw.UserId == userId
                           && urw.WorkspaceId == workspaceId
@@ -298,12 +321,19 @@ public sealed class WorkspaceDashboardService(
 
         var mlScores = await mlClient.ScoreBatchAsync(activeDealIds, ct);
 
-        // Enqueue only deals that have no score yet so already-calculated deals are not re-processed.
+        // Only enqueue deals that genuinely have no score — exclude deals ML explicitly
+        // marked as unavailable (UnavailableReason != null) since re-enqueuing them
+        // would cause an infinite recalculation loop.
         var unscoredIds = activeDealIds
-            .Where(id => !mlScores.TryGetValue(id, out var s) || s.ClosureScore is null)
+            .Where(id => !mlScores.TryGetValue(id, out var s) || (s.ClosureScore is null && s.UnavailableReason is null))
             .ToList();
-        if (unscoredIds.Count > 0)
+
+        // Rate-limit to prevent the completed→getRiskDistribution→re-enqueue loop:
+        // only trigger a new ML run if we haven't triggered one in the last 5 minutes.
+        var cooldownKey = $"{EnqueueCooldownPrefix}{workspaceId}";
+        if (unscoredIds.Count > 0 && !cache.TryGetValue(cooldownKey, out _))
         {
+            cache.Set(cooldownKey, true, TimeSpan.FromMinutes(5));
             await EnsureDealAnalysisEntitiesAsync(unscoredIds, workspaceId, userId, ct);
             _ = mlRecalc.EnqueueAsync(unscoredIds, userId, workspaceId);
         }
@@ -436,7 +466,7 @@ public sealed class WorkspaceDashboardService(
         var clientIds = await GetEntityIdsAsync(workspaceId, "client", ct);
 
         var dealProps   = await GetPropertyValuesAsync(dealIds,   ["title", "deal_value", "deal_stage", "priority", "status"], ct);
-        var clientProps = await GetPropertyValuesAsync(clientIds, ["company_name", "name", "industry", "client_lifetime_value", "client_status"], ct);
+        var clientProps = await GetPropertyValuesAsync(clientIds, ["company_name", "name", "industry", "client_status"], ct);
 
         var top10DealIds = dealIds
             .Select(id => (id, val: decimal.TryParse(dealProps.GetValueOrDefault(id)?.GetValueOrDefault("deal_value"), out var dv) ? dv : 0m))
@@ -470,33 +500,56 @@ public sealed class WorkspaceDashboardService(
                 clientName, p?.GetValueOrDefault("priority"));
         }).ToList();
 
-        var top10ClientIds = clientIds
-            .Select(id => (id, ltv: decimal.TryParse(clientProps.GetValueOrDefault(id)?.GetValueOrDefault("client_lifetime_value"), out var dv) ? dv : 0m))
-            .OrderByDescending(x => x.ltv).Take(10).Select(x => x.id).ToList();
-
-        var clientDealRels = await db.EntityRelationships
+        // Compute LTV per client as sum of closed deal values
+        var allClientDealRels = await db.EntityRelationships
             .Where(er => dealIds.Contains(er.SourceEntityId)
-                         && top10ClientIds.Contains(er.TargetEntityId)
+                         && clientIds.Contains(er.TargetEntityId)
                          && er.RelationshipType.Name == "deal_client")
             .Select(er => new { er.SourceEntityId, er.TargetEntityId })
             .ToListAsync(ct);
 
-        var allLinkedDealIds = clientDealRels.Select(r => r.SourceEntityId).Distinct().ToList();
-        var allMlScores      = await mlClient.ScoreBatchAsync(allLinkedDealIds, ct);
-        var clientDealMap    = clientDealRels.GroupBy(r => r.TargetEntityId)
+        var allClientDealMap = allClientDealRels
+            .GroupBy(r => r.TargetEntityId)
             .ToDictionary(g => g.Key, g => g.Select(r => r.SourceEntityId).ToList());
 
-        var topClients = top10ClientIds.Select(id =>
+        decimal DealValue(int dealId) =>
+            decimal.TryParse(dealProps.GetValueOrDefault(dealId)?.GetValueOrDefault("deal_value"), out var dv) ? dv : 0m;
+
+        (decimal value, bool isExpected) ClientLtv(int clientId)
         {
-            var p          = clientProps.GetValueOrDefault(id);
-            var ltv        = decimal.TryParse(p?.GetValueOrDefault("client_lifetime_value"), out var dv) ? dv : 0m;
-            var linked     = clientDealMap.GetValueOrDefault(id, []);
-            var active     = linked.Count(did => (dealProps.GetValueOrDefault(did)?.GetValueOrDefault("status") ?? "") is "opened" or "pending");
-            var scores     = linked.Where(did => allMlScores.TryGetValue(did, out var ms) && ms.ClosureScore.HasValue)
-                                   .Select(did => allMlScores[did].ClosureScore!.Value).ToList();
-            double? avg    = scores.Count > 0 ? Math.Round(scores.Average(), 4) : null;
-            var name       = p?.GetValueOrDefault("company_name") ?? p?.GetValueOrDefault("name") ?? $"Client #{id}";
-            return new TopClientDto(id, name, p?.GetValueOrDefault("industry"), ltv, active, avg);
+            var deals = allClientDealMap.GetValueOrDefault(clientId, []);
+            var closed = deals
+                .Where(did => (dealProps.GetValueOrDefault(did)?.GetValueOrDefault("status") ?? "") == "closed")
+                .Sum(DealValue);
+            if (closed > 0) return (closed, false);
+            var expected = deals
+                .Where(did => (dealProps.GetValueOrDefault(did)?.GetValueOrDefault("status") ?? "") is "opened" or "pending")
+                .Sum(DealValue);
+            return (expected, true);
+        }
+
+        var clientLtvs = clientIds
+            .Select(id => { var (ltv, isExp) = ClientLtv(id); return (id, ltv, isExp); })
+            .Where(x => x.ltv > 0)
+            .OrderByDescending(x => x.ltv)
+            .Take(10)
+            .ToList();
+
+        var top10ClientIds   = clientLtvs.Select(x => x.id).ToList();
+        var allLinkedDealIds = top10ClientIds.SelectMany(id => allClientDealMap.GetValueOrDefault(id, [])).Distinct().ToList();
+        var allMlScores      = await mlClient.ScoreBatchAsync(allLinkedDealIds, ct);
+
+        var topClients = clientLtvs.Select(x =>
+        {
+            var (id, ltv, isExpected) = x;
+            var p      = clientProps.GetValueOrDefault(id);
+            var linked = allClientDealMap.GetValueOrDefault(id, []);
+            var active = linked.Count(did => (dealProps.GetValueOrDefault(did)?.GetValueOrDefault("status") ?? "") is "opened" or "pending");
+            var scores = linked.Where(did => allMlScores.TryGetValue(did, out var ms) && ms.ClosureScore.HasValue)
+                               .Select(did => allMlScores[did].ClosureScore!.Value).ToList();
+            double? avg = scores.Count > 0 ? Math.Round(scores.Average(), 4) : null;
+            var name    = p?.GetValueOrDefault("company_name") ?? p?.GetValueOrDefault("name") ?? $"Client #{id}";
+            return new TopClientDto(id, name, p?.GetValueOrDefault("industry"), ltv, isExpected, active, avg);
         }).ToList();
 
         return new TopEntitiesDto(topDeals, topClients);

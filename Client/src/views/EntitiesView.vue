@@ -196,6 +196,7 @@ onMounted(load);
     v-else-if="detailEntityId"
     :workspace-id="workspaceId"
     :entity-id="detailEntityId"
+    :initial-edit-mode="route.query.action === 'edit'"
     @close="load"
     @updated="onDetailUpdated"
   />

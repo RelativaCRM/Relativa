@@ -152,12 +152,10 @@ public sealed class EntityRepository(RelativaDbContext db) : IEntityRepository
 
     public async Task<Entity?> GetByIdInWorkspaceAsync(int entityId, int workspaceId, CancellationToken ct = default)
     {
-        var link = await db.EntityWorkspaces
-            .AsNoTracking()
-            .Where(ew => ew.EntityId == entityId && ew.WorkspaceId == workspaceId)
-            .FirstOrDefaultAsync(ct);
+        var exists = await db.EntityWorkspaces
+            .AnyAsync(ew => ew.EntityId == entityId && ew.WorkspaceId == workspaceId, ct);
 
-        if (link is null)
+        if (!exists)
             return null;
 
         return await db.Entities

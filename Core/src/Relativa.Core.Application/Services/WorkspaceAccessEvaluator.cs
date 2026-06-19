@@ -25,8 +25,7 @@ public sealed class WorkspaceAccessEvaluator(
         if (orgM?.Role is null)
             return false;
 
-        if (permissionRepository is null &&
-            string.Equals(orgM.Role.Name, OrgOwnerRoleName, StringComparison.Ordinal))
+        if (string.Equals(orgM.Role.Name, OrgOwnerRoleName, StringComparison.Ordinal))
             return true;
 
         var allPermissionNames = await GetAllActivePermissionNamesAsync(ct);

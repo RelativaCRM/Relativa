@@ -36,6 +36,7 @@ import { useEntityRelationshipsHub } from '@/composables/useEntityRelationshipsH
 const props = defineProps<{
   workspaceId: number;
   entityId: number;
+  initialEditMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -56,6 +57,7 @@ const saving = ref(false);
 const errorMessage = ref<string | null>(null);
 const detail = ref<EntityDetailDto | null>(null);
 const editMode = ref(false);
+const initialEditModeConsumed = ref(false);
 const fieldErrors = ref<FieldErrors>({});
 const editSubmitAttempted = ref(false);
 const touchedEditProps = ref(new Set<number>());
@@ -81,22 +83,37 @@ const canDelete = computed(() =>
   hasWorkspacePermission(wsStore.currentWorkspace, 'delete_entities'),
 );
 
-const writableProps = computed(() => {
-  const d = detail.value;
-  if (!d) return [];
-  return d.propertyValues.filter((p) => !p.isReadonly);
-});
-
-const currentEntityAllReadonly = computed(() => {
-  const d = detail.value;
-  return !!d && d.propertyValues.length > 0 && writableProps.value.length === 0;
-});
-
 const typeSchema = computed(() => {
   const d = detail.value;
   if (!d) return null;
   return entityStore.types.find((t) => t.id === d.entityTypeId) ?? null;
 });
+
+const displayProperties = computed<EntityPropertyValueDto[]>(() => {
+  const schema = typeSchema.value;
+  const stored = detail.value?.propertyValues ?? [];
+  if (!schema) return stored;
+
+  const storedByPropertyId = new Map(stored.map((p) => [p.propertyId, p]));
+
+  return schema.properties.map(
+    (sp) =>
+      storedByPropertyId.get(sp.propertyId) ?? {
+        propertyId: sp.propertyId,
+        propertyName: sp.name,
+        displayName: sp.displayName,
+        dataType: sp.dataType,
+        value: null,
+        isReadonly: sp.isReadonly,
+      },
+  );
+});
+
+const writableProps = computed(() => displayProperties.value.filter((p) => !p.isReadonly));
+
+const currentEntityAllReadonly = computed(
+  () => displayProperties.value.length > 0 && writableProps.value.length === 0,
+);
 
 function allowedValuesFor(propertyId: number) {
   return typeSchema.value?.properties.find((p) => p.propertyId === propertyId)?.allowedValues ?? [];
@@ -258,7 +275,10 @@ async function confirmLink(candidate: EntityListItemDto) {
         ? outboundLinksForTab(tab)
         : inboundLinksFor(tab.relationshipTypeId);
       const link = existing[0];
-      if (!link) return;
+      if (!link) {
+        linkError.value = t('entityRead.noExistingLink');
+        return;
+      }
       const body: ReassignEntityRelationshipRequest =
         tab.direction === 'out'
           ? { newTargetEntityId: candidate.id }
@@ -383,13 +403,18 @@ async function openCreateLinkModal(tab: EdgeRelTab) {
   });
   for (const r of otherRequired) {
     createLinkOtherRelPick[r.relationshipTypeId] = null;
-    try {
-      const items = await entityApi.list(props.workspaceId, { entityTypeId: r.targetEntityTypeId, take: 400 });
-      createLinkOtherRelCandidates.value = { ...createLinkOtherRelCandidates.value, [r.relationshipTypeId]: items };
-    } catch {
-      createLinkOtherRelCandidates.value = { ...createLinkOtherRelCandidates.value, [r.relationshipTypeId]: [] };
-    }
   }
+
+  const candidateLists = await Promise.all(
+    otherRequired.map(r =>
+      entityApi.list(props.workspaceId, { entityTypeId: r.targetEntityTypeId, take: 400 }).catch(() => [] as EntityListItemDto[])
+    )
+  );
+  const candidates: Record<number, EntityListItemDto[]> = {};
+  for (let i = 0; i < otherRequired.length; i++) {
+    candidates[otherRequired[i].relationshipTypeId] = candidateLists[i];
+  }
+  createLinkOtherRelCandidates.value = candidates;
 
   createLinkOpen.value = true;
 }
@@ -403,7 +428,7 @@ async function submitCreateLink() {
 
   const writableProps = targetType.properties.filter((p) => !p.isReadonly);
   touchedCreateLinkProps.value = new Set(writableProps.map((p) => p.propertyId));
-  const hasEmptyRequired = writableProps.some((p) => isCreateLinkPropEmpty(p));
+  const hasEmptyRequired = writableProps.some((p) => p.isRequired && isCreateLinkPropEmpty(p));
   const hasFormatError = writableProps.some((p) => !!createLinkPropError(p));
   const hasEmptyRel = createLinkOtherRequired.value.some(
     (r) => createLinkOtherRelPick[r.relationshipTypeId] == null,
@@ -662,29 +687,31 @@ function formatDate(d: Date): string {
 }
 
 function parseDetailToEditValues(d: EntityDetailDto) {
+  const schema = typeSchema.value;
   const next: Record<number, FieldValue> = {};
-  for (const p of d.propertyValues) {
-    if (p.isReadonly) continue;
-    switch (p.dataType) {
+
+  const allProps = schema
+    ? schema.properties.filter((p) => !p.isReadonly)
+    : d.propertyValues.filter((p) => !p.isReadonly);
+
+  const storedByPropertyId = new Map(d.propertyValues.map((p) => [p.propertyId, p]));
+
+  for (const sp of allProps) {
+    const value = storedByPropertyId.get(sp.propertyId)?.value ?? null;
+    switch (sp.dataType) {
       case 'Bool':
-        next[p.propertyId] = Boolean(p.value);
+        next[sp.propertyId] = Boolean(value);
         break;
       case 'Int':
       case 'Decimal':
-        next[p.propertyId] =
-          p.value === null || p.value === undefined
-            ? null
-            : Number(p.value);
+        next[sp.propertyId] = value === null || value === undefined ? null : Number(value);
         break;
       case 'Date':
-        next[p.propertyId] =
-          typeof p.value === 'string' && p.value
-            ? new Date(`${p.value}T12:00:00`)
-            : null;
+        next[sp.propertyId] =
+          typeof value === 'string' && value ? new Date(`${value}T12:00:00`) : null;
         break;
       default:
-        next[p.propertyId] =
-          p.value === null || p.value === undefined ? '' : String(p.value);
+        next[sp.propertyId] = value === null || value === undefined ? '' : String(value);
     }
   }
   editValues.value = next;
@@ -756,11 +783,15 @@ async function loadDetail() {
   scoreError.value = null;
   scoreLoading.value = false;
   try {
-    await entityStore.fetchTypes();
     const d = await entityStore.fetchDetail(props.workspaceId, props.entityId);
     detail.value = d;
     parseDetailToEditValues(d);
-    editMode.value = false;
+    if (!initialEditModeConsumed.value) {
+      editMode.value = props.initialEditMode ?? false;
+      initialEditModeConsumed.value = true;
+    } else {
+      editMode.value = false;
+    }
   } catch (err) {
     errorMessage.value = normalizeError(err, t('entityRead.loadError')).message;
     detail.value = null;
@@ -811,6 +842,7 @@ function formatScore(value: number | null): string {
   if (value === null || value === undefined) return '—';
   return `${value.toFixed(1)}%`;
 }
+
 
 function cancelEdit() {
   if (detail.value) parseDetailToEditValues(detail.value);
@@ -1083,7 +1115,7 @@ onUnmounted(() => stopHub());
           {{ t('entityRead.properties') }}
         </h2>
         <dl class="grid gap-4 sm:grid-cols-2">
-          <template v-for="p in detail.propertyValues" :key="p.propertyId">
+          <template v-for="p in displayProperties" :key="p.propertyId">
             <div class="sm:col-span-2 border-b border-line pb-4 last:border-0 last:pb-0">
               <dt class="text-xs font-medium text-ink-500 uppercase tracking-wide">
                 {{ p.displayName }}
@@ -1379,7 +1411,7 @@ onUnmounted(() => stopHub());
         <div class="flex flex-col gap-1.5">
           <label :for="`cl-${p.propertyId}`" class="text-xs font-medium text-ink-600">
             {{ p.displayName }}
-            <span v-if="p.dataType !== 'Bool'" class="text-danger">*</span>
+            <span v-if="p.isRequired && p.dataType !== 'Bool'" class="text-danger">*</span>
           </label>
           <Select
             v-if="p.dataType === 'String' && p.allowedValues?.length > 0"

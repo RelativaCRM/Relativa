@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import Chart from '@/components/charts/SafeChart.vue';
@@ -184,6 +184,34 @@ const riskChartData = computed(() => {
   };
 });
 
+const hasNoDeals = computed(() =>
+  !store.isLoadingRisk &&
+  !store.isLoadingSummary &&
+  (store.summary?.totalDeals ?? 0) === 0
+);
+
+const emptyRiskChartData = {
+  labels: [''],
+  datasets: [{
+    data: [1],
+    backgroundColor: ['#94a3b8'],
+    hoverBackgroundColor: ['#94a3b8'],
+    borderWidth: 0,
+  }],
+};
+
+const emptyRiskChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '65%',
+  animation: false as const,
+  events: [] as never[],
+  plugins: {
+    legend: { display: false },
+    tooltip: { enabled: false },
+  },
+};
+
 const riskChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -298,14 +326,40 @@ function scoreBar(score?: number | null) {
   return score != null ? Math.round(score * 100) : null;
 }
 
+const tripleKpis = computed(() => [...kpis.value, ...kpis.value, ...kpis.value]);
+
 const sliderRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
 const dragStartX = ref(0);
 const dragScrollLeft = ref(0);
 
-function scrollKpi(dir: 'left' | 'right') {
-  sliderRef.value?.scrollBy({ left: dir === 'right' ? 240 : -240, behavior: 'smooth' });
+function getSetWidth(): number {
+  const row = sliderRef.value?.querySelector('.kpi-row') as HTMLElement | null;
+  return row ? row.scrollWidth / 3 : 0;
 }
+
+function initInfiniteScroll() {
+  const el = sliderRef.value;
+  if (!el) return;
+  const setWidth = getSetWidth();
+  if (setWidth > 0) el.scrollLeft = setWidth;
+}
+
+function onKpiScroll() {
+  const el = sliderRef.value;
+  if (!el) return;
+  const setWidth = getSetWidth();
+  if (setWidth === 0) return;
+  if (el.scrollLeft < setWidth * 0.25) {
+    el.scrollLeft += setWidth;
+  } else if (el.scrollLeft > setWidth * 1.75) {
+    el.scrollLeft -= setWidth;
+  }
+}
+
+watch(() => store.isLoadingSummary, (loading) => {
+  if (!loading) nextTick().then(initInfiniteScroll);
+});
 
 function onPointerDown(e: PointerEvent) {
   if (!sliderRef.value) return;
@@ -355,31 +409,24 @@ function onPointerUp() {
       {{ store.error }}
     </div>
 
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
-        :aria-label="t('wsDash.scrollLeft')"
-        @click="scrollKpi('left')"
-      >
-        <i class="pi pi-chevron-left text-xs" />
-      </button>
-
+    <!-- Full-access users: infinite looping scroll row -->
+    <div v-if="isFullAccess">
       <div
         ref="sliderRef"
-        :class="['kpi-scroll flex-1 min-w-0', isDragging ? 'cursor-grabbing select-none' : 'cursor-grab']"
+        :class="['kpi-scroll', isDragging ? 'cursor-grabbing select-none' : 'cursor-grab']"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
         @pointerleave="onPointerUp"
+        @scroll.passive="onKpiScroll"
       >
         <div v-if="store.isLoadingSummary" class="flex gap-4">
           <div v-for="i in 8" :key="i" class="kpi-card skeleton-shimmer rounded-xl" />
         </div>
-        <div v-else-if="kpis.length" class="kpi-row">
+        <div v-else-if="tripleKpis.length" class="kpi-row">
           <div
-            v-for="kpi in kpis"
-            :key="kpi.label"
+            v-for="(kpi, i) in tripleKpis"
+            :key="i"
             class="kpi-card flex flex-col justify-between gap-3 bg-white rounded-xl border border-line px-4 py-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
           >
             <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
@@ -392,32 +439,35 @@ function onPointerUp() {
           </div>
         </div>
       </div>
-
-      <button
-        type="button"
-        class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
-        :aria-label="t('wsDash.scrollRight')"
-        @click="scrollKpi('right')"
-      >
-        <i class="pi pi-chevron-right text-xs" />
-      </button>
     </div>
 
-    
-    <template v-if="store.summary && !isFullAccess">
-      <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-center gap-3 text-sm text-amber-800">
-        <i class="pi pi-lock shrink-0" />
-        <span>{{ t('wsDash.limitedAccess') }}</span>
-      </div>
-      <div v-if="basicStatusChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
-        <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('wsDash.dealStatus') }}</h3>
-        <div style="height: 160px">
-          <Chart type="bar" :data="basicStatusChartData" :options="basicChartOptions" />
+    <!-- Basic-access users: simple grid (5 fixed cards, no overflow) -->
+    <div v-else-if="kpis.length" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div v-if="store.isLoadingSummary" v-for="i in 5" :key="i" class="h-24 skeleton-shimmer rounded-xl" />
+      <div
+        v-else
+        v-for="kpi in kpis"
+        :key="kpi.label"
+        class="flex flex-col justify-between gap-3 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
+      >
+        <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
+          <i :class="['pi text-sm', kpi.icon, kpi.color]" />
+        </div>
+        <div class="min-w-0">
+          <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-tight mb-1 truncate">{{ kpi.label }}</p>
+          <p :class="['text-xl font-semibold leading-none truncate', kpi.color]">{{ kpi.value }}</p>
         </div>
       </div>
-    </template>
+    </div>
 
-    
+    <!-- Deal status chart for basic-access users (no message, just data) -->
+    <div v-if="store.summary && !isFullAccess && basicStatusChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('wsDash.dealStatus') }}</h3>
+      <div style="height: 160px">
+        <Chart type="bar" :data="basicStatusChartData" :options="basicChartOptions" />
+      </div>
+    </div>
+
     <template v-if="store.summary && isFullAccess">
 
       
@@ -470,8 +520,15 @@ function onPointerUp() {
             </div>
           </div>
           <template v-else>
-            
-            <div v-if="riskChartData" :class="['flex items-center gap-6', store.isMlRecalculating && 'opacity-60']">
+
+            <div v-if="hasNoDeals" class="flex items-center gap-6">
+              <div style="height: 180px; width: 180px; flex-shrink: 0">
+                <Chart type="doughnut" :data="emptyRiskChartData" :options="emptyRiskChartOptions" />
+              </div>
+              <p class="text-sm text-ink-400 italic">{{ t('wsDash.noDealsToCalculate') }}</p>
+            </div>
+
+            <div v-else-if="riskChartData" :class="['flex items-center gap-6', store.isMlRecalculating && 'opacity-60']">
               <div style="height: 180px; width: 180px; flex-shrink: 0">
                 <Chart type="doughnut" :data="riskChartData" :options="riskChartOptions" />
               </div>
@@ -492,8 +549,8 @@ function onPointerUp() {
                 </div>
               </div>
             </div>
-            
-            <div v-if="store.isMlRecalculating" class="mt-3 space-y-2">
+
+            <div v-if="!hasNoDeals && store.isMlRecalculating" class="mt-3 space-y-2">
               <div class="flex items-center gap-3 px-3 py-2.5 bg-brand-50 border border-brand-100 rounded-lg text-xs text-brand-700">
                 <i class="pi pi-spin pi-spinner shrink-0 text-brand-500" />
                 <div class="flex-1">
@@ -517,8 +574,8 @@ function onPointerUp() {
                 :show-value="false"
               />
             </div>
-            
-            <p v-else-if="!riskChartData" class="text-xs text-ink-400 italic">{{ t('wsDash.noRiskData') }}</p>
+
+            <p v-else-if="!hasNoDeals && !riskChartData" class="text-xs text-ink-400 italic">{{ t('wsDash.noRiskData') }}</p>
           </template>
         </div>
       </div>
@@ -639,7 +696,10 @@ function onPointerUp() {
               </Column>
               <Column field="lifetimeValue" :header="t('home.colLtv')">
                 <template #body="{ data }">
-                  <span class="font-semibold text-ink-700">{{ formatCurrency(data.lifetimeValue) }}</span>
+                  <div class="flex flex-col leading-tight">
+                    <span class="font-semibold text-ink-700">{{ formatCurrency(data.lifetimeValue) }}</span>
+                    <span v-if="data.isExpectedLtv" class="text-[10px] text-ink-400">{{ t('home.expectedLtv') }}</span>
+                  </div>
                 </template>
               </Column>
               <Column field="activeDeals" :header="t('home.colActive')">
@@ -743,8 +803,6 @@ function onPointerUp() {
   -webkit-overflow-scrolling: touch;
   padding-top: 0.25rem;
   padding-bottom: 0.5rem;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
 }
 .kpi-scroll::-webkit-scrollbar {
   display: none;
