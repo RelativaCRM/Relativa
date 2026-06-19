@@ -49,6 +49,7 @@
 - [API Documentation](#api-documentation)
 - [Service & Port Reference](#service--port-reference)
 - [Documentation](#documentation)
+- [Project Resources](#project-resources)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -428,7 +429,6 @@ Every backend service ships interactive **Scalar** API docs and a raw OpenAPI sp
 
 All project documentation and design mockups are available here:
 - 📚 Project Resources (Project Documentation Links) – [Relativa — Project Resources](https://docs.google.com/document/d/1sQgllhQnAcj4JSiLMRa0BUW4Q3mr3orBaM-2HEgj2yE/edit?usp=sharing).
-
 
 ---
 
