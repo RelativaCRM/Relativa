@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import Chart from '@/components/charts/SafeChart.vue';
@@ -298,14 +298,40 @@ function scoreBar(score?: number | null) {
   return score != null ? Math.round(score * 100) : null;
 }
 
+const tripleKpis = computed(() => [...kpis.value, ...kpis.value, ...kpis.value]);
+
 const sliderRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
 const dragStartX = ref(0);
 const dragScrollLeft = ref(0);
 
-function scrollKpi(dir: 'left' | 'right') {
-  sliderRef.value?.scrollBy({ left: dir === 'right' ? 240 : -240, behavior: 'smooth' });
+function getSetWidth(): number {
+  const row = sliderRef.value?.querySelector('.kpi-row') as HTMLElement | null;
+  return row ? row.scrollWidth / 3 : 0;
 }
+
+function initInfiniteScroll() {
+  const el = sliderRef.value;
+  if (!el) return;
+  const setWidth = getSetWidth();
+  if (setWidth > 0) el.scrollLeft = setWidth;
+}
+
+function onKpiScroll() {
+  const el = sliderRef.value;
+  if (!el) return;
+  const setWidth = getSetWidth();
+  if (setWidth === 0) return;
+  if (el.scrollLeft < setWidth * 0.25) {
+    el.scrollLeft += setWidth;
+  } else if (el.scrollLeft > setWidth * 1.75) {
+    el.scrollLeft -= setWidth;
+  }
+}
+
+watch(() => store.isLoadingSummary, (loading) => {
+  if (!loading) nextTick().then(initInfiniteScroll);
+});
 
 function onPointerDown(e: PointerEvent) {
   if (!sliderRef.value) return;
@@ -355,32 +381,24 @@ function onPointerUp() {
       {{ store.error }}
     </div>
 
-    <!-- Full-access users: horizontal scroll row with arrows (can have 9+ cards) -->
-    <div v-if="isFullAccess" class="flex items-center gap-2">
-      <button
-        type="button"
-        class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
-        :aria-label="t('wsDash.scrollLeft')"
-        @click="scrollKpi('left')"
-      >
-        <i class="pi pi-chevron-left text-xs" />
-      </button>
-
+    <!-- Full-access users: infinite looping scroll row -->
+    <div v-if="isFullAccess">
       <div
         ref="sliderRef"
-        :class="['kpi-scroll flex-1 min-w-0', isDragging ? 'cursor-grabbing select-none' : 'cursor-grab']"
+        :class="['kpi-scroll', isDragging ? 'cursor-grabbing select-none' : 'cursor-grab']"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
         @pointerleave="onPointerUp"
+        @scroll.passive="onKpiScroll"
       >
         <div v-if="store.isLoadingSummary" class="flex gap-4">
           <div v-for="i in 8" :key="i" class="kpi-card skeleton-shimmer rounded-xl" />
         </div>
-        <div v-else-if="kpis.length" class="kpi-row">
+        <div v-else-if="tripleKpis.length" class="kpi-row">
           <div
-            v-for="kpi in kpis"
-            :key="kpi.label"
+            v-for="(kpi, i) in tripleKpis"
+            :key="i"
             class="kpi-card flex flex-col justify-between gap-3 bg-white rounded-xl border border-line px-4 py-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
           >
             <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
@@ -393,15 +411,6 @@ function onPointerUp() {
           </div>
         </div>
       </div>
-
-      <button
-        type="button"
-        class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
-        :aria-label="t('wsDash.scrollRight')"
-        @click="scrollKpi('right')"
-      >
-        <i class="pi pi-chevron-right text-xs" />
-      </button>
     </div>
 
     <!-- Basic-access users: simple grid (5 fixed cards, no overflow) -->
@@ -759,8 +768,6 @@ function onPointerUp() {
   -webkit-overflow-scrolling: touch;
   padding-top: 0.25rem;
   padding-bottom: 0.5rem;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
 }
 .kpi-scroll::-webkit-scrollbar {
   display: none;
