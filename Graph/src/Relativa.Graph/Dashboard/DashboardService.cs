@@ -684,20 +684,45 @@ public sealed class DashboardService(GraphQueryDbContext db, IMlScoringClient ml
             .Select(w => new { w.Id, w.Name })
             .ToListAsync(ct);
 
+        if (workspaces.Count == 0)
+            return [];
+
+        var allWorkspaceIds = workspaces.Select(w => w.Id).ToList();
+
+        // Single query: entity IDs + workspace ID + type for all workspaces at once
+        var entityRows = await db.EntityWorkspaces
+            .Where(ew => allWorkspaceIds.Contains(ew.WorkspaceId) && !ew.Entity.IsArchived)
+            .Select(ew => new { ew.EntityId, ew.WorkspaceId, TypeName = ew.Entity.EntityType.Name })
+            .ToListAsync(ct);
+
+        var dealsByWs = entityRows
+            .Where(r => r.TypeName == "deal")
+            .GroupBy(r => r.WorkspaceId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.EntityId).ToList());
+
+        var clientsByWs = entityRows
+            .Where(r => r.TypeName == "client")
+            .GroupBy(r => r.WorkspaceId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.EntityId).ToList());
+
+        // Single property fetch for all deals across all workspaces
+        var allDealIds = dealsByWs.Values.SelectMany(ids => ids).Distinct().ToList();
+        var allDealProps = await GetPropertyValuesAsync(allDealIds, ["deal_value", "status", "deal_stage"], ct);
+
+        // Single member count query for all workspaces
+        var memberCounts = await db.UserRoleWorkspaces
+            .Where(urw => allWorkspaceIds.Contains(urw.WorkspaceId) && !urw.IsArchived)
+            .GroupBy(urw => urw.WorkspaceId)
+            .Select(g => new { WorkspaceId = g.Key, Count = g.Select(u => u.UserId).Distinct().Count() })
+            .ToDictionaryAsync(x => x.WorkspaceId, x => x.Count, ct);
+
         var result = new List<WorkspaceComparisonDto>();
 
         foreach (var ws in workspaces)
         {
-            var wsList    = new List<int> { ws.Id };
-            var dealIds   = await GetEntityIdsByTypeAsync(wsList, "deal",   ct);
-            var clientIds = await GetEntityIdsByTypeAsync(wsList, "client", ct);
-            var dealProps = await GetPropertyValuesAsync(dealIds, ["deal_value", "status", "deal_stage"], ct);
-
-            var memberCount = await db.UserRoleWorkspaces
-                .Where(urw => urw.WorkspaceId == ws.Id && !urw.IsArchived)
-                .Select(urw => urw.UserId)
-                .Distinct()
-                .CountAsync(ct);
+            var dealIds   = dealsByWs.GetValueOrDefault(ws.Id) ?? [];
+            var clientIds = clientsByWs.GetValueOrDefault(ws.Id) ?? [];
+            var memberCount = memberCounts.GetValueOrDefault(ws.Id, 0);
 
             int won = 0, lost = 0;
             decimal totalValue = 0m;
@@ -705,7 +730,7 @@ public sealed class DashboardService(GraphQueryDbContext db, IMlScoringClient ml
 
             foreach (var id in dealIds)
             {
-                var p      = dealProps.GetValueOrDefault(id);
+                var p      = allDealProps.GetValueOrDefault(id);
                 var status = (p?.GetValueOrDefault("status") ?? "").ToLowerInvariant();
                 var value  = decimal.TryParse(p?.GetValueOrDefault("deal_value"), out var dv) ? dv : 0m;
                 totalValue += value;

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Relativa.Graph.Dashboard.Dto;
 using Relativa.Graph.Data;
 using Relativa.Graph.ML;
@@ -8,9 +9,11 @@ namespace Relativa.Graph.Dashboard;
 public sealed class WorkspaceDashboardService(
     GraphQueryDbContext db,
     IMlScoringClient mlClient,
-    IMlRecalculationClient mlRecalc)
+    IMlRecalculationClient mlRecalc,
+    IMemoryCache cache)
     : IWorkspaceDashboardService
 {
+    private const string EnqueueCooldownPrefix = "ml-enqueue-cooldown:";
     private const string ViewAnalytics   = "view_analytics";
     private const string ViewBasicStats  = "view_basic_stats";
     private const string ViewTeamAnalytics = "view_team_analytics";
@@ -298,12 +301,19 @@ public sealed class WorkspaceDashboardService(
 
         var mlScores = await mlClient.ScoreBatchAsync(activeDealIds, ct);
 
-        // Enqueue only deals that have no score yet so already-calculated deals are not re-processed.
+        // Only enqueue deals that genuinely have no score — exclude deals ML explicitly
+        // marked as unavailable (UnavailableReason != null) since re-enqueuing them
+        // would cause an infinite recalculation loop.
         var unscoredIds = activeDealIds
-            .Where(id => !mlScores.TryGetValue(id, out var s) || s.ClosureScore is null)
+            .Where(id => !mlScores.TryGetValue(id, out var s) || (s.ClosureScore is null && s.UnavailableReason is null))
             .ToList();
-        if (unscoredIds.Count > 0)
+
+        // Rate-limit to prevent the completed→getRiskDistribution→re-enqueue loop:
+        // only trigger a new ML run if we haven't triggered one in the last 5 minutes.
+        var cooldownKey = $"{EnqueueCooldownPrefix}{workspaceId}";
+        if (unscoredIds.Count > 0 && !cache.TryGetValue(cooldownKey, out _))
         {
+            cache.Set(cooldownKey, true, TimeSpan.FromMinutes(5));
             await EnsureDealAnalysisEntitiesAsync(unscoredIds, workspaceId, userId, ct);
             _ = mlRecalc.EnqueueAsync(unscoredIds, userId, workspaceId);
         }

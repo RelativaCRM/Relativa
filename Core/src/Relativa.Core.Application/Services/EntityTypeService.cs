@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Relativa.Core.Application.DTOs.EntityType;
 using Relativa.Core.Application.Interfaces;
 using Relativa.Core.Application.Utilities;
@@ -6,13 +7,18 @@ using Relativa.Persistence.Entities;
 
 namespace Relativa.Core.Application.Services;
 
-public sealed class EntityTypeService(IEntityTypeRepository entityTypeRepository) : IEntityTypeService
+public sealed class EntityTypeService(IEntityTypeRepository entityTypeRepository, IMemoryCache cache) : IEntityTypeService
 {
+    private const string CacheKey = "entity-types";
+
     public async Task<List<EntityTypeDto>> GetAllAsync(CancellationToken ct = default)
     {
+        if (cache.TryGetValue(CacheKey, out List<EntityTypeDto>? cached) && cached is not null)
+            return cached;
+
         var types = await entityTypeRepository.GetAllWithPropertiesAsync(ct);
 
-        return types.Select(et => new EntityTypeDto(
+        var result = types.Select(et => new EntityTypeDto(
             et.Id,
             et.Name,
             et.DisplayName ?? DisplayNameHelper.Humanize(et.Name),
@@ -55,5 +61,8 @@ public sealed class EntityTypeService(IEntityTypeRepository entityTypeRepository
                         .ToList()))
                 .ToList()))
             .ToList();
+
+        cache.Set(CacheKey, result, TimeSpan.FromMinutes(10));
+        return result;
     }
 }

@@ -403,13 +403,18 @@ async function openCreateLinkModal(tab: EdgeRelTab) {
   });
   for (const r of otherRequired) {
     createLinkOtherRelPick[r.relationshipTypeId] = null;
-    try {
-      const items = await entityApi.list(props.workspaceId, { entityTypeId: r.targetEntityTypeId, take: 400 });
-      createLinkOtherRelCandidates.value = { ...createLinkOtherRelCandidates.value, [r.relationshipTypeId]: items };
-    } catch {
-      createLinkOtherRelCandidates.value = { ...createLinkOtherRelCandidates.value, [r.relationshipTypeId]: [] };
-    }
   }
+
+  const candidateLists = await Promise.all(
+    otherRequired.map(r =>
+      entityApi.list(props.workspaceId, { entityTypeId: r.targetEntityTypeId, take: 400 }).catch(() => [] as EntityListItemDto[])
+    )
+  );
+  const candidates: Record<number, EntityListItemDto[]> = {};
+  for (let i = 0; i < otherRequired.length; i++) {
+    candidates[otherRequired[i].relationshipTypeId] = candidateLists[i];
+  }
+  createLinkOtherRelCandidates.value = candidates;
 
   createLinkOpen.value = true;
 }
@@ -778,7 +783,6 @@ async function loadDetail() {
   scoreError.value = null;
   scoreLoading.value = false;
   try {
-    await entityStore.fetchTypes();
     const d = await entityStore.fetchDetail(props.workspaceId, props.entityId);
     detail.value = d;
     parseDetailToEditValues(d);

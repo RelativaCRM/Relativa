@@ -31,6 +31,7 @@ builder.Services.Configure<RabbitMqGraphConsumerOptions>(
     builder.Configuration.GetSection(RabbitMqGraphConsumerOptions.SectionKey));
 builder.Services.AddHostedService<DomainEventConsumerHostedService>();
 
+builder.Services.AddMemoryCache();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GraphGlobalExceptionHandler>();
 
