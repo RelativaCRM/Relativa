@@ -110,6 +110,24 @@ async Task<Response<object>> GetExpecting2xx(string label, string url)
     }
 }
 
+async Task<Response<object>> SendExpecting2xx(string label, HttpMethod method, string url, object? body)
+{
+    try
+    {
+        using var request = new HttpRequestMessage(method, url);
+        if (body is not null)
+            request.Content = JsonContent.Create(body, options: json);
+        using var response = await http.SendAsync(request);
+        return response.IsSuccessStatusCode
+            ? Response.Ok(statusCode: ((int)response.StatusCode).ToString())
+            : Response.Fail(statusCode: ((int)response.StatusCode).ToString(), message: $"{label}: non-2xx");
+    }
+    catch (Exception ex)
+    {
+        return Response.Fail(message: $"{label}: {ex.Message}");
+    }
+}
+
 ScenarioProps AuthedGet(string name, Func<string> url) =>
     Tune(Scenario.Create(name, async _ => await GetExpecting2xx(name, url())), rate);
 
@@ -123,6 +141,23 @@ var journey = Tune(Scenario.Create("user_journey", async ctx =>
         GetExpecting2xx("entity_list", $"{gateway}/core/api/v1/workspaces/{workspaceId}/entities/?take=50"));
     return Response.Ok();
 }), Math.Max(1, rate / 3));
+
+object? entityCreateBody = null;
+(int relId, int targetA, int targetB)? reassignSeed = null;
+try
+{
+    using var typesResp = await http.GetAsync($"{gateway}/core/api/v1/entity-types");
+    if (typesResp.IsSuccessStatusCode)
+    {
+        var entityTypes = await typesResp.Content.ReadFromJsonAsync<JsonElement>(json);
+        entityCreateBody = BuildCreateBody(entityTypes);
+        reassignSeed = await SeedReassignAsync(http, gateway, workspaceId, entityTypes, json);
+    }
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"Write-path discovery skipped: {ex.Message}");
+}
 
 var businessScenarios = new List<ScenarioProps>
 {
@@ -140,6 +175,42 @@ var businessScenarios = new List<ScenarioProps>
     AuthedGet("audit_log", () => $"{gateway}/audit/audit-log?entity_type=organization&organization_id={orgId}"),
     journey,
 };
+
+businessScenarios.Add(Tune(Scenario.Create("auth_login", async _ =>
+    await SendExpecting2xx("auth_login", HttpMethod.Post, $"{gateway}/auth/api/v1/auth/login",
+        new { email = adminEmail, password = adminPassword })), Math.Max(1, rate / 2)));
+
+businessScenarios.Add(Tune(Scenario.Create("workspace_create", async _ =>
+    await SendExpecting2xx("workspace_create", HttpMethod.Post, $"{gateway}/core/api/v1/workspaces",
+        new { name = $"LoadWS {Guid.NewGuid():N}", organizationId = orgId })), Math.Max(1, rate / 2)));
+
+if (entityCreateBody is not null)
+{
+    businessScenarios.Add(Tune(Scenario.Create("entity_create", async _ =>
+        await SendExpecting2xx("entity_create", HttpMethod.Post,
+            $"{gateway}/core/api/v1/workspaces/{workspaceId}/entities/", entityCreateBody)),
+        Math.Max(1, rate / 2)));
+}
+else
+{
+    Console.WriteLine("entity_create scenario skipped: no entity type creatable without required links was found.");
+}
+
+if (reassignSeed is { } rs)
+{
+    var reassignToggle = 0;
+    businessScenarios.Add(Tune(Scenario.Create("entity_relationship_reassign", async _ =>
+    {
+        var target = Interlocked.Increment(ref reassignToggle) % 2 == 0 ? rs.targetA : rs.targetB;
+        return await SendExpecting2xx("entity_relationship_reassign", HttpMethod.Put,
+            $"{gateway}/core/api/v1/workspaces/{workspaceId}/entity-relationships/{rs.relId}",
+            new { newSourceEntityId = (int?)null, newTargetEntityId = (int?)target });
+    }), Math.Max(1, rate / 3)));
+}
+else
+{
+    Console.WriteLine("entity_relationship_reassign scenario skipped: no reassignable relationship could be seeded.");
+}
 
 var stats = NBomberRunner
     .RegisterScenarios(businessScenarios.ToArray())
@@ -215,4 +286,118 @@ static async Task<int> DiscoverOrCreateWorkspaceAsync(HttpClient http, string ga
     created.EnsureSuccessStatusCode();
     var workspace = await created.Content.ReadFromJsonAsync<JsonElement>(json);
     return workspace.GetProperty("id").GetInt32();
+}
+
+static bool HasRequiredOutgoing(JsonElement type)
+{
+    if (!type.TryGetProperty("outgoingRelationships", out var rels) || rels.ValueKind != JsonValueKind.Array)
+        return false;
+    foreach (var r in rels.EnumerateArray())
+        if (r.TryGetProperty("isRequired", out var req) && req.GetBoolean())
+            return true;
+    return false;
+}
+
+static string SampleValue(JsonElement prop)
+{
+    if (prop.TryGetProperty("allowedValues", out var av) && av.ValueKind == JsonValueKind.Array && av.GetArrayLength() > 0)
+        return av[0].GetProperty("value").GetString() ?? "load";
+    var dataType = prop.TryGetProperty("dataType", out var d) ? d.GetString() : "String";
+    return dataType switch
+    {
+        "Int" => "1",
+        "Decimal" => "1",
+        "Bool" => "true",
+        "Date" => "2026-01-01",
+        _ => "load",
+    };
+}
+
+static List<object> RequiredProps(JsonElement type)
+{
+    var list = new List<object>();
+    if (!type.TryGetProperty("properties", out var props) || props.ValueKind != JsonValueKind.Array)
+        return list;
+    foreach (var p in props.EnumerateArray())
+        if (p.TryGetProperty("isRequired", out var req) && req.GetBoolean())
+            list.Add(new { propertyId = p.GetProperty("propertyId").GetInt32(), value = SampleValue(p) });
+    return list;
+}
+
+static object? BuildCreateBody(JsonElement types)
+{
+    if (types.ValueKind != JsonValueKind.Array)
+        return null;
+    foreach (var t in types.EnumerateArray())
+    {
+        if (HasRequiredOutgoing(t))
+            continue;
+        return new
+        {
+            entityTypeId = t.GetProperty("id").GetInt32(),
+            properties = RequiredProps(t),
+            links = Array.Empty<object>(),
+        };
+    }
+    return null;
+}
+
+static async Task<int?> CreateEntityAsync(
+    HttpClient http, string gateway, int workspaceId, JsonElement type, JsonSerializerOptions json)
+{
+    using var resp = await http.PostAsJsonAsync(
+        $"{gateway}/core/api/v1/workspaces/{workspaceId}/entities/",
+        new { entityTypeId = type.GetProperty("id").GetInt32(), properties = RequiredProps(type), links = Array.Empty<object>() },
+        json);
+    if (!resp.IsSuccessStatusCode)
+        return null;
+    var body = await resp.Content.ReadFromJsonAsync<JsonElement>(json);
+    return body.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number ? id.GetInt32() : null;
+}
+
+static async Task<(int relId, int targetA, int targetB)?> SeedReassignAsync(
+    HttpClient http, string gateway, int workspaceId, JsonElement types, JsonSerializerOptions json)
+{
+    if (types.ValueKind != JsonValueKind.Array)
+        return null;
+    foreach (var src in types.EnumerateArray())
+    {
+        if (HasRequiredOutgoing(src)
+            || !src.TryGetProperty("outgoingRelationships", out var rels)
+            || rels.ValueKind != JsonValueKind.Array || rels.GetArrayLength() == 0)
+            continue;
+        var rel = rels[0];
+        var relTypeId = rel.GetProperty("relationshipTypeId").GetInt32();
+        var targetTypeId = rel.GetProperty("targetEntityTypeId").GetInt32();
+
+        JsonElement targetType = default;
+        var found = false;
+        foreach (var t in types.EnumerateArray())
+            if (t.GetProperty("id").GetInt32() == targetTypeId) { targetType = t; found = true; break; }
+        if (!found || HasRequiredOutgoing(targetType))
+            continue;
+
+        var source = await CreateEntityAsync(http, gateway, workspaceId, src, json);
+        var a = await CreateEntityAsync(http, gateway, workspaceId, targetType, json);
+        var b = await CreateEntityAsync(http, gateway, workspaceId, targetType, json);
+        if (source is null || a is null || b is null)
+            continue;
+
+        using var relResp = await http.PostAsJsonAsync(
+            $"{gateway}/core/api/v1/workspaces/{workspaceId}/entity-relationships",
+            new { sourceEntityId = source.Value, targetEntityId = a.Value, relationshipTypeId = relTypeId },
+            json);
+        if (!relResp.IsSuccessStatusCode)
+            continue;
+        var rb = await relResp.Content.ReadFromJsonAsync<JsonElement>(json);
+        var relId = rb.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.Number
+            ? idEl.GetInt32()
+            : rb.TryGetProperty("relationshipId", out var rid) && rid.ValueKind == JsonValueKind.Number
+                ? rid.GetInt32()
+                : 0;
+        if (relId == 0)
+            continue;
+        return (relId, a.Value, b.Value);
+    }
+    return null;
 }

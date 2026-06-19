@@ -179,4 +179,16 @@ public sealed class GraphDomainEventConsumerTests : IAsyncLifetime
         (await WaitForDeliveryAsync(sentinel.MessageId)).Should().BeTrue(
             "a poison message must be dead-lettered without stalling the consumer for subsequent valid messages");
     }
+
+    [Fact]
+    public async Task NullEnvelope_IsAcknowledgedAndConsumerStaysOperational()
+    {
+        await PublishRawAsync("null");
+
+        var sentinel = WorkspaceEnvelope(Guid.NewGuid());
+        await PublishAsync(sentinel);
+
+        (await WaitForDeliveryAsync(sentinel.MessageId)).Should().BeTrue(
+            "a literal null envelope is acknowledged and skipped without stalling subsequent valid messages");
+    }
 }

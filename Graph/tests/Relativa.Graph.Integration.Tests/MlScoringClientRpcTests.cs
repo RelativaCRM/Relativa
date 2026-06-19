@@ -29,7 +29,7 @@ public sealed class MlScoringClientRpcTests : IAsyncLifetime
     private IConnection _connection = null!;
     private IChannel _channel = null!;
     private RabbitMqMlScoringClient _client = null!;
-    private Func<MlScoreRpcRequestV1, MlScoreRpcReplyV1> _replyFactory = _ => new MlScoreRpcReplyV1([], null);
+    private Func<MlScoreRpcRequestV1, MlScoreRpcReplyV1?> _replyFactory = _ => new MlScoreRpcReplyV1([], null);
 
     public async Task InitializeAsync()
     {
@@ -96,5 +96,23 @@ public sealed class MlScoringClientRpcTests : IAsyncLifetime
         var result = await _client.ScoreBatchAsync([10, 20]);
 
         result.Should().BeEmpty("an error reply from the ML service must degrade to no highlights, not propagate");
+    }
+
+    [Fact]
+    public async Task ScoreBatchAsync_EmptyInput_ShortCircuitsWithoutBrokerRoundTrip()
+    {
+        var result = await _client.ScoreBatchAsync([]);
+
+        result.Should().BeEmpty("an empty batch requires no scoring call at all");
+    }
+
+    [Fact]
+    public async Task ScoreBatchAsync_NullReplyBody_DegradesToEmpty()
+    {
+        _replyFactory = _ => null;
+
+        var result = await _client.ScoreBatchAsync([10, 20]);
+
+        result.Should().BeEmpty("a null reply payload must degrade to no highlights, not throw");
     }
 }

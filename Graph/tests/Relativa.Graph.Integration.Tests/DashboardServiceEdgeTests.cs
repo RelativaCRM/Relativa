@@ -97,7 +97,7 @@ public sealed class DashboardServiceEdgeTests : IAsyncLifetime
         _relTypeId = relType.Id;
 
         _dScored = await AddDealAsync(("status", "opened"), ("deal_value", 10000m), ("deal_stage", "Negotiation"), ("expected_close", _thisMonth), ("title", "Scored"));
-        await AddDealAsync(("status", "opened"), ("deal_value", 8000m));
+        var dUnnamedClient = await AddDealAsync(("status", "opened"), ("deal_value", 8000m));
         await AddDealAsync();
         await AddDealAsync(("status", "on_hold"), ("deal_value", 3000m));
         _dClosed = await AddDealAsync(("status", "closed"), ("deal_value", 20000m), ("expected_close", _thisMonth));
@@ -107,6 +107,7 @@ public sealed class DashboardServiceEdgeTests : IAsyncLifetime
         await AddClientAsync(("first_name", "Carol"), ("client_lifetime_value", 20000m));
 
         await LinkAsync(_dScored, _cName);
+        await LinkAsync(dUnnamedClient, _cNoName);
     }
 
     private async Task<int> AddDealAsync(params (string name, object value)[] props)

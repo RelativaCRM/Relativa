@@ -135,6 +135,32 @@ public sealed class GraphMlConsumerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MlRecalculateProgress_NullWorkspaceId_AcknowledgedWithoutGroupBroadcast()
+    {
+        var id = Guid.NewGuid();
+        var payload = new MlRecalculateProgressPayloadV1(Guid.NewGuid(), null, "running", 3, 10, DateTimeOffset.UtcNow, null);
+
+        await PublishAsync(id, DomainRouting.MlRecalculateVerbProgress, DomainPayloadTypes.MlRecalculateProgressV1, payload);
+
+        (await WaitForDeliveryAsync(id)).Should().BeTrue("the message is still recorded as processed even without a workspace target");
+        await _workspaceGroup.DidNotReceive().SendCoreAsync(
+            GraphSignalREvents.MlRecalculateProgress, Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MlRecalculateCompleted_NullWorkspaceId_AcknowledgedWithoutGroupBroadcast()
+    {
+        var id = Guid.NewGuid();
+        var payload = new MlRecalculateCompletedPayloadV1(Guid.NewGuid(), null, "completed", 10, 9, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null);
+
+        await PublishAsync(id, DomainRouting.MlRecalculateVerbCompleted, DomainPayloadTypes.MlRecalculateCompletedV1, payload);
+
+        (await WaitForDeliveryAsync(id)).Should().BeTrue();
+        await _workspaceGroup.DidNotReceive().SendCoreAsync(
+            GraphSignalREvents.MlRecalculateCompleted, Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task MlMessage_IsDeduplicatedByMessageId()
     {
         var id = Guid.NewGuid();

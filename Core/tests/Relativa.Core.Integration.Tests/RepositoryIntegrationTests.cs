@@ -540,4 +540,92 @@ public sealed class RepositoryIntegrationTests : IAsyncLifetime
         var result = await repo.GetByIdsAsync([99999]);
         result.Should().BeEmpty();
     }
+
+    private async Task<(int userId, int orgId, int wsId)> SeedOrgOwnerScenarioAsync()
+    {
+        await using var db = Db();
+        var org = new Organization { Name = $"Owner Org {Guid.NewGuid():N}" };
+        db.Organizations.Add(org);
+        var owner = new User { Email = $"owner-{Guid.NewGuid():N}@acme.com", FirstName = "Own", LastName = "Er", Password = "x" };
+        db.Users.Add(owner);
+        await db.SaveChangesAsync();
+
+        var ownerRole = new OrganizationRole { Name = "org_owner", OrganizationId = org.Id, Priority = 0 };
+        db.OrganizationRoles.Add(ownerRole);
+        await db.SaveChangesAsync();
+
+        db.UserRoleOrganizations.Add(new UserRoleOrganization
+        {
+            UserId = owner.Id, OrganizationId = org.Id, OrgRoleId = ownerRole.Id, JoinedAt = DateTime.UtcNow
+        });
+        var ws = new Workspace { Name = "Owned WS", OrganizationId = org.Id, CreatedByUserId = owner.Id };
+        db.Workspaces.Add(ws);
+        await db.SaveChangesAsync();
+
+        return (owner.Id, org.Id, ws.Id);
+    }
+
+    [Fact]
+    public async Task WorkspaceRepository_GetByUserIdAsync_OrgOwner_IncludesOwnedWorkspacesWithoutMembership()
+    {
+        var (ownerId, _, wsId) = await SeedOrgOwnerScenarioAsync();
+        var repo = new WorkspaceRepository(Db());
+
+        var result = await repo.GetByUserIdAsync(ownerId);
+
+        result.Should().ContainSingle(w => w.Id == wsId,
+            "an org owner sees workspaces in their org even without a direct membership row");
+    }
+
+    [Fact]
+    public async Task WorkspaceRepository_GetByUserIdAndOrganizationIdAsync_OrgOwner_IncludesOwnedWorkspaces()
+    {
+        var (ownerId, orgId, wsId) = await SeedOrgOwnerScenarioAsync();
+        var repo = new WorkspaceRepository(Db());
+
+        var result = await repo.GetByUserIdAndOrganizationIdAsync(ownerId, orgId);
+
+        result.Should().Contain(w => w.Id == wsId);
+    }
+
+    [Fact]
+    public async Task OrganizationRepository_SearchAsync_BlankQuery_ReturnsOrgsRankedByMemberCount()
+    {
+        await using (var db = Db())
+        {
+            var org = new Organization { Name = $"Settings Org {Guid.NewGuid():N}" };
+            db.Organizations.Add(org);
+            await db.SaveChangesAsync();
+            db.Set<OrganizationSettings>().Add(new OrganizationSettings { OrganizationId = org.Id, JoinPolicy = "invite_only" });
+            await db.SaveChangesAsync();
+        }
+        var repo = new OrganizationRepository(Db());
+
+        var result = await repo.SearchAsync("   ");
+
+        result.Should().NotBeEmpty();
+        result.Should().Contain(h => h.JoinPolicy == "invite_only",
+            "the projection reads JoinPolicy from settings when present");
+        result.Should().Contain(h => h.JoinPolicy == "open",
+            "organizations without settings fall back to the default open policy");
+    }
+
+    [Fact]
+    public async Task WorkspaceRoleRepository_GetByWorkspaceIdAsync_IncludesWorkspaceSpecificRoles()
+    {
+        int scopedRoleId;
+        await using (var db = Db())
+        {
+            var role = new WorkspaceRole { Name = "ws_scoped", WorkspaceId = _ws1Id, Priority = 7 };
+            db.WorkspaceRoles.Add(role);
+            await db.SaveChangesAsync();
+            scopedRoleId = role.Id;
+        }
+        var repo = new WorkspaceRoleRepository(Db());
+
+        var result = await repo.GetByWorkspaceIdAsync(_ws1Id);
+
+        result.Should().Contain(r => r.Id == scopedRoleId, "roles scoped to the workspace are returned alongside system roles");
+        result.Should().NotContain(r => r.WorkspaceId != null && r.WorkspaceId != _ws1Id);
+    }
 }

@@ -1,4 +1,5 @@
 using DotNet.Testcontainers.Builders;
+using Microsoft.Extensions.Caching.Memory;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
@@ -42,7 +43,11 @@ public sealed class WorkspaceDashboardServiceAnalyticsTests : IAsyncLifetime
         };
         ml.ScoreBatchAsync(Arg.Any<IReadOnlyList<int>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ((IReadOnlyList<int>)ci[0]).Where(scores.ContainsKey).ToDictionary(id => id, id => scores[id]));
-        _svc = new WorkspaceDashboardService(_db, ml, Substitute.For<IMlRecalculationClient>());
+        _svc = new WorkspaceDashboardService(
+            _db,
+            ml,
+            Substitute.For<IMlRecalculationClient>(),
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     public async Task DisposeAsync()

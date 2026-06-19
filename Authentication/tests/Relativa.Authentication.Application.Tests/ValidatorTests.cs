@@ -172,6 +172,49 @@ public sealed class UpdateMyProfileRequestValidatorTests
         result.ShouldHaveValidationErrorFor(x => x.FirstName);
         result.ShouldHaveValidationErrorFor(x => x.LastName);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void BlankPhone_SkipsPhoneRule(string? phone) =>
+        _sut.TestValidate(new UpdateMyProfileRequest("Bob", "Jones", phone))
+            .ShouldNotHaveValidationErrorFor(x => x.Phone);
+
+    [Fact]
+    public void ValidPhone_ReturnsNoErrors() =>
+        _sut.TestValidate(new UpdateMyProfileRequest("Bob", "Jones", "+15551234567"))
+            .ShouldNotHaveValidationErrorFor(x => x.Phone);
+
+    [Theory]
+    [InlineData("12345")]
+    [InlineData("+0123456")]
+    [InlineData("not-a-phone")]
+    [InlineData("+1")]
+    public void InvalidPhone_FailsWithPhoneInvalidCode(string phone) =>
+        _sut.TestValidate(new UpdateMyProfileRequest("Bob", "Jones", phone))
+            .ShouldHaveValidationErrorFor(x => x.Phone).WithErrorCode("phone_invalid");
+
+    [Fact]
+    public void NullDateOfBirth_SkipsDateRule() =>
+        _sut.TestValidate(new UpdateMyProfileRequest("Bob", "Jones", DateOfBirth: null))
+            .ShouldNotHaveValidationErrorFor(x => x.DateOfBirth);
+
+    [Fact]
+    public void ValidDateOfBirth_ReturnsNoErrors() =>
+        _sut.TestValidate(new UpdateMyProfileRequest("Bob", "Jones", DateOfBirth: new DateOnly(1990, 5, 20)))
+            .ShouldNotHaveValidationErrorFor(x => x.DateOfBirth);
+
+    [Fact]
+    public void FutureDateOfBirth_FailsWithBirthdateInvalidCode() =>
+        _sut.TestValidate(new UpdateMyProfileRequest("Bob", "Jones",
+                DateOfBirth: DateOnly.FromDateTime(DateTime.UtcNow.Date.AddDays(1))))
+            .ShouldHaveValidationErrorFor(x => x.DateOfBirth).WithErrorCode("birthdate_invalid");
+
+    [Fact]
+    public void DateOfBirthBefore1901_FailsWithBirthdateInvalidCode() =>
+        _sut.TestValidate(new UpdateMyProfileRequest("Bob", "Jones", DateOfBirth: new DateOnly(1900, 1, 1)))
+            .ShouldHaveValidationErrorFor(x => x.DateOfBirth).WithErrorCode("birthdate_invalid");
 }
 
 public sealed class ForgotPasswordRequestValidatorTests

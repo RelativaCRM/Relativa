@@ -209,6 +209,41 @@ public sealed class AuditLogReadServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_UnknownCategoryThatPassesValidation_ThrowsInvalidCategory()
+    {
+        var q = new GetAuditLogQuery("system", null, null, null, 1, 20, null, null, null, null, null, null);
+        SetupValidQuery();
+        SetupCommonRepoMocks();
+
+        var act = () => _sut.GetAsync(q, callerUserId: 1, CancellationToken.None);
+
+        (await act.Should().ThrowAsync<Relativa.Audit.Application.Exceptions.AppException>())
+            .Which.StatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task GetAsync_ExplicitDateRange_PassesProvidedDatesThrough()
+    {
+        var from = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var to = new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero);
+        var q = new GetAuditLogQuery("entity", from, to, null, 1, 20, null, null, 3, null, null, null);
+        SetupValidQuery();
+        SetupCommonRepoMocks();
+        _repo.Setup(r => r.GetEntityScopeAsync(
+                from, to, It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<int?>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<AuditFilterContextDto?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyResponse);
+
+        await _sut.GetAsync(q, callerUserId: 1, CancellationToken.None);
+
+        _repo.Verify(r => r.GetEntityScopeAsync(
+            from, to, It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<int?>(),
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(),
+            It.IsAny<AuditFilterContextDto?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task GetAsync_AlwaysCallsEnsureRbacWithCallerUserId()
     {
         var q = new GetAuditLogQuery("entity", null, null, null, 1, 20, null, null, 3, null, null, null);
