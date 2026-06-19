@@ -129,7 +129,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
             .Where(x => x.EntityId != null && entityIdsInWs.Contains(x.EntityId.Value));
 
         if (!string.IsNullOrWhiteSpace(actionFilter))
-            query = query.Where(x => x.Action == actionFilter);
+            query = query.Where(x => x.Action.Contains(actionFilter));
         if (entityId.HasValue)
             query = query.Where(x => x.EntityId == entityId.Value);
         if (!string.IsNullOrWhiteSpace(domainEntityType))
@@ -178,7 +178,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
             .Where(x => x.ChangedAt >= from && x.ChangedAt <= to && x.WorkspaceId == workspaceId);
 
         if (!string.IsNullOrWhiteSpace(actionFilter))
-            query = query.Where(x => x.Action == actionFilter);
+            query = query.Where(x => x.Action.Contains(actionFilter));
         if (actorUserId.HasValue)
             query = query.Where(x => x.ChangedById == actorUserId.Value);
 
@@ -211,7 +211,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
             .Where(x => x.ChangedAt >= from && x.ChangedAt <= to && x.OrganizationId == organizationId);
 
         if (!string.IsNullOrWhiteSpace(actionFilter))
-            query = query.Where(x => x.Action == actionFilter);
+            query = query.Where(x => x.Action.Contains(actionFilter));
         if (actorUserId.HasValue)
             query = query.Where(x => x.ChangedById == actorUserId.Value);
 
@@ -254,7 +254,7 @@ public sealed class AuditLogReadRepository(AuditDbContext db) : IAuditLogReadRep
                         && visibleTargets.Contains(x.TargetUserId.Value));
 
         if (!string.IsNullOrWhiteSpace(actionFilter))
-            query = query.Where(x => x.Action == actionFilter);
+            query = query.Where(x => x.Action.Contains(actionFilter));
         if (actorUserId.HasValue)
             query = query.Where(x => x.ChangedById == actorUserId.Value);
         if (targetUserIdFilter.HasValue)

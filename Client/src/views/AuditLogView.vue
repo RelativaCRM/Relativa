@@ -107,7 +107,9 @@ function buildQuery(): AuditLogQuery | null {
 
   if (dateRange.value?.[0]) q.dateFrom = dateRange.value[0].toISOString();
   if (dateRange.value?.[1]) q.dateTo = dateRange.value[1].toISOString();
-  if (actionFilter.value.trim()) q.action = actionFilter.value.trim();
+  if (actionFilter.value.trim()) {
+    q.action = actionFilter.value.trim().toLowerCase().replace(/\s+/g, '_');
+  }
 
   return q;
 }
