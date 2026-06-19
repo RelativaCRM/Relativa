@@ -22,9 +22,29 @@ public sealed class WorkspaceDashboardService(
     // Permission helpers
     // ──────────────────────────────────────────────────────────────────────────
 
+    private async Task<bool> IsOrgOwnerAsync(int userId, int workspaceId, CancellationToken ct)
+    {
+        var orgId = await db.Workspaces
+            .Where(w => w.Id == workspaceId && !w.IsArchived)
+            .Select(w => (int?)w.OrganizationId)
+            .FirstOrDefaultAsync(ct);
+
+        if (orgId is null)
+            return false;
+
+        return await db.UserRoleOrganizations
+            .Where(uro => uro.UserId == userId
+                          && uro.OrganizationId == orgId
+                          && !uro.IsArchived)
+            .AnyAsync(uro => uro.Role.Name == "org_owner", ct);
+    }
+
     private async Task<HashSet<string>> GetWorkspacePermissionsAsync(
         int userId, int workspaceId, CancellationToken ct)
     {
+        if (await IsOrgOwnerAsync(userId, workspaceId, ct))
+            return [ViewAnalytics, ViewBasicStats, ViewTeamAnalytics];
+
         return await db.UserRoleWorkspaces
             .Where(urw => urw.UserId == userId
                           && urw.WorkspaceId == workspaceId
