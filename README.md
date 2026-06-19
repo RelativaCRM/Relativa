@@ -419,8 +419,16 @@ Every backend service ships interactive **Scalar** API docs and a raw OpenAPI sp
 | [DOCKER-BUILD.md](DOCKER-BUILD.md) | Local Docker manual — start, stop, troubleshoot |
 | [DATABASE.md](DATABASE.md) | Full schema, EAV model, RBAC, audit tables |
 | [SCALAR-GUIDE.md](SCALAR-GUIDE.md) | Interactive API walkthrough |
-| [docs/relativa_user_guide](docs/relativa_user_guide.docx) | End-user scenarios for every feature |
+| [docs/USER-GUIDE.md](docs/USER-GUIDE.md) | End-user scenarios for every feature |
 | [AI-GUIDES-INDEX.md](AI-GUIDES-INDEX.md) | Deep technical guides (architecture, microservices, runbooks) |
+
+---
+
+## Project Resources
+
+All project documentation and design mockups are available here:
+- 📚 Project Resources (Project Documentation Links) – [Relativa — Project Resources](https://docs.google.com/document/d/1sQgllhQnAcj4JSiLMRa0BUW4Q3mr3orBaM-2HEgj2yE/edit?usp=sharing).
+
 
 ---
 
