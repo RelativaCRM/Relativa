@@ -355,7 +355,8 @@ function onPointerUp() {
       {{ store.error }}
     </div>
 
-    <div class="flex items-center gap-2">
+    <!-- Full-access users: horizontal scroll row with arrows (can have 9+ cards) -->
+    <div v-if="isFullAccess" class="flex items-center gap-2">
       <button
         type="button"
         class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white shadow-sm text-ink-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
@@ -403,21 +404,33 @@ function onPointerUp() {
       </button>
     </div>
 
-    
-    <template v-if="store.summary && !isFullAccess">
-      <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-center gap-3 text-sm text-amber-800">
-        <i class="pi pi-lock shrink-0" />
-        <span>{{ t('wsDash.limitedAccess') }}</span>
-      </div>
-      <div v-if="basicStatusChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
-        <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('wsDash.dealStatus') }}</h3>
-        <div style="height: 160px">
-          <Chart type="bar" :data="basicStatusChartData" :options="basicChartOptions" />
+    <!-- Basic-access users: simple grid (5 fixed cards, no overflow) -->
+    <div v-else-if="kpis.length" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div v-if="store.isLoadingSummary" v-for="i in 5" :key="i" class="h-24 skeleton-shimmer rounded-xl" />
+      <div
+        v-else
+        v-for="kpi in kpis"
+        :key="kpi.label"
+        class="flex flex-col justify-between gap-3 bg-white rounded-xl border border-line px-4 py-4 shadow-sm"
+      >
+        <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', kpi.bg]">
+          <i :class="['pi text-sm', kpi.icon, kpi.color]" />
+        </div>
+        <div class="min-w-0">
+          <p class="text-[11px] text-ink-400 font-medium uppercase tracking-wide leading-tight mb-1 truncate">{{ kpi.label }}</p>
+          <p :class="['text-xl font-semibold leading-none truncate', kpi.color]">{{ kpi.value }}</p>
         </div>
       </div>
-    </template>
+    </div>
 
-    
+    <!-- Deal status chart for basic-access users (no message, just data) -->
+    <div v-if="store.summary && !isFullAccess && basicStatusChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-ink-700 mb-4">{{ t('wsDash.dealStatus') }}</h3>
+      <div style="height: 160px">
+        <Chart type="bar" :data="basicStatusChartData" :options="basicChartOptions" />
+      </div>
+    </div>
+
     <template v-if="store.summary && isFullAccess">
 
       

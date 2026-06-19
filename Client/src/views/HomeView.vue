@@ -48,8 +48,7 @@ const now = ref(new Date());
 let tickHandle: ReturnType<typeof setInterval> | null = null;
 
 const canView = computed(() => {
-  const orgPerms = new Set(orgStore.currentOrg?.myPermissions ?? []);
-  if (orgPerms.has('manage_org_settings')) return true;
+  if (canManageOrg.value) return true;
   const wsPerms = wsStore.workspaces.flatMap((w) => w.myPermissions ?? []);
   return wsPerms.includes('view_analytics') || wsPerms.includes('view_basic_stats');
 });
@@ -497,7 +496,7 @@ function scoreBar(score?: number) {
     </div>
 
 
-    <template v-if="canView">
+    <template v-if="canManageOrg">
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-base font-semibold text-ink-900">{{ t('home.analytics') }}</h2>
@@ -535,10 +534,6 @@ function scoreBar(score?: number) {
         </div>
 
         
-        <div v-if="accessLevel === 'basic'" class="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-          <i class="pi pi-lock shrink-0" />
-          {{ t('home.limitedAccess') }}
-        </div>
 
 
         <div v-if="isFullOrg && workspaceComparisonChartData" class="bg-white rounded-xl border border-line shadow-sm p-5">
