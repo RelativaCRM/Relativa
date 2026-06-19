@@ -30,13 +30,21 @@
 
 ---
 
-## 🔐 Granular Access Control + Full Audit Trail
+## 🔐 Two-Level Role-Based Access Control — 💎 Growth
 
-*Technology: 8 custom role-management endpoints across organization and workspace levels + Audit Log with 13 filter parameters (actor, target, date range, workspace, action type, and more)*
+*Technology: Role listing at organization and workspace levels, enforced via RBAC middleware (`myPermissions` embedded in workspace/organization responses)*
 
 - 🛡️ **Precise permissions, zero guesswork** — define exactly what each role can see and do, assignable at the organization level or per individual workspace
+- 🤝 **Independent org and workspace roles** — sales teams running multiple pipelines in separate workspaces get fine-grained control without permission conflicts
+
+---
+
+## 📋 Extended Audit Trail — ♾️ Enterprise
+
+*Technology: Audit Log with 13 filter parameters (actor, target, date range, workspace, action type, and more) — `GET /audit-log`*
+
 - 📋 **Every action, permanently logged** — who changed what, when, and from which workspace — fully searchable in two clicks
-- ✅ **Compliance-ready out of the box** — pass security audits without scrambling; filter the audit log by date, user, or entity in seconds
+- ✅ **Compliance-ready** — pass security audits without scrambling; filter the audit log by date, user, or entity in seconds
 
 ---
 
@@ -44,16 +52,13 @@
 
 *For the next documentation stage.*
 
-| Feature | API Endpoint | Service |
-|---------|-------------|---------|
-| ML Deal + Churn Scoring | `POST /api/ml/score/batch` | ML Service |
-| Graph Visualization | `GET /api/v1/graph/` | Graph Service |
-| Composite Graph Creation | `POST /api/v1/workspaces/{id}/entity-graph/create` | Graph Service |
-| Real-time Graph Updates | `/graph/hubs/graph` (SignalR) | Graph Service |
-| Real-time Entity Updates | `/core/hubs/core` (SignalR) | Core Service |
-| Global Audit Log | `GET /audit-log` | Audit Service |
-| Entity Audit Log | `GET /entities/{id}/audit-log` | Audit Service |
-| Custom Org Roles | `POST /api/v1/organizations/{id}/roles` | Core Service |
-| Custom Workspace Roles | `POST /api/v1/workspaces/{id}/roles` | Core Service |
-| Organization Dashboard | `GET /api/v1/dashboard/summary` (+ 5 endpoints) | Graph Service |
-| Workspace Dashboard | `GET /api/v1/dashboard/workspace/{id}/summary` (+ 5 endpoints) | Graph Service |
+| Feature | API Endpoint | Tier | Service |
+|---------|-------------|------|---------|
+| ML Deal + Churn Scoring | `POST /api/ml/score/batch` | 💎 Growth | ML Service |
+| Graph Visualization | `GET /api/v1/graph/` | 💎 Growth | Graph Service |
+| Composite Graph Creation | `POST /api/v1/workspaces/{id}/entity-graph/create` | ♾️ Enterprise | Graph Service |
+| Real-time Graph Updates | `/graph/hubs/graph` (SignalR) | ♾️ Enterprise | Graph Service |
+| Real-time Entity Updates | `/core/hubs/core` (SignalR) | ♾️ Enterprise | Core Service |
+| Extended Audit Log | `GET /audit-log` | ♾️ Enterprise | Audit Service |
+| Organization Dashboard | `GET /api/v1/dashboard/summary` (+ 5 endpoints) | 💎 Growth | Graph Service |
+| Workspace Dashboard | `GET /api/v1/dashboard/workspace/{id}/summary` (+ 5 endpoints) | 💎 Growth | Graph Service |

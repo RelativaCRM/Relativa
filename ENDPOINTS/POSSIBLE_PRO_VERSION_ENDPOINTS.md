@@ -1,6 +1,6 @@
 # Relativa CRM — Endpoint Monetization Tiers
 
-> This document classifies all 103 API endpoints across three pricing tiers.
+> This document classifies all 95 API endpoints across three pricing tiers.
 > Use it as the foundation for implementing rate-limiting middleware and feature gates in the API Gateway.
 
 ---
@@ -124,16 +124,13 @@
 | 🆓 | `DELETE` | `/api/v1/organizations/{organizationId}/members/{userId}` | Remove member |
 | 🆓 | `PUT` | `/api/v1/organizations/{organizationId}/members/{userId}/role` | Change member role |
 
-### 3.2 Organization Roles — 🆓 Starter (read) / 💎 Growth (create & manage)
+### 3.2 Organization Roles — 🆓 Starter
 
-**Rationale:** Listing available roles is required by the UI for any user. Creating and managing custom roles is an enterprise-grade access control feature: companies with 10+ people across multiple teams need granular permission structures that go beyond the built-in defaults.
+**Rationale:** Listing available roles is required by the UI for any user to configure member access.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
-| 🆓 | `GET` | `/api/v1/organizations/{organizationId}/roles` | List built-in and custom roles |
-| 💎 | `POST` | `/api/v1/organizations/{organizationId}/roles` | Create custom role — Growth feature |
-| 💎 | `PUT` | `/api/v1/organizations/{organizationId}/roles/{roleId}` | Update custom role — Growth feature |
-| 💎 | `DELETE` | `/api/v1/organizations/{organizationId}/roles/{roleId}` | Archive custom role — Growth feature |
+| 🆓 | `GET` | `/api/v1/organizations/{organizationId}/roles` | List built-in roles |
 
 ### 3.3 Organization Invitations — 🆓 Starter
 
@@ -154,15 +151,15 @@
 
 ---
 
-## 4. Workspaces — 🆓 Starter
+## 4. Workspaces — 🆓 Starter / ♾️ Enterprise
 
 **Base path:** `/api/v1/workspaces`
 
-**Rationale:** Workspaces are the primary collaboration unit. Creating, navigating, and configuring workspaces must be free to support the core product loop.
+**Rationale:** Workspaces are the primary collaboration unit. Navigating and configuring workspaces must be free to support the core product loop. Creating additional workspaces is a Growth feature — Starter plans are limited to a single shared workspace, aligned with the pricing tier (Multi-workspaces unlock at $19/user/month Growth).
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
-| 🆓 | `POST` | `/api/v1/workspaces/` | Create workspace |
+| ♾️ | `POST` | `/api/v1/workspaces/` | Create workspace — Starter: 1 workspace · Growth: unlimited · Enterprise: unlimited |
 | 🆓 | `GET` | `/api/v1/workspaces/` | List workspaces |
 | 🆓 | `GET` | `/api/v1/workspaces/{id}` | Workspace details |
 | 🆓 | `PUT` | `/api/v1/workspaces/{id}` | Update workspace |
@@ -179,30 +176,17 @@
 | 🆓 | `PUT` | `/api/v1/workspaces/{workspaceId}/members/{userId}/role` | Update member role |
 | 🆓 | `DELETE` | `/api/v1/workspaces/{workspaceId}/members/{userId}` | Remove member |
 
-### 4.2 Workspace Roles — 🆓 Starter (read) / 💎 Growth (create & manage)
+### 4.2 Workspace Roles — 🆓 Starter
 
-**Rationale:** Same logic as organization roles — reading is free, custom role management is a Growth feature enabling fine-grained access control within individual workspaces.
+**Rationale:** Listing available roles is required by the UI for any user to configure workspace member access.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
 | 🆓 | `GET` | `/api/v1/workspaces/{workspaceId}/roles` | List roles |
-| 💎 | `POST` | `/api/v1/workspaces/{workspaceId}/roles` | Create custom role — Growth feature |
-| 💎 | `PUT` | `/api/v1/workspaces/{workspaceId}/roles/{roleId}` | Update custom role — Growth feature |
-| 💎 | `DELETE` | `/api/v1/workspaces/{workspaceId}/roles/{roleId}` | Archive custom role — Growth feature |
 
 ---
 
-## 5. Permissions — 🆓 Starter
-
-**Base path:** `/api/v1/permissions`
-
-| Tier | Method | Path | Note |
-|------|--------|------|------|
-| 🆓 | `GET` | `/api/v1/permissions/` | UI uses this to render role editors — must be free |
-
----
-
-## 6. Invitations (user-scoped) — 🆓 Starter
+## 5. Invitations (user-scoped) — 🆓 Starter
 
 **Base path:** `/api/v1/invitations`
 
@@ -215,7 +199,7 @@
 
 ---
 
-## 7. Join Requests (user-scoped) — 🆓 Starter
+## 6. Join Requests (user-scoped) — 🆓 Starter
 
 **Base path:** `/api/v1/join-requests`
 
@@ -226,7 +210,7 @@
 
 ---
 
-## 8. Entities — 🆓 Starter / ♾️ Enterprise
+## 7. Entities — 🆓 Starter / ♾️ Enterprise
 
 **Base path:** `/api/v1/workspaces/{workspaceId}/entities`
 
@@ -242,7 +226,7 @@
 
 ---
 
-## 9. Entity Types — 🆓 Starter
+## 8. Entity Types — 🆓 Starter
 
 **Base path:** `/api/v1/entity-types`
 
@@ -252,7 +236,7 @@
 
 ---
 
-## 10. Entity Relationships — 🆓 Starter
+## 9. Entity Relationships — 🆓 Starter
 
 **Base path:** `/api/v1/workspaces/{workspaceId}/entity-relationships`
 
@@ -266,7 +250,7 @@
 
 ---
 
-## 11. Entity Graph RPC — ♾️ Enterprise
+## 10. Entity Graph RPC — ♾️ Enterprise
 
 **Base path:** `/api/v1/workspaces/{workspaceId}/entity-graph`
 
@@ -278,7 +262,7 @@
 
 ---
 
-## 12. Graph Query — 💎 Growth
+## 11. Graph Query — 💎 Growth
 
 **Base path:** `/api/v1/graph`
 
@@ -290,7 +274,7 @@
 
 ---
 
-## 13. Dashboard — Organization — 💎 Growth
+## 12. Dashboard — Organization — 💎 Growth
 
 **Base path:** `/api/v1/dashboard`
 
@@ -307,7 +291,7 @@
 
 ---
 
-## 14. Dashboard — Workspace — 💎 Growth
+## 13. Dashboard — Workspace — 💎 Growth
 
 **Base path:** `/api/v1/dashboard/workspace/{workspaceId}`
 
@@ -324,18 +308,17 @@
 
 ---
 
-## 15. Audit Log — 💎 Growth
+## 14. Audit Log — ♾️ Enterprise
 
-**Rationale:** A compliance-grade audit trail with 13 filter parameters (date range, actor, target, workspace, organization, action type, etc.) is a governance feature. Enterprises and regulated industries need this for security audits, compliance reviews, and incident investigations. This is a strong Growth conversion driver for larger teams.
+**Rationale:** A compliance-grade audit trail with 13 filter parameters (date range, actor, target, workspace, organization, action type, etc.) is a governance feature aligned with the Enterprise tier ($49/user/month). Regulated industries and larger teams need this for security audits, compliance reviews, and incident investigations. The Enterprise plan delivers the full extended log with all filter capabilities.
 
 | Tier | Method | Path | Note |
 |------|--------|------|------|
-| 💎 | `GET` | `/audit-log` | Global paginated audit log — 13 filter parameters |
-| 💎 | `GET` | `/entities/{entityId}/audit-log` | Entity-scoped change history |
+| ♾️ | `GET` | `/audit-log` | Extended audit log — 13 filter parameters — Enterprise feature |
 
 ---
 
-## 16. ML Scoring — 💎 Growth / ♾️ Enterprise
+## 15. ML Scoring — 💎 Growth / ♾️ Enterprise
 
 **Base path:** `/api/ml`
 
@@ -347,7 +330,7 @@
 
 ---
 
-## 17. Real-time Hubs (SignalR) — ♾️ Enterprise
+## 16. Real-time Hubs (SignalR) — ♾️ Enterprise
 
 **Rationale:** Real-time updates are a baseline collaborative feature — the product works noticeably worse without them. Available on all tiers, but concurrent WebSocket connection count is capped. Large teams with many browser sessions simultaneously open benefit from the Enterprise plan.
 
@@ -366,13 +349,12 @@
 | Support | 1 | 1 | — | — |
 | Organizations | 10 | 9 | — | 1 |
 | Org Members | 3 | 3 | — | — |
-| Org Roles | 4 | 1 | 3 | — |
+| Org Roles | 1 | 1 | — | — |
 | Org Invitations | 4 | 4 | — | — |
 | Org Join Requests | 3 | 3 | — | — |
-| Workspaces | 7 | 7 | — | — |
+| Workspaces | 7 | 6 | — | 1 |
 | Workspace Members | 4 | 4 | — | — |
-| Workspace Roles | 4 | 1 | 3 | — |
-| Permissions | 1 | 1 | — | — |
+| Workspace Roles | 1 | 1 | — | — |
 | Invitations (user) | 4 | 4 | — | — |
 | Join Requests (user) | 2 | 2 | — | — |
 | Entities | 5 | 4 | — | 1 |
@@ -382,10 +364,10 @@
 | Graph Query | 1 | — | 1 | — |
 | Dashboard (org) | 6 | — | 6 | — |
 | Dashboard (workspace) | 6 | — | 6 | — |
-| Audit Log | 2 | — | 2 | — |
+| Audit Log | 1 | — | — | 1 |
 | ML Scoring | 1 | — | 1* | — |
 | SignalR Hubs | 2 | — | — | 2 |
-| **Total** | **103** | **76** | **22** | **5** |
+| **Total** | **95** | **74** | **14** | **7** |
 
 > \* ML Scoring is unlocked at **Growth** but the Enterprise plan removes the batch size cap.
 > ♾️ Enterprise endpoints are accessible at lower tiers but subject to daily/concurrent limits shown in each section.
