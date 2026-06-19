@@ -679,6 +679,7 @@
     "calculatingRisk": "Calculating risk scores…",
     "dealsProgress": "{processed} / {total} deals",
     "noRiskData": "No risk score data available.",
+    "noDealsToCalculate": "There are no deals to calculate yet",
     "memberActivity": "Member Activity",
     "colMember": "Member",
     "colDealsOwned": "Deals Owned",

@@ -184,6 +184,34 @@ const riskChartData = computed(() => {
   };
 });
 
+const hasNoDeals = computed(() =>
+  !store.isLoadingRisk &&
+  !store.isLoadingSummary &&
+  (store.summary?.totalDeals ?? 0) === 0
+);
+
+const emptyRiskChartData = {
+  labels: [''],
+  datasets: [{
+    data: [1],
+    backgroundColor: ['#94a3b8'],
+    hoverBackgroundColor: ['#94a3b8'],
+    borderWidth: 0,
+  }],
+};
+
+const emptyRiskChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '65%',
+  animation: false as const,
+  events: [] as never[],
+  plugins: {
+    legend: { display: false },
+    tooltip: { enabled: false },
+  },
+};
+
 const riskChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -492,8 +520,15 @@ function onPointerUp() {
             </div>
           </div>
           <template v-else>
-            
-            <div v-if="riskChartData" :class="['flex items-center gap-6', store.isMlRecalculating && 'opacity-60']">
+
+            <div v-if="hasNoDeals" class="flex items-center gap-6">
+              <div style="height: 180px; width: 180px; flex-shrink: 0">
+                <Chart type="doughnut" :data="emptyRiskChartData" :options="emptyRiskChartOptions" />
+              </div>
+              <p class="text-sm text-ink-400 italic">{{ t('wsDash.noDealsToCalculate') }}</p>
+            </div>
+
+            <div v-else-if="riskChartData" :class="['flex items-center gap-6', store.isMlRecalculating && 'opacity-60']">
               <div style="height: 180px; width: 180px; flex-shrink: 0">
                 <Chart type="doughnut" :data="riskChartData" :options="riskChartOptions" />
               </div>
@@ -514,8 +549,8 @@ function onPointerUp() {
                 </div>
               </div>
             </div>
-            
-            <div v-if="store.isMlRecalculating" class="mt-3 space-y-2">
+
+            <div v-if="!hasNoDeals && store.isMlRecalculating" class="mt-3 space-y-2">
               <div class="flex items-center gap-3 px-3 py-2.5 bg-brand-50 border border-brand-100 rounded-lg text-xs text-brand-700">
                 <i class="pi pi-spin pi-spinner shrink-0 text-brand-500" />
                 <div class="flex-1">
@@ -539,8 +574,8 @@ function onPointerUp() {
                 :show-value="false"
               />
             </div>
-            
-            <p v-else-if="!riskChartData" class="text-xs text-ink-400 italic">{{ t('wsDash.noRiskData') }}</p>
+
+            <p v-else-if="!hasNoDeals && !riskChartData" class="text-xs text-ink-400 italic">{{ t('wsDash.noRiskData') }}</p>
           </template>
         </div>
       </div>

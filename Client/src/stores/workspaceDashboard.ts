@@ -121,6 +121,12 @@ export const useWorkspaceDashboardStore = defineStore('workspaceDashboard', () =
       return;
     }
 
+    // If risk returned empty items but the workspace has no deals, nothing is
+    // being calculated — clear the spinner so the view shows the empty state.
+    if (isMlRecalculating.value && (summary.value?.totalDeals ?? 0) === 0) {
+      isMlRecalculating.value = false;
+    }
+
     // Basic-access workspaces don't render the full-analytics sections,
     // so clear their loading indicators immediately.
     if (summary.value?.accessLevel !== 'full') {
