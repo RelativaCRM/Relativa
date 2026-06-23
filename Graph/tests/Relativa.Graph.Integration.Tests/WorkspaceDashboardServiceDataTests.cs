@@ -1,4 +1,5 @@
 using DotNet.Testcontainers.Builders;
+using Microsoft.Extensions.Caching.Memory;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
@@ -33,7 +34,11 @@ public sealed class WorkspaceDashboardServiceDataTests : IAsyncLifetime
 
         var ml = Substitute.For<IMlScoringClient>();
         ml.ScoreBatchAsync(Arg.Any<IReadOnlyList<int>>(), Arg.Any<CancellationToken>()).Returns(new Dictionary<int, MlScoreDto>());
-        _svc = new WorkspaceDashboardService(_db, ml, Substitute.For<IMlRecalculationClient>());
+        _svc = new WorkspaceDashboardService(
+            _db,
+            ml,
+            Substitute.For<IMlRecalculationClient>(),
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     public async Task DisposeAsync()

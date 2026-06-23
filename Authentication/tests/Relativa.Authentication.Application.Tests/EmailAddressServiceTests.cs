@@ -217,4 +217,123 @@ public sealed class EmailAddressServiceTests
 
         _userRepo.Verify(r => r.RemoveEmailAsync(email, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task RemoveAsync_UnknownSecondary_ThrowsNotFound()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io" });
+        _userRepo.Setup(r => r.GetEmailAsync(1, "ghost@relativa.io", It.IsAny<CancellationToken>())).ReturnsAsync((UserEmail?)null);
+
+        var act = () => _sut.RemoveAsync(1, "ghost@relativa.io");
+
+        (await act.Should().ThrowAsync<AuthException>()).Which.Code.Should().Be("email_address_not_found");
+    }
+
+    [Fact]
+    public async Task SetPrimaryAsync_UnknownTarget_ThrowsNotFound()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io", Password = "hash" });
+        _userRepo.Setup(r => r.GetEmailAsync(1, "ghost@relativa.io", It.IsAny<CancellationToken>())).ReturnsAsync((UserEmail?)null);
+
+        var act = () => _sut.SetPrimaryAsync(1, "ghost@relativa.io");
+
+        (await act.Should().ThrowAsync<AuthException>()).Which.Code.Should().Be("email_address_not_found");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_NullToken_ThrowsInvalidVerificationCode()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io" });
+        _userRepo.Setup(r => r.GetEmailAsync(1, "extra@relativa.io", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserEmail { UserId = 1, Address = "extra@relativa.io", IsVerified = false, VerificationToken = null });
+
+        var act = () => _sut.VerifyAsync(1, "extra@relativa.io", "ABCDEF");
+
+        await act.Should().ThrowAsync<InvalidVerificationCodeException>();
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ExpiredToken_ThrowsInvalidVerificationCode()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io" });
+        _userRepo.Setup(r => r.GetEmailAsync(1, "extra@relativa.io", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserEmail
+            {
+                UserId = 1,
+                Address = "extra@relativa.io",
+                IsVerified = false,
+                VerificationToken = Hash("ABCDEF"),
+                VerificationTokenExpiresAt = DateTime.UtcNow.AddMinutes(-1)
+            });
+
+        var act = () => _sut.VerifyAsync(1, "extra@relativa.io", "ABCDEF");
+
+        await act.Should().ThrowAsync<InvalidVerificationCodeException>();
+    }
+
+    [Fact]
+    public async Task ResendAsync_UnknownAddress_ThrowsNotFound()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io" });
+        _userRepo.Setup(r => r.GetEmailAsync(1, "ghost@relativa.io", It.IsAny<CancellationToken>())).ReturnsAsync((UserEmail?)null);
+
+        var act = () => _sut.ResendAsync(1, "ghost@relativa.io");
+
+        (await act.Should().ThrowAsync<AuthException>()).Which.Code.Should().Be("email_address_not_found");
+    }
+
+    [Fact]
+    public async Task ResendAsync_AlreadyVerified_IsNoOp()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io" });
+        _userRepo.Setup(r => r.GetEmailAsync(1, "extra@relativa.io", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserEmail { UserId = 1, Address = "extra@relativa.io", IsVerified = true });
+
+        await _sut.ResendAsync(1, "extra@relativa.io");
+
+        _userRepo.Verify(r => r.UpdateEmailAsync(It.IsAny<UserEmail>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResendAsync_RateLimited_SilentlySkips()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io" });
+        _userRepo.Setup(r => r.GetEmailAsync(1, "extra@relativa.io", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserEmail { UserId = 1, Address = "extra@relativa.io", IsVerified = false });
+        _rateLimiter.Setup(r => r.TryConsume(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TimeSpan>())).Returns(false);
+
+        await _sut.ResendAsync(1, "extra@relativa.io");
+
+        _userRepo.Verify(r => r.UpdateEmailAsync(It.IsAny<UserEmail>(), It.IsAny<CancellationToken>()), Times.Never);
+        _emailSender.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResendAsync_Unverified_RotatesTokenAndSendsCode()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io", Settings = new UserSettings { Locale = "uk" } });
+        var email = new UserEmail { UserId = 1, Address = "extra@relativa.io", IsVerified = false, VerificationToken = "OLD" };
+        _userRepo.Setup(r => r.GetEmailAsync(1, "extra@relativa.io", It.IsAny<CancellationToken>())).ReturnsAsync(email);
+
+        await _sut.ResendAsync(1, "extra@relativa.io");
+
+        email.VerificationToken.Should().NotBe("OLD");
+        email.VerificationTokenExpiresAt.Should().NotBeNull();
+        _userRepo.Verify(r => r.UpdateEmailAsync(email, It.IsAny<CancellationToken>()), Times.Once);
+        _emailSender.Verify(s => s.SendAsync("extra@relativa.io", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AddAsync_EmailSenderThrows_SwallowsAndStillPersists()
+    {
+        HasUser(new User { Id = 1, Email = "primary@relativa.io" });
+        _userRepo.Setup(r => r.EmailExistsAnywhereAsync("extra@relativa.io", It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _emailSender.Setup(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("smtp down"));
+
+        var act = () => _sut.AddAsync(1, "extra@relativa.io");
+
+        await act.Should().NotThrowAsync();
+        _userRepo.Verify(r => r.AddEmailAsync(It.IsAny<UserEmail>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

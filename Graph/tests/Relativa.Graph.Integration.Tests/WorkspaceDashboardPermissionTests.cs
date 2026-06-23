@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Caching.Memory;
 using DotNet.Testcontainers.Builders;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -51,7 +52,11 @@ public sealed class WorkspaceDashboardPermissionTests : IAsyncLifetime
             .ScoreBatchAsync(Arg.Any<IReadOnlyList<int>>(), Arg.Any<CancellationToken>())
             .Returns(new Dictionary<int, MlScoreDto>());
 
-        _svc = new WorkspaceDashboardService(_db, mlScoring, Substitute.For<IMlRecalculationClient>());
+        _svc = new WorkspaceDashboardService(
+            _db,
+            mlScoring,
+            Substitute.For<IMlRecalculationClient>(),
+            new MemoryCache(new MemoryCacheOptions()));
 
         await _svc.GetSummaryAsync(_analystUserId, _targetWorkspaceId, CancellationToken.None);
     }

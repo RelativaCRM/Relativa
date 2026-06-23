@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using Relativa.Core.Application.Services;
 using Relativa.Core.Domain.Interfaces;
@@ -14,7 +15,7 @@ public sealed class EntityTypeServiceTests
 
     public EntityTypeServiceTests()
     {
-        _sut = new EntityTypeService(_repo.Object);
+        _sut = new EntityTypeService(_repo.Object, new MemoryCache(new MemoryCacheOptions()));
     }
 
     [Fact]
@@ -221,5 +222,101 @@ public sealed class EntityTypeServiceTests
 
         result.Should().HaveCount(3);
         result.Select(r => r.Name).Should().BeEquivalentTo(["Client", "Deal", "Task"]);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_SecondCall_ServesFromCacheWithoutQueryingRepositoryAgain()
+    {
+        _repo.Setup(r => r.GetAllWithPropertiesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new EntityType { Id = 1, Name = "Client", EntityTypeProperties = [] }]);
+
+        var first = await _sut.GetAllAsync();
+        var second = await _sut.GetAllAsync();
+
+        second.Should().BeSameAs(first);
+        _repo.Verify(r => r.GetAllWithPropertiesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_PrefersExplicitDisplayNamesOverHumanizedFallback()
+    {
+        var clientType = new EntityType { Id = 1, Name = "client", DisplayName = "Customer", IsStandalone = true };
+        var dealType = new EntityType { Id = 2, Name = "deal", DisplayName = "Opportunity", IsStandalone = true };
+        var rel = new EntityRelationshipType
+        {
+            Id = 1,
+            Name = "deal_client",
+            DisplayName = "Belongs To",
+            SourceEntityTypeId = dealType.Id,
+            SourceEntityType = dealType,
+            TargetEntityTypeId = clientType.Id,
+            TargetEntityType = clientType,
+            IsRequired = true
+        };
+        dealType.SourceRelationshipTypes.Add(rel);
+        clientType.TargetRelationshipTypes.Add(rel);
+        dealType.EntityTypeProperties.Add(new EntityTypeProperty
+        {
+            PropertyId = 1,
+            Property = new Property
+            {
+                Id = 1,
+                Name = "deal_value",
+                DisplayName = "Contract Value",
+                DataType = PropertyDataType.Decimal,
+                AllowedValues = []
+            },
+            IsRequired = true
+        });
+        _repo.Setup(r => r.GetAllWithPropertiesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([clientType, dealType]);
+
+        var result = await _sut.GetAllAsync();
+
+        var deal = result.Single(t => t.Name == "deal");
+        deal.DisplayName.Should().Be("Opportunity");
+        deal.Properties[0].DisplayName.Should().Be("Contract Value");
+        deal.OutgoingRelationships[0].DisplayName.Should().Be("Belongs To");
+        deal.OutgoingRelationships[0].TargetEntityTypeName.Should().Be("client");
+        result.Single(t => t.Name == "client").DisplayName.Should().Be("Customer");
+    }
+
+    [Fact]
+    public async Task GetAllAsync_MapsAllowedValues_WithDisplayNameFallback()
+    {
+        var entityType = new EntityType
+        {
+            Id = 1,
+            Name = "deal",
+            EntityTypeProperties =
+            [
+                new EntityTypeProperty
+                {
+                    PropertyId = 1,
+                    Property = new Property
+                    {
+                        Id = 1,
+                        Name = "deal_stage",
+                        DataType = PropertyDataType.String,
+                        AllowedValues =
+                        [
+                            new PropertyAllowedValue { Value = "in_progress", DisplayName = "Active" },
+                            new PropertyAllowedValue { Value = "closed_won" }
+                        ]
+                    },
+                    IsRequired = true
+                }
+            ]
+        };
+        _repo.Setup(r => r.GetAllWithPropertiesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([entityType]);
+
+        var allowed = (await _sut.GetAllAsync())[0].Properties[0].AllowedValues;
+
+        allowed.Should().HaveCount(2);
+        allowed[0].Value.Should().Be("in_progress");
+        allowed[0].DisplayName.Should().Be("Active");
+        allowed[1].Value.Should().Be("closed_won");
+        allowed[1].DisplayName.Should().Be("Closed Won");
     }
 }

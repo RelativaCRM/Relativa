@@ -1,4 +1,5 @@
 using DotNet.Testcontainers.Builders;
+using Microsoft.Extensions.Caching.Memory;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
@@ -20,7 +21,7 @@ public sealed class WorkspaceDashboardServiceEdgeTests : IAsyncLifetime
 
     private GraphQueryDbContext _db = null!;
     private WorkspaceDashboardService _svc = null!;
-    private int _managerId, _basicId, _wsId, _dealTypeId, _clientTypeId, _relTypeId;
+    private int _managerId, _basicId, _wsId, _dealTypeId, _clientTypeId, _taskTypeId, _relTypeId;
     private readonly Dictionary<string, int> _prop = new();
     private readonly DateOnly _thisMonth = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 10);
     private int _dScored, _dClosed, _cName, _cNoName;
@@ -37,7 +38,11 @@ public sealed class WorkspaceDashboardServiceEdgeTests : IAsyncLifetime
         var scores = new Dictionary<int, MlScoreDto> { [_dScored] = new(_dScored, 0.30, null, null), [_dClosed] = new(_dClosed, 0.90, null, null) };
         ml.ScoreBatchAsync(Arg.Any<IReadOnlyList<int>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ((IReadOnlyList<int>)ci[0]).Where(scores.ContainsKey).ToDictionary(id => id, id => scores[id]));
-        _svc = new WorkspaceDashboardService(_db, ml, Substitute.For<IMlRecalculationClient>());
+        _svc = new WorkspaceDashboardService(
+            _db,
+            ml,
+            Substitute.For<IMlRecalculationClient>(),
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     public async Task DisposeAsync() { await _db.DisposeAsync(); await _postgres.DisposeAsync(); }
@@ -70,9 +75,10 @@ public sealed class WorkspaceDashboardServiceEdgeTests : IAsyncLifetime
         _db.Workspaces.Add(ws);
         var dealType = new EntityType { Name = "deal" };
         var clientType = new EntityType { Name = "client" };
-        _db.EntityTypes.AddRange(dealType, clientType);
+        var taskType = new EntityType { Name = "task" };
+        _db.EntityTypes.AddRange(dealType, clientType, taskType);
         await _db.SaveChangesAsync();
-        _wsId = ws.Id; _dealTypeId = dealType.Id; _clientTypeId = clientType.Id;
+        _wsId = ws.Id; _dealTypeId = dealType.Id; _clientTypeId = clientType.Id; _taskTypeId = taskType.Id;
 
         _db.UserRoleWorkspaces.AddRange(
             new UserRoleWorkspace { UserId = manager.Id, WorkspaceId = ws.Id, WsRoleId = mgrRole.Id, JoinedAt = DateTime.UtcNow },
@@ -85,6 +91,7 @@ public sealed class WorkspaceDashboardServiceEdgeTests : IAsyncLifetime
             ("expected_close", PropertyDataType.Date), ("title", PropertyDataType.String), ("client_status", PropertyDataType.String),
             ("company_name", PropertyDataType.String), ("name", PropertyDataType.String), ("first_name", PropertyDataType.String),
             ("client_lifetime_value", PropertyDataType.Decimal), ("industry", PropertyDataType.String),
+            ("task_status", PropertyDataType.String), ("due_date", PropertyDataType.Date),
         })
         {
             var p = new Property { Name = name, DataType = type };
@@ -99,14 +106,21 @@ public sealed class WorkspaceDashboardServiceEdgeTests : IAsyncLifetime
         _relTypeId = relType.Id;
 
         _dScored = await AddDealAsync(("status", "opened"), ("deal_value", 10000m), ("deal_stage", "Negotiation"), ("expected_close", _thisMonth), ("title", "Scored"));
-        await AddDealAsync(("status", "opened"), ("deal_value", 8000m));
+        var dUnnamedClient = await AddDealAsync(("status", "opened"), ("deal_value", 8000m));
         await AddDealAsync();
         await AddDealAsync(("status", "on_hold"), ("deal_value", 3000m));
         _dClosed = await AddDealAsync(("status", "closed"), ("deal_value", 20000m), ("expected_close", _thisMonth));
 
+        await AddDealAsync(("status", "revoked"), ("deal_value", 5000m));
+
         _cName = await AddClientAsync(("name", "Bob"), ("client_lifetime_value", 50000m), ("client_status", "active"));
         _cNoName = await AddClientAsync(("client_lifetime_value", 10000m));
         await LinkAsync(_dScored, _cName);
+        await LinkAsync(dUnnamedClient, _cNoName);
+
+        await AddTaskAsync(("task_status", "done"), ("due_date", _thisMonth.AddDays(-20)));
+        await AddTaskAsync(("task_status", "in_progress"), ("due_date", new DateOnly(2000, 1, 1)));
+        await AddTaskAsync(("task_status", "in_progress"), ("due_date", _thisMonth.AddYears(1)));
     }
 
     private async Task<int> AddDealAsync(params (string name, object value)[] props)
@@ -122,6 +136,16 @@ public sealed class WorkspaceDashboardServiceEdgeTests : IAsyncLifetime
     private async Task<int> AddClientAsync(params (string name, object value)[] props)
     {
         var e = new Entity { EntityTypeId = _clientTypeId, CreatedByUserId = _managerId };
+        _db.Entities.Add(e);
+        await _db.SaveChangesAsync();
+        _db.Set<EntityWorkspace>().Add(new EntityWorkspace { EntityId = e.Id, WorkspaceId = _wsId });
+        await AddValuesAsync(e.Id, props);
+        return e.Id;
+    }
+
+    private async Task<int> AddTaskAsync(params (string name, object value)[] props)
+    {
+        var e = new Entity { EntityTypeId = _taskTypeId, CreatedByUserId = _managerId };
         _db.Entities.Add(e);
         await _db.SaveChangesAsync();
         _db.Set<EntityWorkspace>().Add(new EntityWorkspace { EntityId = e.Id, WorkspaceId = _wsId });
@@ -168,6 +192,16 @@ public sealed class WorkspaceDashboardServiceEdgeTests : IAsyncLifetime
 
         summary.WonDeals.Should().Be(1);
         summary.OpenDeals.Should().Be(4);
+    }
+
+    [Fact]
+    public async Task GetSummaryAsync_CountsRevokedAsLost_AndOverdueOpenTasks()
+    {
+        var summary = await _svc.GetSummaryAsync(_managerId, _wsId, CancellationToken.None);
+
+        summary.LostDeals.Should().Be(1, "a revoked deal counts as lost, not open");
+        summary.OpenDeals.Should().Be(4, "the revoked deal is excluded from the open count");
+        summary.TasksOverdue.Should().NotBeNull("the full-analytics summary computes overdue tasks");
     }
 
     [Fact]
