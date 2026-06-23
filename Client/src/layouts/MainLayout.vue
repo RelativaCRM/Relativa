@@ -281,7 +281,7 @@ onMounted(async () => {
               <i class="pi pi-building" /><span class="nav-label truncate font-medium">{{ orgStore.currentOrg.name }}</span>
             </RouterLink>
 
-            <div class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
+            <div v-if="orgStore.currentOrg" class="nav-sub ml-3 mt-0.5 flex flex-col border-l border-slate-200 pl-2">
               <RouterLink to="/members" class="nav-link" active-class="" :class="{ 'nav-link--active': isOrgMembersActive }" :title="t('nav.members')">
                 <i class="pi pi-users" /><span class="nav-label">{{ t('nav.members') }}</span>
               </RouterLink>

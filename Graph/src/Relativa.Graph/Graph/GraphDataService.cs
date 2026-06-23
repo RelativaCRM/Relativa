@@ -47,41 +47,57 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
             .ToHashSetAsync(ct);
 
         // Step 3: accessible workspaces + per-workspace permissions
-        var workspaceMemberships = await db.UserRoleWorkspaces
-            .Where(urw => urw.UserId == userId
-                          && !urw.IsArchived
-                          && !urw.Workspace.IsArchived
-                          && urw.Workspace.OrganizationId == organizationId)
-            .Select(urw => new
-            {
-                urw.WorkspaceId,
-                WorkspaceName = urw.Workspace.Name,
-                PermissionName = (string?)null
-            })
-            .ToListAsync(ct);
+        bool isOrgOwner = orgPermissions.Contains("manage_org_settings");
 
-        // Separate query for permissions to avoid cartesian explosion
-        var workspaceIds = workspaceMemberships.Select(m => m.WorkspaceId).Distinct().ToList();
+        List<int> workspaceIds;
+        Dictionary<int, string> workspaceNames;
+        Dictionary<int, HashSet<string>> workspacePermissions;
 
-        var wsPermRows = await db.UserRoleWorkspaces
-            .Where(urw => urw.UserId == userId
-                          && !urw.IsArchived
-                          && workspaceIds.Contains(urw.WorkspaceId))
-            .SelectMany(urw => urw.Role.RolePermissions.Select(rp => new
-            {
-                urw.WorkspaceId,
-                PermissionName = rp.Permission.Name
-            }))
-            .ToListAsync(ct);
+        if (isOrgOwner)
+        {
+            var allWorkspaces = await db.Workspaces
+                .Where(w => w.OrganizationId == organizationId && !w.IsArchived)
+                .Select(w => new { w.Id, w.Name })
+                .ToListAsync(ct);
 
-        var workspacePermissions = wsPermRows
-            .GroupBy(r => r.WorkspaceId)
-            .ToDictionary(g => g.Key, g => g.Select(r => r.PermissionName).ToHashSet());
+            workspaceIds = allWorkspaces.Select(w => w.Id).ToList();
+            workspaceNames = allWorkspaces.ToDictionary(w => w.Id, w => w.Name);
+            workspacePermissions = workspaceIds.ToDictionary(
+                id => id,
+                _ => new HashSet<string> { "manage_ws_settings", "view_entities", "edit_entities", "delete_entities" });
+        }
+        else
+        {
+            var workspaceMemberships = await db.UserRoleWorkspaces
+                .Where(urw => urw.UserId == userId
+                              && !urw.IsArchived
+                              && !urw.Workspace.IsArchived
+                              && urw.Workspace.OrganizationId == organizationId)
+                .Select(urw => new { urw.WorkspaceId, WorkspaceName = urw.Workspace.Name })
+                .ToListAsync(ct);
 
-        // Workspace names (deduplicated)
-        var workspaceNames = workspaceMemberships
-            .GroupBy(m => m.WorkspaceId)
-            .ToDictionary(g => g.Key, g => g.First().WorkspaceName);
+            workspaceIds = workspaceMemberships.Select(m => m.WorkspaceId).Distinct().ToList();
+
+            // Separate query for permissions to avoid cartesian explosion
+            var wsPermRows = await db.UserRoleWorkspaces
+                .Where(urw => urw.UserId == userId
+                              && !urw.IsArchived
+                              && workspaceIds.Contains(urw.WorkspaceId))
+                .SelectMany(urw => urw.Role.RolePermissions.Select(rp => new
+                {
+                    urw.WorkspaceId,
+                    PermissionName = rp.Permission.Name
+                }))
+                .ToListAsync(ct);
+
+            workspacePermissions = wsPermRows
+                .GroupBy(r => r.WorkspaceId)
+                .ToDictionary(g => g.Key, g => g.Select(r => r.PermissionName).ToHashSet());
+
+            workspaceNames = workspaceMemberships
+                .GroupBy(m => m.WorkspaceId)
+                .ToDictionary(g => g.Key, g => g.First().WorkspaceName);
+        }
 
         foreach (var wsId in workspaceIds)
         {
@@ -355,8 +371,7 @@ public sealed class GraphDataService(GraphQueryDbContext db, IMlScoringClient ml
             }
         }
 
-        // Step 6: other org members (conditional on org permissions)
-        if (orgPermissions.Contains("remove_org_members") || orgPermissions.Contains("manage_org_workspace_members"))
+        // Step 6: other org members (all org members see fellow members in the graph)
         {
             var canEditUsers = orgPermissions.Contains("edit_other_org_users_profile");
             var canDeleteUsers = orgPermissions.Contains("delete_org_users");
